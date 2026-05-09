@@ -522,28 +522,24 @@ export default class ECSpresso<
 				}
 			}
 
-			// Call the system's process function only if there are results or there is no query.
+			// Run the process function only if any query yielded results, the
+			// system opted into running empty, or it has no queries at all.
 			if (system.process) {
-				// inScreens systems already passed the gate above, so currentScreen
-				// is guaranteed non-null and in the array — no need to recheck.
-				const previousHint = this._activeScopeHint;
-				this._activeScopeHint = system.inScreens?.length && currentScreen !== null ? currentScreen : null;
-				try {
-					if (this._diagnosticsEnabled) {
-						const t0 = performance.now();
-						if (hasResults || system.runWhenEmpty) {
-							system.process(ctx);
-						} else if (!hasQueries) {
-							system.process(ctx);
+				const shouldRun = hasResults || system.runWhenEmpty || !hasQueries;
+				if (shouldRun) {
+					// inScreens systems already passed the gate above, so currentScreen
+					// is guaranteed non-null when inScreens is set.
+					const previousHint = this._activeScopeHint;
+					this._activeScopeHint = system.inScreens?.length && currentScreen !== null ? currentScreen : null;
+					const t0 = this._diagnosticsEnabled ? performance.now() : 0;
+					try {
+						system.process(ctx);
+					} finally {
+						this._activeScopeHint = previousHint;
+						if (this._diagnosticsEnabled) {
+							this._systemTimings.set(system.label, performance.now() - t0);
 						}
-						this._systemTimings.set(system.label, performance.now() - t0);
-					} else if (hasResults || system.runWhenEmpty) {
-						system.process(ctx);
-					} else if (!hasQueries) {
-						system.process(ctx);
 					}
-				} finally {
-					this._activeScopeHint = previousHint;
 				}
 			}
 

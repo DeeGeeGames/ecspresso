@@ -148,6 +148,19 @@ describe('runWhenEmpty', () => {
 
 			expect(world.systemTimings.has('spawner')).toBe(true);
 		});
+
+		test('timing is NOT recorded when system is skipped due to empty queries', () => {
+			const world = new ECSpresso<WorldConfigFrom<TestComponents>>();
+
+			world.addSystem('skipped')
+				.addQuery('movers', { with: ['position', 'velocity'] as const })
+				.setProcess(() => {});
+
+			world.enableDiagnostics(true);
+			world.update(1 / 60);
+
+			expect(world.systemTimings.has('skipped')).toBe(false);
+		});
 	});
 
 	describe('change detection interaction', () => {
