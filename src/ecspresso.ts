@@ -114,6 +114,13 @@ export default class ECSpresso<
 	private _screenScopedEntities: Map<string, Set<number>> = new Map();
 	/** Reverse index: entity ID -> scope screen name, for O(1) cleanup on remove */
 	private _entityScreenScope: Map<number, string> = new Map();
+	/**
+	 * Active screen scope hint set during a screen-gated system's process tick.
+	 * spawn / spawnChild / commands.spawn fall back to this when the caller did
+	 * not pass an explicit `scope`. `null` means no hint (not in a gated tick,
+	 * or system has no `inScreens` matching the current screen).
+	 */
+	private _activeScopeHint: (keyof Cfg['screens'] & string) | null = null;
 	/** Disabled system groups */
 	private _disabledGroups: Set<string> = new Set();
 	/** Asset manager for loading and accessing assets */
@@ -174,7 +181,7 @@ export default class ECSpresso<
 		this._eventBus = new EventBus<Cfg['events']>();
 		this._resourceManager = new ResourceManager<Cfg['resources'], ECSpresso<Cfg>>();
 		this._reactiveQueryManager = new ReactiveQueryManager<Cfg['components']>(this._entityManager);
-		this._commandBuffer = new CommandBuffer<Cfg>();
+		this._commandBuffer = new CommandBuffer<Cfg>(this);
 
 		// Wire up lifecycle hooks for change detection, required components, and reactive queries
 		this._subscribeLifecycleHooks();
@@ -514,18 +521,26 @@ export default class ECSpresso<
 
 			// Call the system's process function only if there are results or there is no query.
 			if (system.process) {
-				if (this._diagnosticsEnabled) {
-					const t0 = performance.now();
-					if (hasResults || system.runWhenEmpty) {
+				// inScreens systems already passed the gate above, so currentScreen
+				// is guaranteed non-null and in the array — no need to recheck.
+				const previousHint = this._activeScopeHint;
+				this._activeScopeHint = system.inScreens?.length && currentScreen !== null ? currentScreen : null;
+				try {
+					if (this._diagnosticsEnabled) {
+						const t0 = performance.now();
+						if (hasResults || system.runWhenEmpty) {
+							system.process(ctx);
+						} else if (!hasQueries) {
+							system.process(ctx);
+						}
+						this._systemTimings.set(system.label, performance.now() - t0);
+					} else if (hasResults || system.runWhenEmpty) {
 						system.process(ctx);
 					} else if (!hasQueries) {
 						system.process(ctx);
 					}
-					this._systemTimings.set(system.label, performance.now() - t0);
-				} else if (hasResults || system.runWhenEmpty) {
-					system.process(ctx);
-				} else if (!hasQueries) {
-					system.process(ctx);
+				} finally {
+					this._activeScopeHint = previousHint;
 				}
 			}
 
@@ -1114,7 +1129,7 @@ export default class ECSpresso<
 		*/
 	spawn<T extends { [K in keyof Cfg['components']]?: Cfg['components'][K] }>(
 		components: T & Record<Exclude<keyof T, keyof Cfg['components']>, never>,
-		options?: { scope?: keyof Cfg['screens'] & string }
+		options?: { scope?: (keyof Cfg['screens'] & string) | null }
 	): FilteredEntity<Cfg['components'], keyof T & keyof Cfg['components']> {
 		const entity = this._entityManager.createEntity();
 		this._entityManager.addComponents(entity.id, components);
@@ -1123,17 +1138,32 @@ export default class ECSpresso<
 	}
 
 	/**
-	 * Tag an entity as scoped to a screen if `options.scope` is provided.
-	 * The entity is removed when that screen exits (via `setScreen` away, or
-	 * `popScreen` if it was on the stack). No-op when `options` or `scope` is
-	 * undefined.
+	 * Read the active scope hint set by the current screen-gated system tick.
+	 * Returns `null` outside any system's process call, or when the active
+	 * system is not gated to the current screen.
+	 * @internal Used by CommandBuffer to capture intent at queue time.
+	 */
+	_getActiveScopeHint(): (keyof Cfg['screens'] & string) | null {
+		return this._activeScopeHint;
+	}
+
+	/**
+	 * Tag an entity as scoped to a screen.
+	 *
+	 * Scope resolution order:
+	 *   1. Explicit `options.scope === null` → unscoped (opt-out from hint).
+	 *   2. Explicit `options.scope: string` → scope to that screen.
+	 *   3. No `scope` provided (or `undefined`) → fall back to active hint set
+	 *      by the current screen-gated system tick. Otherwise unscoped.
+	 *
+	 * The entity is removed when its scoped screen exits.
 	 */
 	private _applyScreenScope(
 		entityId: number,
-		options: { scope?: keyof Cfg['screens'] & string } | undefined,
+		options: { scope?: (keyof Cfg['screens'] & string) | null } | undefined,
 	): void {
-		const screen = options?.scope;
-		if (screen === undefined) return;
+		const screen = options?.scope !== undefined ? options.scope : this._activeScopeHint;
+		if (screen === null) return;
 		const set = this._screenScopedEntities.get(screen) ?? new Set<number>();
 		set.add(entityId);
 		this._screenScopedEntities.set(screen, set);
@@ -1231,7 +1261,7 @@ export default class ECSpresso<
 	spawnChild<T extends { [K in keyof Cfg['components']]?: Cfg['components'][K] }>(
 		parentId: number,
 		components: T & Record<Exclude<keyof T, keyof Cfg['components']>, never>,
-		options?: { scope?: keyof Cfg['screens'] & string }
+		options?: { scope?: (keyof Cfg['screens'] & string) | null }
 	): FilteredEntity<Cfg['components'], keyof T & keyof Cfg['components']> {
 		const entity = this._entityManager.spawnChild(parentId, components);
 		this._emitHierarchyChanged(entity.id, null, parentId);

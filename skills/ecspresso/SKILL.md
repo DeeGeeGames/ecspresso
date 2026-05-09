@@ -228,7 +228,7 @@ ecs.addSystem('label')
   .inPhase('fixedUpdate')                    // default: 'update'
   .setPriority(100)                          // higher runs first within phase
   .inGroup('groupName')                      // can call multiple times
-  .inScreens(['gameplay'])                   // only run in these screens
+  .inScreens(['gameplay'])                   // only run in these screens; spawns inside process auto-scope to current screen
   .excludeScreens(['pause'])                 // skip in these screens
   .requiresAssets(['texture1'])              // skip until assets loaded
   .runWhenEmpty()                            // run even with 0 matching entities
@@ -295,6 +295,24 @@ ecs.spawn({ enemy: { hp: 10 } }, { scope: 'playing' });
 ```
 
 Also available on `spawnChild`, `commands.spawn`, `commands.spawnChild`. Replaces hand-maintained teardown lists.
+
+**Auto-scoping inside gated systems.** When a system declared with `.inScreens([X])` (or `[X, Y, ...]`) calls `ecs.spawn` / `ecs.spawnChild` / `ecs.commands.spawn` / `ecs.commands.spawnChild` from inside its `process` tick *without* an explicit `scope`, the spawned entity is auto-scoped to the currently-active screen. This makes the right thing the default at every spawn site inside a screen-gated system, and you no longer need to repeat `{ scope: 'playing' }` at every call.
+
+```typescript
+world.addSystem('wave-spawner')
+  .inScreens(['playing'])
+  .setProcess(({ ecs }) => {
+    ecs.spawn({ enemy: { hp: 10 } });           // auto-scoped to 'playing'
+    ecs.commands.spawn({ projectile: {...} });   // also auto-scoped (captured at queue time)
+  });
+```
+
+Explicit values still win over the hint:
+
+- `{ scope: 'title' }` — scoped to a different screen.
+- `{ scope: null }` — opt out of auto-scoping (entity outlives the screen).
+
+Auto-scoping does **not** apply to: spawns issued from `onInitialize` / `onDetach` / event handlers fired outside a system tick / direct calls from main code, or from systems that use only `excludeScreens` (no positive screen intent).
 
 ### Plugin Cleanup
 

@@ -334,6 +334,16 @@ ecs.commands.spawn({ projectile: {...} }, { scope: 'playing' });
 
 Manually removing a scoped entity drains the tracking set (no zombie ids).
 
+**Auto-scoping inside `inScreens` systems.** Spawns issued during the `process` tick of a system declared with `.inScreens([X, ...])` are auto-scoped to the currently-active screen when no explicit `scope` is provided. `commands.spawn` / `commands.spawnChild` capture the hint at queue time — playback after the tick still applies the captured scope. To opt out and keep an entity beyond the screen's lifetime, pass `{ scope: null }` explicitly. Auto-scoping is **not** applied for: `excludeScreens`-only systems, `onInitialize` / `onDetach` hooks, or spawns from outside any system tick.
+
+```typescript
+world.addSystem('spawner').inScreens(['playing']).setProcess(({ ecs }) => {
+  ecs.spawn({ enemy: {...} });                     // auto-scoped to 'playing'
+  ecs.spawn({ hud: {...} }, { scope: null });      // unscoped (opts out)
+  ecs.spawn({ menu: {...} }, { scope: 'title' });  // explicit override
+});
+```
+
 ## Plugin Lifecycle
 
 `install` receives `(world, onCleanup)` — register disposers that run on uninstall or dispose.

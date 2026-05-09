@@ -24,6 +24,13 @@ export default class CommandBuffer<
 	private commands: Array<(ecs: ECSpresso<Cfg>) => void> = [];
 
 	/**
+	 * @param parent Owning ECS instance, used to read the active scope hint at
+	 *   queue time so screen-gated spawns get auto-scoped on playback. Optional
+	 *   so the buffer can be constructed standalone in tests.
+	 */
+	constructor(private readonly parent?: ECSpresso<Cfg>) {}
+
+	/**
 	 * Queue an entity removal command
 	 * @param entityId The entity ID to remove
 	 * @param options Optional removal options (cascade, etc.)
@@ -71,10 +78,11 @@ export default class CommandBuffer<
 	 */
 	spawn<T extends { [K in keyof Cfg['components']]?: Cfg['components'][K] }>(
 		components: T & Record<Exclude<keyof T, keyof Cfg['components']>, never>,
-		options?: { scope?: keyof Cfg['screens'] & string }
+		options?: { scope?: (keyof Cfg['screens'] & string) | null }
 	): void {
+		const resolved = this._resolveScope(options);
 		this.commands.push((ecs) => {
-			ecs.spawn(components, options);
+			ecs.spawn(components, resolved);
 		});
 	}
 
@@ -86,11 +94,27 @@ export default class CommandBuffer<
 	spawnChild<T extends { [K in keyof Cfg['components']]?: Cfg['components'][K] }>(
 		parentId: number,
 		components: T & Record<Exclude<keyof T, keyof Cfg['components']>, never>,
-		options?: { scope?: keyof Cfg['screens'] & string }
+		options?: { scope?: (keyof Cfg['screens'] & string) | null }
 	): void {
+		const resolved = this._resolveScope(options);
 		this.commands.push((ecs) => {
-			ecs.spawnChild(parentId, components, options);
+			ecs.spawnChild(parentId, components, resolved);
 		});
+	}
+
+	/**
+	 * Snapshot the parent ECS's active scope hint at queue time when the
+	 * caller didn't pass an explicit scope. Without this, playback (after the
+	 * tick ends) would see a null hint and the gated system's screen intent
+	 * would be lost.
+	 */
+	private _resolveScope(
+		options: { scope?: (keyof Cfg['screens'] & string) | null } | undefined,
+	): { scope?: (keyof Cfg['screens'] & string) | null } | undefined {
+		if (options?.scope !== undefined) return options;
+		const hint = this.parent?._getActiveScopeHint();
+		if (!hint) return options;
+		return { scope: hint };
 	}
 
 	/**

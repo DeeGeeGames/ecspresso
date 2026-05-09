@@ -141,3 +141,264 @@ describe('screen-scoped entity lifetimes', () => {
 		world.spawn({ position: { x: 0, y: 0 } }, { scope: 'nope' });
 	});
 });
+
+describe('active-system scope auto-tagging', () => {
+	test('spawn from inside an inScreens-gated system auto-scopes to the active screen', async () => {
+		const world = await buildWorld();
+		const spawned: number[] = [];
+
+		world.addSystem('spawner')
+			.inScreens(['playing'])
+			.runWhenEmpty()
+			.setProcess(({ ecs }) => {
+				if (spawned.length === 0) {
+					const e = ecs.spawn({ enemy: { hp: 1 } });
+					spawned.push(e.id);
+				}
+			});
+
+		await world.setScreen('playing', {});
+		world.update(1 / 60);
+		expect(spawned.length).toBe(1);
+		expect(world.entityManager.entityCount).toBe(1);
+
+		await world.setScreen('title', {});
+		expect(world.entityManager.getEntity(spawned[0]!)).toBeUndefined();
+	});
+
+	test('spawnChild from inside an inScreens-gated system auto-scopes to the active screen', async () => {
+		const world = await buildWorld();
+		const childIds: number[] = [];
+
+		const parent = world.spawn({ position: { x: 0, y: 0 } });
+
+		world.addSystem('child-spawner')
+			.inScreens(['playing'])
+			.runWhenEmpty()
+			.setProcess(({ ecs }) => {
+				if (childIds.length === 0) {
+					const c = ecs.spawnChild(parent.id, { enemy: { hp: 1 } });
+					childIds.push(c.id);
+				}
+			});
+
+		await world.setScreen('playing', {});
+		world.update(1 / 60);
+		expect(childIds.length).toBe(1);
+
+		await world.setScreen('title', {});
+		expect(world.entityManager.getEntity(childIds[0]!)).toBeUndefined();
+		expect(world.entityManager.getEntity(parent.id)).toBeDefined();
+	});
+
+	test('commands.spawn from inside a gated system captures the hint at queue time, not playback', async () => {
+		const world = await buildWorld();
+
+		world.addSystem('queue-spawner')
+			.inScreens(['playing'])
+			.runWhenEmpty()
+			.setProcess(({ ecs }) => {
+				ecs.commands.spawn({ enemy: { hp: 1 } });
+			});
+
+		await world.setScreen('playing', {});
+		world.update(1 / 60);
+		expect(world.entityManager.entityCount).toBe(1);
+
+		await world.setScreen('title', {});
+		expect(world.entityManager.entityCount).toBe(0);
+	});
+
+	test('commands.spawnChild from inside a gated system captures the hint at queue time', async () => {
+		const world = await buildWorld();
+		const parent = world.spawn({ position: { x: 0, y: 0 } });
+
+		world.addSystem('queue-child')
+			.inScreens(['playing'])
+			.runWhenEmpty()
+			.setProcess(({ ecs }) => {
+				ecs.commands.spawnChild(parent.id, { enemy: { hp: 1 } });
+			});
+
+		await world.setScreen('playing', {});
+		world.update(1 / 60);
+		expect(world.entityManager.entityCount).toBe(2);
+
+		await world.setScreen('title', {});
+		expect(world.entityManager.entityCount).toBe(1);
+		expect(world.entityManager.getEntity(parent.id)).toBeDefined();
+	});
+
+	test('explicit scope: null opts out of auto-scoping inside a gated system', async () => {
+		const world = await buildWorld();
+		const ids: number[] = [];
+
+		world.addSystem('opt-out-spawner')
+			.inScreens(['playing'])
+			.runWhenEmpty()
+			.setProcess(({ ecs }) => {
+				if (ids.length === 0) {
+					const e = ecs.spawn({ enemy: { hp: 1 } }, { scope: null });
+					ids.push(e.id);
+				}
+			});
+
+		await world.setScreen('playing', {});
+		world.update(1 / 60);
+		expect(ids.length).toBe(1);
+
+		await world.setScreen('title', {});
+		// Explicit null opts out — entity survives.
+		expect(world.entityManager.getEntity(ids[0]!)).toBeDefined();
+	});
+
+	test('explicit scope wins over the active hint', async () => {
+		const world = await buildWorld();
+		const ids: number[] = [];
+
+		world.addSystem('explicit-scope')
+			.inScreens(['playing'])
+			.runWhenEmpty()
+			.setProcess(({ ecs }) => {
+				if (ids.length === 0) {
+					const e = ecs.spawn({ ui: { label: 'menu' } }, { scope: 'title' });
+					ids.push(e.id);
+				}
+			});
+
+		await world.setScreen('playing', {});
+		world.update(1 / 60);
+
+		// Exiting playing should NOT remove an entity scoped explicitly to 'title'.
+		await world.setScreen('title', {});
+		expect(world.entityManager.getEntity(ids[0]!)).toBeDefined();
+
+		// But exiting 'title' must remove it.
+		await world.setScreen('playing', {});
+		expect(world.entityManager.getEntity(ids[0]!)).toBeUndefined();
+	});
+
+	test('multi-screen inScreens auto-scopes to the currently-active screen', async () => {
+		const world = await buildWorld();
+		const ids: number[] = [];
+
+		world.addSystem('multi-spawner')
+			.inScreens(['playing', 'pause'])
+			.runWhenEmpty()
+			.setProcess(({ ecs }) => {
+				const e = ecs.spawn({ enemy: { hp: 1 } });
+				ids.push(e.id);
+			});
+
+		await world.setScreen('playing', {});
+		world.update(1 / 60); // spawns one scoped to 'playing'
+
+		await world.pushScreen('pause', {});
+		world.update(1 / 60); // spawns one scoped to 'pause' (system runs in both)
+
+		const playingId = ids[0]!;
+		const pauseId = ids[1]!;
+
+		await world.popScreen(); // exits 'pause', drops pauseId, leaves playingId
+		expect(world.entityManager.getEntity(pauseId)).toBeUndefined();
+		expect(world.entityManager.getEntity(playingId)).toBeDefined();
+	});
+
+	test('excludeScreens systems do not auto-scope', async () => {
+		const world = await buildWorld();
+		const ids: number[] = [];
+
+		world.addSystem('excluded-spawner')
+			.excludeScreens(['title'])
+			.runWhenEmpty()
+			.setProcess(({ ecs }) => {
+				if (ids.length === 0) {
+					const e = ecs.spawn({ enemy: { hp: 1 } });
+					ids.push(e.id);
+				}
+			});
+
+		await world.setScreen('playing', {});
+		world.update(1 / 60);
+		expect(ids.length).toBe(1);
+
+		// excludeScreens does not encode positive screen intent — entity survives screen exit.
+		await world.setScreen('title', {});
+		expect(world.entityManager.getEntity(ids[0]!)).toBeDefined();
+	});
+
+	test('ungated systems do not auto-scope', async () => {
+		const world = await buildWorld();
+		const ids: number[] = [];
+
+		world.addSystem('ungated')
+			.runWhenEmpty()
+			.setProcess(({ ecs }) => {
+				if (ids.length === 0) {
+					const e = ecs.spawn({ enemy: { hp: 1 } });
+					ids.push(e.id);
+				}
+			});
+
+		await world.setScreen('playing', {});
+		world.update(1 / 60);
+		expect(ids.length).toBe(1);
+
+		await world.setScreen('title', {});
+		expect(world.entityManager.getEntity(ids[0]!)).toBeDefined();
+	});
+
+	test('spawns from outside any system tick are not auto-scoped', async () => {
+		const world = await buildWorld();
+
+		// Register a gated system, but spawn from outside its tick.
+		world.addSystem('idle')
+			.inScreens(['playing'])
+			.runWhenEmpty()
+			.setProcess(() => {});
+
+		await world.setScreen('playing', {});
+
+		const e = world.spawn({ enemy: { hp: 1 } }); // direct call, no active hint
+
+		world.update(1 / 60); // runs the gated system, but doesn't affect our entity
+
+		await world.setScreen('title', {});
+		expect(world.entityManager.getEntity(e.id)).toBeDefined();
+	});
+
+	test('spawns from system onInitialize do not auto-scope', async () => {
+		const ids: number[] = [];
+		const world = ECSpresso.create()
+			.withComponentTypes<Components>()
+			.withScreens(s => s
+				.add('title', { initialState: () => ({}) })
+				.add('playing', { initialState: () => ({}) })
+				.add('pause', { initialState: () => ({}) })
+			)
+			.build();
+
+		world.addSystem('init-spawner')
+			.inScreens(['playing'])
+			.setOnInitialize((ecs) => {
+				const e = ecs.spawn({ enemy: { hp: 1 } });
+				ids.push(e.id);
+			})
+			.runWhenEmpty()
+			.setProcess(() => {});
+
+		await world.initialize();
+		await world.setScreen('playing', {});
+
+		expect(ids.length).toBe(1);
+
+		await world.setScreen('title', {});
+		expect(world.entityManager.getEntity(ids[0]!)).toBeDefined();
+	});
+
+	test('type-level: scope: null is accepted as opt-out', async () => {
+		const world = await buildWorld();
+		// Should type-check without error.
+		world.spawn({ position: { x: 0, y: 0 } }, { scope: null });
+	});
+});
