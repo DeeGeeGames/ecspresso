@@ -72,7 +72,7 @@ To *opt out* of a default screen gate on a single system, pass an empty array: `
 
 ### 2. Plugin Factory (no type params)
 
-When multiple plugins share the same world types:
+`builder.pluginFactory()` returns a `definePlugin` that closes over the builder's accumulated world types, so plugins authored with it skip the per-plugin `.withComponentTypes<>()` ceremony and `world` is already typed inside `install`.
 
 ```typescript
 // types.ts
@@ -95,6 +95,19 @@ export const movementPlugin = definePlugin({
   },
 });
 ```
+
+### Choosing between the two
+
+The two patterns are mutually exclusive **per plugin** — there is no variant of `pluginFactory` that both closes over the world type *and* lets the plugin contribute new types. A project can mix both styles across different plugins, but a single plugin commits to one.
+
+| | Canonical `definePlugin('id').withComponentTypes<>()…` | `builder.pluginFactory()` |
+|---|---|---|
+| Plugin can add new components / events / resources | Yes — types merge into the world via `withPlugin` | **No** — world config is frozen at factory creation |
+| `world` is pre-typed inside `install` | Only with the types the plugin declared (+ `requires<>()`) | Yes, full world type already available |
+| Where new component/event types must land | Inside the plugin file | Back in the central `types.ts` builder chain |
+| Best for | Plugins whose existence implies new state (turrets, shields, hangars) | Plugins that only consume existing world state (UI overlays, debug, glue) |
+
+**The trap:** adopting `pluginFactory()` for ergonomics and *then* trying to add a new component from inside a plugin will silently force you back into the central types file. As the project grows, `types.ts` becomes the contention point for every new feature. If you expect feature plugins to keep introducing new components/events, prefer canonical `definePlugin` from the start — even though it's slightly more verbose per plugin.
 
 ## Using Plugins
 
