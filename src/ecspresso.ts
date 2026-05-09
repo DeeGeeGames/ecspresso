@@ -522,13 +522,9 @@ export default class ECSpresso<
 				}
 			}
 
-			// Run the process function only if any query yielded results, the
-			// system opted into running empty, or it has no queries at all.
 			if (system.process) {
 				const shouldRun = hasResults || system.runWhenEmpty || !hasQueries;
 				if (shouldRun) {
-					// inScreens systems already passed the gate above, so currentScreen
-					// is guaranteed non-null when inScreens is set.
 					const previousHint = this._activeScopeHint;
 					this._activeScopeHint = system.inScreens?.length && currentScreen !== null ? currentScreen : null;
 					const t0 = this._diagnosticsEnabled ? performance.now() : 0;
