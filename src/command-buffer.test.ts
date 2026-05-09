@@ -464,12 +464,14 @@ describe('CommandBuffer', () => {
 
 			// Create timer with onComplete callback that removes entity via commands
 			const timerEntity = ecs.spawn({
-				...createTimer(0.5, {
-					onComplete: (data) => {
-						timerFiredEntityId = data.entityId;
-						ecs.commands.removeEntity(targetEntity.id);
-					},
-				}),
+				timers: {
+					fuse: createTimer(0.5, {
+						onComplete: (data) => {
+							timerFiredEntityId = data.entityId;
+							ecs.commands.removeEntity(targetEntity.id);
+						},
+					}),
+				},
 				position: { x: 1, y: 1 },
 			});
 
@@ -497,8 +499,8 @@ describe('CommandBuffer', () => {
 			};
 
 			// Create timers with onComplete callbacks
-			ecs.spawn({ ...createTimer(0.3, { onComplete: spawnCallback }) });
-			ecs.spawn({ ...createTimer(0.5, { onComplete: spawnCallback }) });
+			ecs.spawn({ timers: { fuse: createTimer(0.3, { onComplete: spawnCallback }) } });
+			ecs.spawn({ timers: { fuse: createTimer(0.5, { onComplete: spawnCallback }) } });
 
 			// Before update, no entities with health
 			expect(ecs.getEntitiesWithQuery(['health']).length).toBe(0);
@@ -523,14 +525,16 @@ describe('CommandBuffer', () => {
 
 			// Timer with onComplete callback that queues removal of all tagged entities
 			ecs.spawn({
-				...createTimer(1.0, {
-					onComplete: () => {
-						const tagged = ecs.getEntitiesWithQuery(['tag']);
-						tagged.forEach((entity) => {
-							ecs.commands.removeEntity(entity.id);
-						});
-					},
-				}),
+				timers: {
+					fuse: createTimer(1.0, {
+						onComplete: () => {
+							const tagged = ecs.getEntitiesWithQuery(['tag']);
+							tagged.forEach((entity) => {
+								ecs.commands.removeEntity(entity.id);
+							});
+						},
+					}),
+				},
 			});
 
 			// All entities exist before update

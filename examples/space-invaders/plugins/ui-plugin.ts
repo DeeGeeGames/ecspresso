@@ -132,7 +132,14 @@ export default function createUIPlugin() {
 
 						// Spawn timer to hide message after delay with event-based completion
 						ecs.spawn({
-							...createTimer(1.5, { onComplete: () => ecs.eventBus.publish('messageHide') }),
+							timers: {
+									hide: createTimer(1.5, {
+										onComplete: ({ entityId }) => {
+											ecs.eventBus.publish('messageHide');
+											ecs.commands.removeEntity(entityId);
+										},
+									}),
+								},
 						});
 					},
 

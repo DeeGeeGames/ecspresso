@@ -25,32 +25,27 @@ describe('Timer Events', () => {
 				.withPlugin(createTimerPlugin())
 				.build();
 
-			let callbackData: TimerEventData = { entityId: -1, duration: -1, elapsed: -1 };
+			let callbackData: TimerEventData = { entityId: -1, slot: '', duration: -1, elapsed: -1 };
 			let callbackFired = false;
 
 			const timer = ecs.spawn({
-				timer: {
-					elapsed: 0,
-					duration: 1.0,
-					repeat: false,
-					active: true,
-					justFinished: false,
-					onComplete: (data) => {
-						callbackFired = true;
-						callbackData = data;
-					}
-				}
+				timers: {
+					fuse: createTimer(1.0, {
+						onComplete: (data) => {
+							callbackFired = true;
+							callbackData = data;
+						},
+					}),
+				},
 			});
 
-			// Callback should not have fired yet
 			expect(callbackFired).toBe(false);
 
-			// Update past timer duration
 			ecs.update(1.1);
 
-			// Callback should have fired
 			expect(callbackFired).toBe(true);
 			expect(callbackData.entityId).toBe(timer.id);
+			expect(callbackData.slot).toBe('fuse');
 			expect(callbackData.duration).toBe(1.0);
 		});
 
@@ -63,22 +58,14 @@ describe('Timer Events', () => {
 			let fireCount = 0;
 
 			ecs.spawn({
-				timer: {
-					elapsed: 0,
-					duration: 0.5,
-					repeat: false,
-					active: true,
-					justFinished: false,
-					onComplete: () => {
-						fireCount++;
-					}
-				}
+				timers: {
+					fuse: createTimer(0.5, { onComplete: () => { fireCount++; } }),
+				},
 			});
 
-			// Update multiple times
-			ecs.update(0.6); // Should fire
-			ecs.update(0.1); // Should not fire again
-			ecs.update(0.1); // Should not fire again
+			ecs.update(0.6);
+			ecs.update(0.1);
+			ecs.update(0.1);
 
 			expect(fireCount).toBe(1);
 		});
@@ -89,26 +76,57 @@ describe('Timer Events', () => {
 				.withPlugin(createTimerPlugin())
 				.build();
 
-			let receivedData: TimerEventData = { entityId: -1, duration: -1, elapsed: -1 };
+			let receivedData: TimerEventData = { entityId: -1, slot: '', duration: -1, elapsed: -1 };
 
 			const timer = ecs.spawn({
-				timer: {
-					elapsed: 0,
-					duration: 2.5,
-					repeat: false,
-					active: true,
-					justFinished: false,
-					onComplete: (data) => {
-						receivedData = data;
-					}
-				}
+				timers: {
+					fuse: createTimer(2.5, {
+						onComplete: (data) => { receivedData = data; },
+					}),
+				},
 			});
 
 			ecs.update(3.0);
 
 			expect(receivedData.entityId).toBe(timer.id);
+			expect(receivedData.slot).toBe('fuse');
 			expect(receivedData.duration).toBe(2.5);
 			expect(receivedData.elapsed).toBeGreaterThanOrEqual(2.5);
+		});
+
+		test('should leave entity alive after one-shot completes', () => {
+			const ecs = ECSpresso
+				.create<WorldConfigFrom<TestComponents, TestEvents, TestResources>>()
+				.withPlugin(createTimerPlugin())
+				.build();
+
+			const timer = ecs.spawn({
+				timers: { fuse: createTimer(0.5) },
+			});
+
+			ecs.update(0.6);
+
+			expect(ecs.entityManager.getEntity(timer.id)).toBeDefined();
+		});
+
+		test('completed one-shot slot stays as idle data on the entity', () => {
+			const ecs = ECSpresso
+				.create<WorldConfigFrom<TestComponents, TestEvents, TestResources>>()
+				.withPlugin(createTimerPlugin())
+				.build();
+
+			const entity = ecs.spawn({
+				timers: { fuse: createTimer(0.5) },
+			});
+
+			ecs.update(0.6);
+			ecs.update(0.5);
+
+			const slot = entity.components.timers['fuse'];
+			expect(slot).toBeDefined();
+			expect(slot?.active).toBe(false);
+			// `justFinished` flips back to false the frame after completion
+			expect(slot?.justFinished).toBe(false);
 		});
 	});
 
@@ -122,26 +140,18 @@ describe('Timer Events', () => {
 			let fireCount = 0;
 
 			ecs.spawn({
-				timer: {
-					elapsed: 0,
-					duration: 0.5,
-					repeat: true,
-					active: true,
-					justFinished: false,
-					onComplete: () => {
-						fireCount++;
-					}
-				}
+				timers: {
+					tick: createRepeatingTimer(0.5, { onComplete: () => { fireCount++; } }),
+				},
 			});
 
-			// Update through multiple cycles
-			ecs.update(0.6); // Cycle 1
+			ecs.update(0.6);
 			expect(fireCount).toBe(1);
 
-			ecs.update(0.5); // Cycle 2
+			ecs.update(0.5);
 			expect(fireCount).toBe(2);
 
-			ecs.update(0.5); // Cycle 3
+			ecs.update(0.5);
 			expect(fireCount).toBe(3);
 		});
 
@@ -154,23 +164,16 @@ describe('Timer Events', () => {
 			const fireTimestamps: number[] = [];
 
 			ecs.spawn({
-				timer: {
-					elapsed: 0,
-					duration: 1.0,
-					repeat: true,
-					active: true,
-					justFinished: false,
-					onComplete: (data) => {
-						fireTimestamps.push(data.elapsed);
-					}
-				}
+				timers: {
+					tick: createRepeatingTimer(1.0, {
+						onComplete: (data) => { fireTimestamps.push(data.elapsed); },
+					}),
+				},
 			});
 
-			// Update with 1.3 seconds (should complete + overflow 0.3)
 			ecs.update(1.3);
 
 			expect(fireTimestamps.length).toBe(1);
-			// Elapsed should be 1.3, timer should have 0.3 after reset
 		});
 	});
 
@@ -183,56 +186,110 @@ describe('Timer Events', () => {
 
 			const completedTimers: number[] = [];
 
-			const timer1 = ecs.spawn({
-				timer: {
-					elapsed: 0,
-					duration: 0.5,
-					repeat: false,
-					active: true,
-					justFinished: false,
-					onComplete: (data) => {
-						completedTimers.push(data.entityId);
-					}
-				}
-			});
+			const onDone = (data: TimerEventData) => { completedTimers.push(data.entityId); };
 
-			const timer2 = ecs.spawn({
-				timer: {
-					elapsed: 0,
-					duration: 1.0,
-					repeat: false,
-					active: true,
-					justFinished: false,
-					onComplete: (data) => {
-						completedTimers.push(data.entityId);
-					}
-				}
-			});
+			const a = ecs.spawn({ timers: { fuse: createTimer(0.5, { onComplete: onDone }) } });
+			const b = ecs.spawn({ timers: { fuse: createTimer(1.0, { onComplete: onDone }) } });
+			const c = ecs.spawn({ timers: { fuse: createTimer(1.5, { onComplete: onDone }) } });
 
-			const timer3 = ecs.spawn({
-				timer: {
-					elapsed: 0,
-					duration: 1.5,
-					repeat: false,
-					active: true,
-					justFinished: false,
-					onComplete: (data) => {
-						completedTimers.push(data.entityId);
-					}
-				}
-			});
-
-			// Update to complete first timer
 			ecs.update(0.6);
-			expect(completedTimers).toEqual([timer1.id]);
+			expect(completedTimers).toEqual([a.id]);
 
-			// Update to complete second timer
 			ecs.update(0.5);
-			expect(completedTimers).toEqual([timer1.id, timer2.id]);
+			expect(completedTimers).toEqual([a.id, b.id]);
 
-			// Update to complete third timer
 			ecs.update(0.5);
-			expect(completedTimers).toEqual([timer1.id, timer2.id, timer3.id]);
+			expect(completedTimers).toEqual([a.id, b.id, c.id]);
+		});
+	});
+
+	describe('Multiple slots on a single entity', () => {
+		test('independent slots tick and complete independently', () => {
+			const ecs = ECSpresso
+				.create<WorldConfigFrom<TestComponents, TestEvents, TestResources>>()
+				.withPlugin(createTimerPlugin())
+				.build();
+
+			const completed: string[] = [];
+
+			const entity = ecs.spawn({
+				timers: {
+					launch: createTimer(0.5, { onComplete: ({ slot }) => { completed.push(slot); } }),
+					depleted: createTimer(1.0, { onComplete: ({ slot }) => { completed.push(slot); } }),
+				},
+			});
+
+			ecs.update(0.6);
+			expect(completed).toEqual(['launch']);
+			expect(entity.components.timers['launch']?.active).toBe(false);
+			expect(entity.components.timers['depleted']?.active).toBe(true);
+
+			ecs.update(0.5);
+			expect(completed).toEqual(['launch', 'depleted']);
+			expect(entity.components.timers['depleted']?.active).toBe(false);
+		});
+
+		test('one-shot and repeating slots can coexist on the same entity', () => {
+			const ecs = ECSpresso
+				.create<WorldConfigFrom<TestComponents, TestEvents, TestResources>>()
+				.withPlugin(createTimerPlugin())
+				.build();
+
+			let oneShotFires = 0;
+			let repeatingFires = 0;
+
+			ecs.spawn({
+				timers: {
+					launch: createTimer(0.5, { onComplete: () => { oneShotFires++; } }),
+					hangarCycle: createRepeatingTimer(0.3, { onComplete: () => { repeatingFires++; } }),
+				},
+			});
+
+			ecs.update(1.0);
+
+			expect(oneShotFires).toBe(1);
+			expect(repeatingFires).toBeGreaterThanOrEqual(3);
+		});
+
+		test('callback receives the originating slot name', () => {
+			const ecs = ECSpresso
+				.create<WorldConfigFrom<TestComponents, TestEvents, TestResources>>()
+				.withPlugin(createTimerPlugin())
+				.build();
+
+			const seen: string[] = [];
+
+			ecs.spawn({
+				timers: {
+					alpha: createTimer(0.4, { onComplete: ({ slot }) => { seen.push(slot); } }),
+					beta: createTimer(0.6, { onComplete: ({ slot }) => { seen.push(slot); } }),
+				},
+			});
+
+			ecs.update(1.0);
+
+			expect(seen.sort()).toEqual(['alpha', 'beta']);
+		});
+
+		test('slot can be added at runtime and tick like any other', () => {
+			const ecs = ECSpresso
+				.create<WorldConfigFrom<TestComponents, TestEvents, TestResources>>()
+				.withPlugin(createTimerPlugin())
+				.build();
+
+			let fired = false;
+
+			const entity = ecs.spawn({
+				timers: { initial: createTimer(0.5) },
+			});
+
+			entity.components.timers['added'] = createTimer(0.5, {
+				onComplete: () => { fired = true; },
+			});
+
+			ecs.update(0.6);
+
+			expect(fired).toBe(true);
 		});
 	});
 
@@ -243,22 +300,13 @@ describe('Timer Events', () => {
 				.withPlugin(createTimerPlugin())
 				.build();
 
-			const timer = ecs.spawn({
-				timer: {
-					elapsed: 0,
-					duration: 1.0,
-					repeat: false,
-					active: true,
-					justFinished: false
-					// No onComplete field
-				}
+			const entity = ecs.spawn({
+				timers: { fuse: createTimer(1.0) },
 			});
 
-			// Should not throw
 			expect(() => { ecs.update(1.5); }).not.toThrow();
-
-			// One-shot timer entity should be auto-removed after completion
-			expect(ecs.entityManager.getEntity(timer.id)).toBeUndefined();
+			expect(entity.components.timers['fuse']?.active).toBe(false);
+			expect(ecs.entityManager.getEntity(entity.id)).toBeDefined();
 		});
 
 		test('should work with createTimer helper without callback', () => {
@@ -267,14 +315,14 @@ describe('Timer Events', () => {
 				.withPlugin(createTimerPlugin())
 				.build();
 
-			const timer = ecs.spawn({
-				...createTimer(1.0)
+			const entity = ecs.spawn({
+				timers: { fuse: createTimer(1.0) },
 			});
 
 			ecs.update(1.5);
 
-			// One-shot timer entity should be auto-removed after completion
-			expect(ecs.entityManager.getEntity(timer.id)).toBeUndefined();
+			expect(ecs.entityManager.getEntity(entity.id)).toBeDefined();
+			expect(entity.components.timers['fuse']?.active).toBe(false);
 		});
 	});
 
@@ -288,7 +336,7 @@ describe('Timer Events', () => {
 			let callbackFired = false;
 
 			ecs.spawn({
-				...createTimer(0.5, { onComplete: () => { callbackFired = true; } })
+				timers: { fuse: createTimer(0.5, { onComplete: () => { callbackFired = true; } }) },
 			});
 
 			ecs.update(0.6);
@@ -305,10 +353,10 @@ describe('Timer Events', () => {
 			let fireCount = 0;
 
 			ecs.spawn({
-				...createRepeatingTimer(0.3, { onComplete: () => { fireCount++; } })
+				timers: { tick: createRepeatingTimer(0.3, { onComplete: () => { fireCount++; } }) },
 			});
 
-			ecs.update(1.0); // Should fire 3 times (0.3, 0.6, 0.9)
+			ecs.update(1.0);
 
 			expect(fireCount).toBe(3);
 		});
@@ -319,132 +367,66 @@ describe('Timer Events', () => {
 				.withPlugin(createTimerPlugin())
 				.build();
 
-			// Should not throw without options
 			expect(() => {
-				ecs.spawn({ ...createTimer(1.0) });
-				ecs.spawn({ ...createRepeatingTimer(1.0) });
+				ecs.spawn({ timers: { a: createTimer(1.0) } });
+				ecs.spawn({ timers: { b: createRepeatingTimer(1.0) } });
 			}).not.toThrow();
 		});
 	});
 
-	describe('Auto-Remove Behavior', () => {
-		test('should auto-remove one-shot timer entity after completion', () => {
+	describe('Caller-owned despawn pattern', () => {
+		test('onComplete can despawn the host entity via commands', () => {
 			const ecs = ECSpresso
 				.create<WorldConfigFrom<TestComponents, TestEvents, TestResources>>()
 				.withPlugin(createTimerPlugin())
 				.build();
 
-			const timer = ecs.spawn({
-				timer: {
-					elapsed: 0,
-					duration: 0.5,
-					repeat: false,
-					active: true,
-					justFinished: false,
-					onComplete: () => {}
-				}
+			const entity = ecs.spawn({
+				timers: {
+					fuse: createTimer(0.5, {
+						onComplete: ({ entityId }) => { ecs.commands.removeEntity(entityId); },
+					}),
+				},
 			});
 
-			// Entity should exist before completion
-			expect(ecs.entityManager.getEntity(timer.id)).toBeDefined();
+			expect(ecs.entityManager.getEntity(entity.id)).toBeDefined();
 
-			// Update past timer duration
 			ecs.update(0.6);
 
-			// Entity should be removed after completion
-			expect(ecs.entityManager.getEntity(timer.id)).toBeUndefined();
+			expect(ecs.entityManager.getEntity(entity.id)).toBeUndefined();
 		});
 
-		test('should NOT auto-remove repeating timer entities', () => {
+		test('callback fires while entity still exists', () => {
 			const ecs = ECSpresso
 				.create<WorldConfigFrom<TestComponents, TestEvents, TestResources>>()
 				.withPlugin(createTimerPlugin())
 				.build();
 
-			const timer = ecs.spawn({
-				timer: {
-					elapsed: 0,
-					duration: 0.5,
-					repeat: true,
-					active: true,
-					justFinished: false,
-					onComplete: () => {}
-				}
-			});
-
-			// Entity should exist before any cycles
-			expect(ecs.entityManager.getEntity(timer.id)).toBeDefined();
-
-			// Update through multiple cycles
-			ecs.update(0.6);
-			expect(ecs.entityManager.getEntity(timer.id)).toBeDefined();
-
-			ecs.update(0.6);
-			expect(ecs.entityManager.getEntity(timer.id)).toBeDefined();
-
-			ecs.update(0.6);
-			expect(ecs.entityManager.getEntity(timer.id)).toBeDefined();
-		});
-
-		test('should auto-remove one-shot timer even without onComplete callback', () => {
-			const ecs = ECSpresso
-				.create<WorldConfigFrom<TestComponents, TestEvents, TestResources>>()
-				.withPlugin(createTimerPlugin())
-				.build();
-
-			const timer = ecs.spawn({
-				timer: {
-					elapsed: 0,
-					duration: 0.5,
-					repeat: false,
-					active: true,
-					justFinished: false
-					// No onComplete
-				}
-			});
-
-			expect(ecs.entityManager.getEntity(timer.id)).toBeDefined();
-
-			ecs.update(0.6);
-
-			expect(ecs.entityManager.getEntity(timer.id)).toBeUndefined();
-		});
-
-		test('should fire callback before entity is removed', () => {
-			const ecs = ECSpresso
-				.create<WorldConfigFrom<TestComponents, TestEvents, TestResources>>()
-				.withPlugin(createTimerPlugin())
-				.build();
-
-			let receivedEntityId = -1;
 			let entityExistedDuringCallback = false;
+			let receivedEntityId = -1;
 
-			const timer = ecs.spawn({
-				timer: {
-					elapsed: 0,
-					duration: 0.5,
-					repeat: false,
-					active: true,
-					justFinished: false,
-					onComplete: (data) => {
-						receivedEntityId = data.entityId;
-						// Check if entity still exists when callback fires
-						entityExistedDuringCallback = ecs.entityManager.getEntity(data.entityId) !== undefined;
-					}
-				}
+			const entity = ecs.spawn({
+				timers: {
+					fuse: createTimer(0.5, {
+						onComplete: ({ entityId }) => {
+							receivedEntityId = entityId;
+							entityExistedDuringCallback = ecs.entityManager.getEntity(entityId) !== undefined;
+							ecs.commands.removeEntity(entityId);
+						},
+					}),
+				},
 			});
 
 			ecs.update(0.6);
 
-			expect(receivedEntityId).toBe(timer.id);
+			expect(receivedEntityId).toBe(entity.id);
 			expect(entityExistedDuringCallback).toBe(true);
-			// But entity should be gone after update completes
-			expect(ecs.entityManager.getEntity(timer.id)).toBeUndefined();
+			expect(ecs.entityManager.getEntity(entity.id)).toBeUndefined();
 		});
 	});
 
 	describe('Edge Cases', () => {
-		test('should handle timer removal before completion', () => {
+		test('should handle entity removal before completion', () => {
 			const ecs = ECSpresso
 				.create<WorldConfigFrom<TestComponents, TestEvents, TestResources>>()
 				.withPlugin(createTimerPlugin())
@@ -452,29 +434,16 @@ describe('Timer Events', () => {
 
 			let callbackFired = false;
 
-			const timer = ecs.spawn({
-				timer: {
-					elapsed: 0,
-					duration: 1.0,
-					repeat: false,
-					active: true,
-					justFinished: false,
-					onComplete: () => {
-						callbackFired = true;
-					}
-				}
+			const entity = ecs.spawn({
+				timers: {
+					fuse: createTimer(1.0, { onComplete: () => { callbackFired = true; } }),
+				},
 			});
 
-			// Update partially
 			ecs.update(0.5);
-
-			// Remove timer before completion
-			ecs.removeEntity(timer.id);
-
-			// Update past what would have been completion
+			ecs.removeEntity(entity.id);
 			ecs.update(1.0);
 
-			// Callback should not have fired
 			expect(callbackFired).toBe(false);
 		});
 
@@ -485,19 +454,13 @@ describe('Timer Events', () => {
 				.build();
 
 			ecs.spawn({
-				timer: {
-					elapsed: 0,
-					duration: 0.5,
-					repeat: false,
-					active: true,
-					justFinished: false,
-					onComplete: () => {
-						throw new Error('callback error');
-					}
-				}
+				timers: {
+					fuse: createTimer(0.5, {
+						onComplete: () => { throw new Error('callback error'); },
+					}),
+				},
 			});
 
-			// Should propagate the error from the callback
 			expect(() => { ecs.update(1.0); }).toThrow('callback error');
 		});
 	});
@@ -510,25 +473,25 @@ describe('Timer Events', () => {
 				.build();
 
 			ecs.spawn({
-				...createTimer(1.0, {
-					onComplete: (data) => {
-						// These should all be number and compile without error
-						expect(typeof data.entityId).toBe('number');
-						expect(typeof data.duration).toBe('number');
-						expect(typeof data.elapsed).toBe('number');
-					}
-				})
+				timers: {
+					fuse: createTimer(1.0, {
+						onComplete: (data) => {
+							expect(typeof data.entityId).toBe('number');
+							expect(typeof data.slot).toBe('string');
+							expect(typeof data.duration).toBe('number');
+							expect(typeof data.elapsed).toBe('number');
+						},
+					}),
+				},
 			});
 		});
 
 		test('onComplete is optional with no args', () => {
-			// Should compile without error
 			createTimer(1.0);
 			createRepeatingTimer(1.0);
 		});
 
 		test('onComplete is optional with empty options', () => {
-			// Should compile without error
 			createTimer(1.0, {});
 			createRepeatingTimer(1.0, {});
 		});

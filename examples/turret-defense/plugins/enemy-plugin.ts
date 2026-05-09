@@ -102,7 +102,7 @@ export default function createEnemyPlugin() {
 						gameState.enemiesRemaining = spawnQueue.length;
 
 						ecs.spawn({
-							...createRepeatingTimer(waveDef.spawnInterval),
+							timers: { spawn: createRepeatingTimer(waveDef.spawnInterval) },
 						});
 					},
 				});
@@ -112,9 +112,9 @@ export default function createEnemyPlugin() {
 				.inGroup('gameplay')
 				.inPhase('preUpdate')
 				.setProcessEach(
-					{ with: ['timer'], without: ['turret', 'enemy', 'projectile', 'base'] },
+					{ with: ['timers'], without: ['turret', 'enemy', 'projectile', 'base'] },
 					({ entity, ecs }) => {
-						if (!entity.components.timer.justFinished) return;
+						if (!entity.components.timers['spawn']?.justFinished) return;
 
 						if (spawnQueue.length > 0) {
 							const type = spawnQueue.pop() as EnemyType;

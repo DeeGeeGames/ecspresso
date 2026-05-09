@@ -118,16 +118,18 @@ describe('Builder Type Inference', () => {
 
 		// Timer component works
 		const entity = ecs.spawn({
-			timer: {
-				elapsed: 0,
-				duration: 1,
-				repeat: false,
-				active: true,
-				justFinished: false,
-				onComplete: () => ecs.eventBus.publish('playerRespawn', {}),
+			timers: {
+				respawn: {
+					elapsed: 0,
+					duration: 1,
+					repeat: false,
+					active: true,
+					justFinished: false,
+					onComplete: () => ecs.eventBus.publish('playerRespawn', {}),
+				},
 			},
 		});
-		expect(entity.components.timer.duration).toBe(1);
+		expect(entity.components.timers['respawn']?.duration).toBe(1);
 
 		// Custom events work alongside timer events
 		let points = 0;
@@ -143,9 +145,9 @@ describe('Builder Type Inference', () => {
 		// These are compile-time checks — if they compile, the types are correct.
 		// Each type is used in a variable assignment to prove it resolves to the expected shape.
 		const _timerCCheck: ComponentsOf<typeof timerPlugin> = {
-			timer: { elapsed: 0, duration: 1, repeat: false, active: true, justFinished: false },
+			timers: { fuse: { elapsed: 0, duration: 1, repeat: false, active: true, justFinished: false } },
 		};
-		expect(_timerCCheck.timer.duration).toBe(1);
+		expect(_timerCCheck.timers['fuse']?.duration).toBe(1);
 
 		// Timer plugin no longer carries event types (loosened to {})
 		const _timerECheck: EventsOf<typeof timerPlugin> = {};

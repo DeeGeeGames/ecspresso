@@ -93,7 +93,7 @@ export function spawnTurret(ecs: World): number {
 		sprite: turretSprite,
 		...createLocalTransform(CENTER_X, CENTER_Y),
 		...createDetector(DETECTION_RANGE, ['enemy']),
-		...createRepeatingTimer(0.4),
+		timers: { fire: createRepeatingTimer(0.4) },
 		renderLayer: 'turret',
 	});
 

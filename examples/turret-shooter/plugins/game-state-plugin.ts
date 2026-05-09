@@ -38,7 +38,7 @@ export default function createGameStatePlugin() {
 						// Spawn enemy spawner entity with repeating timer
 						const spawnInterval = 1 / config.enemySpawnRate;
 						ecs.spawn({
-							...createRepeatingTimer(spawnInterval),
+							timers: { spawn: createRepeatingTimer(spawnInterval) },
 							enemySpawner: true,
 						});
 
@@ -49,7 +49,7 @@ export default function createGameStatePlugin() {
 							uiElements.messageElement.style.opacity = '1';
 							uiElements.messageElement.style.top = '25%';
 							ecs.spawn({
-								...createTimer(2),
+								timers: { hide: createTimer(2) },
 								messageTimer: true,
 							});
 						}
@@ -171,7 +171,7 @@ export default function createGameStatePlugin() {
 							uiElements.messageElement.style.opacity = '1';
 							uiElements.messageElement.style.top = '25%';
 							ecs.spawn({
-								...createTimer(2),
+								timers: { hide: createTimer(2) },
 								messageTimer: true,
 							});
 						}
@@ -221,7 +221,7 @@ export default function createGameStatePlugin() {
 
 							// Enemies reaching the player already have pendingDestroy from ai-plugin
 							if (!entity.components.pendingDestroy) {
-								ecs.addComponent(data.entityId, 'timer', createTimer(0.2).timer);
+								ecs.addComponent(data.entityId, 'timers', { destroy: createTimer(0.2) });
 								ecs.addComponent(data.entityId, 'pendingDestroy', true);
 							}
 						}
@@ -230,8 +230,8 @@ export default function createGameStatePlugin() {
 				// Message timer system - hides messages after their timer finishes
 				world.addSystem('message-timer')
 				.withResources(['uiElements'])
-				.setProcessEach({ with: ['timer', 'messageTimer'] }, ({ entity, ecs, resources: { uiElements } }) => {
-					if (entity.components.timer.justFinished) {
+				.setProcessEach({ with: ['timers', 'messageTimer'] }, ({ entity, ecs, resources: { uiElements } }) => {
+					if (entity.components.timers['hide']?.justFinished) {
 						// Hide the message
 						if (uiElements.messageElement) {
 							uiElements.messageElement.style.opacity = '0';

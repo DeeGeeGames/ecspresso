@@ -1,8 +1,11 @@
 /**
  * Timer Plugin for ECSpresso
  *
- * Provides ECS-native timers following the "data, not callbacks" philosophy.
- * Timers are components processed each frame, automatically cleaned up when entities are removed.
+ * ECS-native timers as pure data. An entity may carry multiple named timer
+ * slots; the plugin's update system ticks every slot each frame and exposes
+ * `justFinished` for the frame a slot crosses its duration. The plugin never
+ * touches entity lifecycle — callers despawn (or do anything else) themselves
+ * by reacting to `justFinished` or in the slot's `onComplete` callback.
  */
 
 import { definePlugin, type BasePluginOptions } from 'ecspresso';
@@ -10,21 +13,25 @@ import { definePlugin, type BasePluginOptions } from 'ecspresso';
 // ==================== Event Types ====================
 
 /**
- * Data structure passed to onComplete callbacks when a timer completes.
+ * Data passed to a slot's `onComplete` callback when its timer completes.
  *
  * @example
  * ```typescript
- * createTimer(1.5, {
- *   onComplete: (data) => {
- *     console.log(`Timer on entity ${data.entityId} finished after ${data.elapsed}s`);
- *   }
- * });
+ * timers: {
+ *   launch: createTimer(1.5, {
+ *     onComplete: ({ entityId, slot, elapsed }) => {
+ *       console.log(`Slot ${slot} on entity ${entityId} finished after ${elapsed}s`);
+ *     },
+ *   }),
+ * }
  * ```
  */
 export interface TimerEventData {
-	/** The entity ID that the timer belongs to */
+	/** The entity ID that owns the timer slot */
 	entityId: number;
-	/** The timer's configured duration in seconds */
+	/** The slot name within the entity's `timers` map */
+	slot: string;
+	/** The slot's configured duration in seconds */
 	duration: number;
 	/** The actual elapsed time (may exceed duration slightly) */
 	elapsed: number;
@@ -32,130 +39,117 @@ export interface TimerEventData {
 
 // ==================== Component Types ====================
 
-
 /**
- * Timer component data structure.
- * Use `justFinished` to detect timer completion in your systems.
+ * A single timer's data. Multiple of these can live on one entity, keyed by slot name.
+ * Use `justFinished` to detect completion in your systems.
  */
 export interface Timer {
 	/** Time accumulated so far (seconds) */
 	elapsed: number;
 	/** Target duration (seconds) */
 	duration: number;
-	/** Whether timer repeats after completion */
+	/** Whether the timer repeats after completion */
 	repeat: boolean;
-	/** Whether timer is currently running */
+	/** Whether the timer is currently running */
 	active: boolean;
-	/** True for one frame after timer completes */
+	/** True for one frame after the timer completes */
 	justFinished: boolean;
-	/** Optional callback invoked when timer completes */
+	/** Optional callback invoked when the timer completes */
 	onComplete?: (data: TimerEventData) => void;
 }
 
 /**
  * Component types provided by the timer plugin.
- * Included automatically via `.withPlugin(createTimerPlugin())`.
+ *
+ * Each entity carries a single `timers` component whose value is a map of
+ * named slots. This lets one entity host independent phase clocks
+ * (e.g. `{ launch: ..., shieldDepletion: ..., hangarCycle: ... }`) without
+ * one timer's lifecycle constraining another.
  *
  * @example
  * ```typescript
  * const ecs = ECSpresso.create()
  *   .withPlugin(createTimerPlugin())
- *   .withComponentTypes<{ velocity: { x: number; y: number }; player: true }>()
+ *   .withComponentTypes<{ fighter: true }>()
  *   .build();
+ *
+ * ecs.spawn({
+ *   fighter: true,
+ *   timers: { launch: createTimer(2.0) },
+ * });
  * ```
  */
 export interface TimerComponentTypes {
-	timer: Timer;
+	timers: Record<string, Timer>;
 }
 
 // ==================== Plugin Options ====================
 
-/**
- * Configuration options for the timer plugin.
- */
 export interface TimerPluginOptions<G extends string = 'timers'> extends BasePluginOptions<G> {}
 
 // ==================== Helper Functions ====================
 
-/**
- * Options for timer creation
- */
 export interface TimerOptions {
-	/** Callback invoked when timer completes */
+	/** Callback invoked when the timer completes */
 	onComplete?: (data: TimerEventData) => void;
 }
 
 /**
- * Create a one-shot timer that fires once after the specified duration.
+ * Create a one-shot `Timer` to drop into a `timers` slot.
  *
- * @param duration Duration in seconds until the timer completes
- * @param options Optional configuration including onComplete callback
- * @returns Component object suitable for spreading into spawn()
+ * The timer fires `justFinished` for one frame on completion and then idles
+ * (`active = false`). The entity is left alone — if the slot's lifetime
+ * coincides with the entity's lifetime (vfx, blasts, summon-anim), despawn
+ * the host yourself in `onComplete` or in a system that watches `justFinished`.
  *
  * @example
  * ```typescript
- * // Timer without callback
  * ecs.spawn({
- *   ...createTimer(2),
- *   explosion: true,
+ *   fighter: true,
+ *   timers: { launch: createTimer(2.0) },
  * });
  *
- * // Timer with onComplete callback
+ * // Self-destructing vfx — caller owns the despawn:
  * ecs.spawn({
- *   ...createTimer(1.5, { onComplete: (data) => console.log('done', data.entityId) }),
+ *   timers: {
+ *     fade: createTimer(1.0, {
+ *       onComplete: ({ entityId }) => ecs.commands.removeEntity(entityId),
+ *     }),
+ *   },
  * });
  * ```
  */
-export function createTimer(
-	duration: number,
-	options?: TimerOptions
-): Pick<TimerComponentTypes, 'timer'> {
+export function createTimer(duration: number, options?: TimerOptions): Timer {
 	return {
-		timer: {
-			elapsed: 0,
-			duration,
-			repeat: false,
-			active: true,
-			justFinished: false,
-			onComplete: options?.onComplete,
-		},
+		elapsed: 0,
+		duration,
+		repeat: false,
+		active: true,
+		justFinished: false,
+		onComplete: options?.onComplete,
 	};
 }
 
 /**
- * Create a repeating timer that fires every `duration` seconds.
- *
- * @param duration Duration in seconds between each timer completion
- * @param options Optional configuration including onComplete callback
- * @returns Component object suitable for spreading into spawn()
+ * Create a repeating `Timer` to drop into a `timers` slot. Fires
+ * `justFinished` once per cycle and continues running.
  *
  * @example
  * ```typescript
- * // Timer without callback
  * ecs.spawn({
- *   ...createRepeatingTimer(5),
- *   spawner: true,
- * });
- *
- * // Repeating timer with onComplete callback
- * ecs.spawn({
- *   ...createRepeatingTimer(3, { onComplete: (data) => console.log('cycle', data.elapsed) }),
+ *   carrier: true,
+ *   timers: { hangarCycle: createRepeatingTimer(5.0) },
  * });
  * ```
  */
-export function createRepeatingTimer(
-	duration: number,
-	options?: TimerOptions
-): Pick<TimerComponentTypes, 'timer'> {
+export function createRepeatingTimer(duration: number, options?: TimerOptions): Timer {
 	return {
-		timer: {
-			elapsed: 0,
-			duration,
-			repeat: true,
-			active: true,
-			justFinished: false,
-			onComplete: options?.onComplete,
-		},
+		elapsed: 0,
+		duration,
+		repeat: true,
+		active: true,
+		justFinished: false,
+		onComplete: options?.onComplete,
 	};
 }
 
@@ -164,30 +158,27 @@ export function createRepeatingTimer(
 /**
  * Create a timer plugin for ECSpresso.
  *
- * This plugin provides:
- * - Timer update system that processes all timer components each frame
- * - `justFinished` flag pattern for one-frame completion detection
- * - Automatic cleanup when entities are removed
+ * The plugin installs one update system that ticks every slot of every
+ * `timers` component each frame. It does not touch entity lifecycle —
+ * react to `justFinished` (or use `onComplete`) and despawn yourself if needed.
  *
  * @example
  * ```typescript
- * const ecs = ECSpresso
- *   .create<Components, Events, Resources>()
+ * const ecs = ECSpresso.create()
  *   .withPlugin(createTimerPlugin())
+ *   .withComponentTypes<{ spawner: true }>()
  *   .build();
  *
- * // Spawn entity with timer
  * ecs.spawn({
- *   ...createRepeatingTimer(5),
  *   spawner: true,
+ *   timers: { wave: createRepeatingTimer(5.0) },
  * });
  *
- * // React to timer completion in a system
  * ecs.addSystem('spawn-on-timer')
- *   .addQuery('spawners', { with: ['timer', 'spawner'] })
- *   .setProcess((queries, _dt, ecs) => {
+ *   .addQuery('spawners', { with: ['timers', 'spawner'] })
+ *   .setProcess(({ queries, ecs }) => {
  *     for (const { components } of queries.spawners) {
- *       if (components.timer.justFinished) {
+ *       if (components.timers.wave?.justFinished) {
  *         ecs.spawn({ enemy: true });
  *       }
  *     }
@@ -213,41 +204,41 @@ export function createTimerPlugin<G extends string = 'timers'>(
 				.setPriority(priority)
 				.inPhase(phase)
 				.inGroup(systemGroup)
-				.addQuery('timers', {
-					with: ['timer'],
-				})
-				.setProcess(({ queries, dt, ecs }) => {
+				.addQuery('timers', { with: ['timers'] })
+				.setProcess(({ queries, dt }) => {
 					for (const entity of queries.timers) {
-						const { timer } = entity.components;
+						const slots = entity.components.timers;
+						for (const slot in slots) {
+							const timer = slots[slot];
+							if (!timer) continue;
 
-						// Reset justFinished flag from previous frame
-						timer.justFinished = false;
+							timer.justFinished = false;
+							if (!timer.active) continue;
 
-						// Skip inactive timers
-						if (!timer.active) continue;
+							timer.elapsed += dt;
+							if (timer.elapsed < timer.duration) continue;
 
-						// Accumulate time
-						timer.elapsed += dt;
-
-						// Check if timer completed
-						if (timer.elapsed < timer.duration) continue;
-
-						// Timer completed - handle based on repeat mode
-						if (timer.repeat) {
-							// Handle multiple cycles in one frame
-							while (timer.elapsed >= timer.duration) {
+							if (timer.repeat) {
+								while (timer.elapsed >= timer.duration) {
+									timer.justFinished = true;
+									timer.onComplete?.({
+										entityId: entity.id,
+										slot,
+										duration: timer.duration,
+										elapsed: timer.elapsed,
+									});
+									timer.elapsed -= timer.duration;
+								}
+							} else {
 								timer.justFinished = true;
-								timer.onComplete?.({ entityId: entity.id, duration: timer.duration, elapsed: timer.elapsed });
-								timer.elapsed -= timer.duration;
+								timer.onComplete?.({
+									entityId: entity.id,
+									slot,
+									duration: timer.duration,
+									elapsed: timer.elapsed,
+								});
+								timer.active = false;
 							}
-						} else {
-							// One-shot timer
-							timer.justFinished = true;
-							timer.onComplete?.({ entityId: entity.id, duration: timer.duration, elapsed: timer.elapsed });
-							timer.active = false;
-							// Auto-remove one-shot timer entities after completion.
-							// If configurability is needed in the future, add an autoRemove option to TimerOptions.
-							ecs.commands.removeEntity(entity.id);
 						}
 					}
 				});

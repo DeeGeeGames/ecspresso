@@ -57,7 +57,7 @@ export default function createAIPlugin() {
 								});
 
 								// Add timer for pending destruction
-								ecs.addComponent(enemy.id, 'timer', createTimer(0.5).timer);
+								ecs.addComponent(enemy.id, 'timers', { destroy: createTimer(0.5) });
 								ecs.addComponent(enemy.id, 'pendingDestroy', true);
 							}
 						} else {
@@ -86,8 +86,8 @@ export default function createAIPlugin() {
 			// Pending destroy system
 			world.addSystem('pending-destroy')
 				.inGroup('gameplay')
-				.setProcessEach({ with: ['timer', 'pendingDestroy'] }, ({ entity, ecs }) => {
-					if (entity.components.timer.justFinished) {
+				.setProcessEach({ with: ['timers', 'pendingDestroy'] }, ({ entity, ecs }) => {
+					if (entity.components.timers['destroy']?.justFinished) {
 						ecs.eventBus.publish('entityDestroyed', {
 							entityId: entity.id
 						});
@@ -99,8 +99,8 @@ export default function createAIPlugin() {
 				.inGroup('gameplay')
 				.inPhase('preUpdate')
 				.withResources(['waveManager', 'config', 'playerInitialRotation'])
-				.setProcessEach({ with: ['timer', 'enemySpawner'] }, ({ entity: spawner, ecs, resources: { waveManager, config, playerInitialRotation } }) => {
-					if (!spawner.components.timer.justFinished) return;
+				.setProcessEach({ with: ['timers', 'enemySpawner'] }, ({ entity: spawner, ecs, resources: { waveManager, config, playerInitialRotation } }) => {
+					if (!spawner.components.timers['spawn']?.justFinished) return;
 
 					if (waveManager.enemiesRemaining > 0) {
 						const enemies = ecs.entityManager.getEntitiesWithQuery(['enemy']);
