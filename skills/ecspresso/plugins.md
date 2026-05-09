@@ -70,6 +70,23 @@ const combat = definePlugin('combat')
 
 To *opt out* of a default screen gate on a single system, pass an empty array: `.inScreens([])` runs the system regardless of active screen.
 
+#### Spawns inside gated systems are auto-scoped
+
+When a system has `inScreens([X])` set (either directly or via `setSystemDefaults`), any `spawn` / `spawnChild` / `commands.spawn` / `commands.spawnChild` call issued *inside that system's `process` tick* without an explicit `scope` is automatically tagged with the active screen. The entity is removed when that screen exits.
+
+```typescript
+// Plugin-internal spawns no longer need { scope: 'playing' } at every site.
+.setSystemDefaults({ inScreens: ['playing'] })
+.install((world) => {
+  world.addSystem('wave-spawner').setProcess(({ ecs }) => {
+    ecs.spawn({ enemy: {...} });                    // auto-scoped to 'playing'
+    ecs.commands.spawn({ projectile: {...} });       // also auto-scoped
+  });
+});
+```
+
+For plugins that ship gated systems (waves, summon, projectile, vfx, pickup, etc.): drop manual `{ scope: ... }` tags from internal spawns. Keep them only for entities that should outlive the screen, in which case use `{ scope: null }` to opt out explicitly. Auto-scoping does **not** apply to spawns from `onInitialize` / `onDetach`, plugin `install` bodies, or systems that use only `excludeScreens` — those still need explicit scopes.
+
 ### 2. `pluginFactory()` (lighter-weight, type-frozen)
 
 `builder.pluginFactory()` returns a `definePlugin` that closes over the builder's accumulated world types, so plugins authored with it skip the per-plugin `.withComponentTypes<>()` ceremony and `world` is already typed inside `install`. **The cost: plugins authored this way cannot contribute new component / event / resource types** — every new type must land back in the central builder.
