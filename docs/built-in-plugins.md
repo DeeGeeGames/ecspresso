@@ -3,7 +3,7 @@
 | Plugin | Import | Default Phase | Description |
 |--------|--------|---------------|-------------|
 | **Input** | `ecspresso/plugins/input` | `preUpdate` | Frame-accurate keyboard/pointer input with action mapping |
-| **Timers** | `ecspresso/plugins/timers` | `preUpdate` | ECS-native timers with event-based completion |
+| **Timers** | `ecspresso/plugins/timers` | `preUpdate` | ECS-native timers as pure data with named slots and caller-owned despawn |
 | **Coroutine** | `ecspresso/plugins/coroutine` | `update` | Generator-based coroutines for sequenced logic |
 | **State Machine** | `ecspresso/plugins/state-machine` | `update` | Per-entity finite state machines |
 | **Tween** | `ecspresso/plugins/tween` | `update` | Declarative property animation with easing, sequences, and loops |
@@ -226,7 +226,7 @@ reapplyViewportScale(pixiApp);
 
 ## Timer Plugin
 
-The timer plugin provides ECS-native timers that follow the "data, not callbacks" philosophy. Timers are components processed each frame, with optional event-based completion notifications.
+The timer plugin provides ECS-native timers as pure data. Each entity carries a single `timers` component whose value is a map of named slots — one entity can host multiple independent phase clocks (e.g. a fighter's launch window, a carrier's shield-depletion lockout and hangar cycle on the same entity). The plugin's update system ticks every slot each frame and never touches entity lifecycle: react to `slot.justFinished` in a system or use the slot's `onComplete` callback, and despawn the host yourself if needed.
 
 ```typescript
 import {
@@ -234,28 +234,55 @@ import {
   type TimerComponentTypes, type TimerEventData
 } from 'ecspresso/plugins/timers';
 
-// Events used with onComplete must have TimerEventData payload
-interface Events {
-  hideMessage: TimerEventData;   // { entityId, duration, elapsed }
-  spawnWave: TimerEventData;
-}
-
 const world = ECSpresso
   .create()
   .withPlugin(createTimerPlugin())
-  .withComponentTypes<{ position: { x: number; y: number } }>()
-  .withEventTypes<Events>()
+  .withComponentTypes<{ fighter: true; carrier: true }>()
   .build();
 
-// One-shot timer (poll justFinished or use onComplete event)
-world.spawn({ ...createTimer(2.0), position: { x: 0, y: 0 } });
-world.spawn({ ...createTimer(1.5, { onComplete: 'hideMessage' }) });
+// One slot per phase — `createTimer` / `createRepeatingTimer` return a bare
+// `Timer` value that the caller drops into a named slot.
+world.spawn({
+  fighter: true,
+  timers: { launch: createTimer(2.0) },
+});
 
-// Repeating timer
-world.spawn({ ...createRepeatingTimer(5.0, { onComplete: 'spawnWave' }) });
+// Multiple independent slots on a single entity.
+world.spawn({
+  carrier: true,
+  timers: {
+    shieldDepletion: createTimer(8.0),
+    hangarCycle: createRepeatingTimer(5.0),
+  },
+});
+
+// onComplete receives `{ entityId, slot, duration, elapsed }`. The plugin
+// does not despawn the host — if a slot's lifetime equals the entity's
+// (vfx, blasts), do it yourself in the callback.
+world.spawn({
+  timers: {
+    fade: createTimer(1.0, {
+      onComplete: ({ entityId }) => world.commands.removeEntity(entityId),
+    }),
+  },
+});
 ```
 
-Timer components expose `elapsed`, `duration`, `repeat`, `active`, `justFinished`, and optional `onComplete` for runtime control.
+Reading slot state in a system uses bracket access (the `timers` map is an index signature, so `noPropertyAccessFromIndexSignature` blocks dot syntax):
+
+```typescript
+world.addSystem('launch-on-finish')
+  .addQuery('fighters', { with: ['timers', 'fighter'] })
+  .setProcess(({ queries }) => {
+    for (const { components } of queries.fighters) {
+      if (components.timers['launch']?.justFinished) {
+        // launch-window expired this frame
+      }
+    }
+  });
+```
+
+Each `Timer` exposes `elapsed`, `duration`, `repeat`, `active`, `justFinished`, and optional `onComplete` for runtime control. Completed one-shot slots remain on the entity with `active = false` — they're idle data and cost nothing per frame, but the host keeps them until you remove the slot or despawn the entity.
 
 ## Collision Plugin
 

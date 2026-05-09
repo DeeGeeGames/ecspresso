@@ -169,7 +169,7 @@ All are created via factory functions (e.g., `createInputPlugin(options)`). Each
 | Plugin | Import Path | Default Phase | Description |
 |--------|-------------|---------------|-------------|
 | Input | `ecspresso/plugins/input` | `preUpdate` | Frame-accurate keyboard/pointer/gamepad input with action mapping; unified actions + per-player maps for local co-op |
-| Timers | `ecspresso/plugins/timers` | `preUpdate` | ECS-native timers with event-based completion |
+| Timers | `ecspresso/plugins/timers` | `preUpdate` | ECS-native timers as pure data. One entity carries a named slot map (`timers: { launch: Timer, hangarCycle: Timer, ... }`) so multiple independent phase clocks can coexist. Caller owns despawn — react to `slot.justFinished` or use `onComplete`; the plugin never touches entity lifecycle |
 | Coroutine | `ecspresso/plugins/coroutine` | `update` | Generator-based coroutines for sequenced logic |
 | State Machine | `ecspresso/plugins/state-machine` | `update` | Per-entity finite state machines |
 | Tween | `ecspresso/plugins/tween` | `update` | Declarative property animation with easing, sequences, loops |
