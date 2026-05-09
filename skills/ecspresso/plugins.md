@@ -2,9 +2,9 @@
 
 ## Defining Plugins
 
-Plugins group related systems, resources, and component types. Two approaches:
+Plugins group related systems, resources, and component types. Two approaches: **canonical `definePlugin`** (the default — each plugin declares the types it contributes) and **`pluginFactory()`** (a lighter-weight variant for plugins that only *consume* existing world state). The choice is per-plugin and largely irreversible — read [Choosing between the two](#choosing-between-the-two) before picking.
 
-### 1. Fluent Builder
+### 1. Canonical `definePlugin` (the default)
 
 ```typescript
 import { definePlugin } from 'ecspresso';
@@ -70,9 +70,9 @@ const combat = definePlugin('combat')
 
 To *opt out* of a default screen gate on a single system, pass an empty array: `.inScreens([])` runs the system regardless of active screen.
 
-### 2. Plugin Factory (no type params)
+### 2. `pluginFactory()` (lighter-weight, type-frozen)
 
-`builder.pluginFactory()` returns a `definePlugin` that closes over the builder's accumulated world types, so plugins authored with it skip the per-plugin `.withComponentTypes<>()` ceremony and `world` is already typed inside `install`.
+`builder.pluginFactory()` returns a `definePlugin` that closes over the builder's accumulated world types, so plugins authored with it skip the per-plugin `.withComponentTypes<>()` ceremony and `world` is already typed inside `install`. **The cost: plugins authored this way cannot contribute new component / event / resource types** — every new type must land back in the central builder.
 
 ```typescript
 // types.ts
@@ -98,6 +98,11 @@ export const movementPlugin = definePlugin({
 
 ### Choosing between the two
 
+**Heuristic:**
+
+- **Use canonical `definePlugin`** if the plugin's existence implies new state — turrets, shields, hangars, physics, anything where adopting the plugin means new components / events / resources exist in the world. This is the right default for real games and apps where features keep landing.
+- **Use `pluginFactory()`** only for plugins that purely *consume* existing world state — UI overlays, debug huds, glue code, demo scaffolding. Or for small projects / examples where the full type set is known up front and won't grow.
+
 The two patterns are mutually exclusive **per plugin** — there is no variant of `pluginFactory` that both closes over the world type *and* lets the plugin contribute new types. A project can mix both styles across different plugins, but a single plugin commits to one.
 
 | | Canonical `definePlugin('id').withComponentTypes<>()…` | `builder.pluginFactory()` |
@@ -105,9 +110,11 @@ The two patterns are mutually exclusive **per plugin** — there is no variant o
 | Plugin can add new components / events / resources | Yes — types merge into the world via `withPlugin` | **No** — world config is frozen at factory creation |
 | `world` is pre-typed inside `install` | Only with the types the plugin declared (+ `requires<>()`) | Yes, full world type already available |
 | Where new component/event types must land | Inside the plugin file | Back in the central `types.ts` builder chain |
-| Best for | Plugins whose existence implies new state (turrets, shields, hangars) | Plugins that only consume existing world state (UI overlays, debug, glue) |
+| Best for | Feature plugins that introduce state | Consumer plugins (UI/debug/glue), demos, fixed-scope apps |
 
-**The trap:** adopting `pluginFactory()` for ergonomics and *then* trying to add a new component from inside a plugin will silently force you back into the central types file. As the project grows, `types.ts` becomes the contention point for every new feature. If you expect feature plugins to keep introducing new components/events, prefer canonical `definePlugin` from the start — even though it's slightly more verbose per plugin.
+**The trap (irreversible-ish):** adopting `pluginFactory()` for ergonomics and *then* trying to add a new component from inside a plugin will silently force you back into the central types file. As the project grows, `types.ts` becomes the contention point for every new feature. Migrating later means rewriting every feature plugin's signature. If you're unsure, default to canonical `definePlugin` — the per-plugin `.withComponentTypes<>()` ceremony is a small cost, and you can mix in `pluginFactory()` later for genuine consumer plugins.
+
+If you've already committed to `pluginFactory()` and `types.ts` is bloating, the cheapest mitigation is to split component / event / resource interfaces into per-feature files and aggregate them at the central builder via `&` — see [SKILL.md — Scaling the type registry](SKILL.md#scaling-the-type-registry).
 
 ## Using Plugins
 

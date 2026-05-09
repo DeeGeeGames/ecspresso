@@ -74,6 +74,31 @@ type ECS = typeof ecs;
 | `.withFixedTimestep(dt)` | Set fixed timestep interval |
 | `.build()` | Create the ECSpresso instance |
 
+### Scaling the type registry
+
+The single inline `withComponentTypes<{...}>()` block above is fine for small projects and examples. For a real game where features keep introducing new components, decide *now* whether feature plugins will contribute their own types — that choice has cascading consequences and is hard to reverse later. See [plugins.md — Choosing between the two](plugins.md#choosing-between-the-two) before committing.
+
+When keeping a central registry (i.e., not using canonical `definePlugin` per feature), prefer per-feature interface files aggregated at the builder, rather than declaring everything inline:
+
+```typescript
+// src/turrets/types.ts
+export interface TurretComponents {
+  turret: TurretComponent;
+  beamTurret: BeamTurretComponent;
+}
+export interface TurretEvents { 'turret:fired': { id: number } }
+
+// src/types.ts
+import type { TurretComponents, TurretEvents } from './turrets/types';
+import type { HangarComponents } from './hangar/types';
+
+export const builder = ECSpresso.create()
+  .withComponentTypes<TurretComponents & HangarComponents & /* ... */>()
+  .withEventTypes<TurretEvents & /* ... */>();
+```
+
+This keeps `types.ts` a thin aggregator and lets features own their interfaces.
+
 ## Systems
 
 Systems use a fluent builder API. They are automatically registered — no explicit termination call needed.
