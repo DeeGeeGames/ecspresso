@@ -477,8 +477,14 @@ export class SystemBuilder<
 	}
 
 	/**
-	 * Set the onInitialize lifecycle hook
-	 * Called when the system is initialized via ECSpresso.initialize() method
+	 * Set the onInitialize lifecycle hook.
+	 *
+	 * Fires exactly once per system. For systems added before `initialize()`,
+	 * the hook is awaited inside `initialize()` itself. For systems added
+	 * after `initialize()` has returned, the hook fires on registration (at
+	 * the next `update()`'s finalize step) — async hooks run fire-and-forget,
+	 * so don't rely on completion ordering against the first `process` call.
+	 *
 	 * @param onInitialize Function to run when this system is initialized
 	 * @returns This SystemBuilder instance for method chaining
 	 */

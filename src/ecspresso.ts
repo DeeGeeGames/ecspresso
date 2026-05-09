@@ -172,6 +172,9 @@ export default class ECSpresso<
 	/** Pending system builder finalizers to run before next update/initialize */
 	private _pendingFinalizers: Array<() => void> = [];
 	private _batchingRegistrations = false;
+	/** Whether `initialize()` has completed — flips the onInitialize firing path for late-added systems */
+	private _initializeFired = false;
+	private _systemsInitialized: WeakSet<object> = new WeakSet();
 
 	/**
 		* Creates a new ECSpresso instance.
@@ -651,8 +654,11 @@ export default class ECSpresso<
 		}
 
 		for (const system of this._systems) {
+			if (this._systemsInitialized.has(system)) continue;
+			this._systemsInitialized.add(system);
 			await system.onInitialize?.(this);
 		}
+		this._initializeFired = true;
 	}
 
 	/**
@@ -805,6 +811,7 @@ export default class ECSpresso<
 		this._systems.splice(index, 1);
 		this._systemLastSeqs.delete(system);
 		this._entityEnterTracking.delete(system);
+		this._systemsInitialized.delete(system);
 
 		// Re-sort systems
 		this._rebuildPhaseSystems();
@@ -868,13 +875,25 @@ export default class ECSpresso<
 		}
 
 		// Set up event handlers if they exist
-		if (!system.eventHandlers) return;
+		if (system.eventHandlers) {
+			for (const eventName in system.eventHandlers) {
+				const handler = system.eventHandlers[eventName];
+				if (handler) {
+					this._eventBus.subscribe(eventName, (data) => {
+						handler({ data, ecs: this });
+					});
+				}
+			}
+		}
 
-		for (const eventName in system.eventHandlers) {
-			const handler = system.eventHandlers[eventName];
-			if (handler) {
-				this._eventBus.subscribe(eventName, (data) => {
-					handler({ data, ecs: this });
+		// Late-bound systems fire onInitialize fire-and-forget on registration;
+		// rejections surface via console.error so async failures aren't silent.
+		if (this._initializeFired && !this._systemsInitialized.has(system)) {
+			this._systemsInitialized.add(system);
+			const result = system.onInitialize?.(this);
+			if (result instanceof Promise) {
+				result.catch((err: unknown) => {
+					console.error(`onInitialize for system "${system.label}" rejected:`, err);
 				});
 			}
 		}

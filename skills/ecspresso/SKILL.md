@@ -233,7 +233,7 @@ ecs.addSystem('label')
   .requiresAssets(['texture1'])              // skip until assets loaded
   .runWhenEmpty()                            // run even with 0 matching entities
   .setOnEntityEnter('queryName', ({ entity, ecs }) => { ... })
-  .setOnInitialize(async (ecs) => { ... })   // runs during ecs.initialize()
+  .setOnInitialize(async (ecs) => { ... })   // runs during ecs.initialize(); for systems added after init, runs fire-and-forget on next update()
   .setOnDetach((ecs) => { ... })             // runs on system removal
   .setEventHandlers({
     playerDied: ({ data, ecs }) => { ... },  // auto-subscribed event handlers

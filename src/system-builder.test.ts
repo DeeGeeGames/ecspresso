@@ -841,3 +841,109 @@ describe('SystemBuilder singletons', () => {
 		expect(processCalls).toBe(1);
 	});
 });
+
+describe('onInitialize for systems added after initialize()', () => {
+	test('fires onInitialize for a system added after world.initialize()', async () => {
+		let initCalled = false;
+		const world = ECSpresso.create().withComponentTypes<TestComponents>().build();
+		await world.initialize();
+
+		world.addSystem('late')
+			.setOnInitialize(() => { initCalled = true; })
+			.runWhenEmpty()
+			.setProcess(() => {});
+
+		expect(initCalled).toBe(false); // not yet — finalizer runs at next update
+
+		world.update(1 / 60);
+		expect(initCalled).toBe(true);
+	});
+
+	test('fires onInitialize before the system\'s first process call', async () => {
+		const order: string[] = [];
+		const world = ECSpresso.create().withComponentTypes<TestComponents>().build();
+		await world.initialize();
+
+		world.addSystem('ordered')
+			.setOnInitialize(() => { order.push('init'); })
+			.runWhenEmpty()
+			.setProcess(() => { order.push('process'); });
+
+		world.update(1 / 60);
+		expect(order).toEqual(['init', 'process']);
+	});
+
+	test('does not double-fire onInitialize when initialize() runs and then a system is added later', async () => {
+		let earlyCalls = 0;
+		let lateCalls = 0;
+		const world = ECSpresso.create().withComponentTypes<TestComponents>().build();
+
+		world.addSystem('early')
+			.setOnInitialize(() => { earlyCalls++; })
+			.runWhenEmpty()
+			.setProcess(() => {});
+
+		await world.initialize();
+		expect(earlyCalls).toBe(1);
+
+		world.addSystem('late')
+			.setOnInitialize(() => { lateCalls++; })
+			.runWhenEmpty()
+			.setProcess(() => {});
+
+		world.update(1 / 60);
+		expect(earlyCalls).toBe(1); // not re-fired
+		expect(lateCalls).toBe(1);
+
+		world.update(1 / 60);
+		expect(earlyCalls).toBe(1);
+		expect(lateCalls).toBe(1); // not re-fired across updates
+	});
+
+	test('async onInitialize on a late-added system runs', async () => {
+		let resolved = false;
+		const world = ECSpresso.create().withComponentTypes<TestComponents>().build();
+		await world.initialize();
+
+		world.addSystem('lateAsync')
+			.setOnInitialize(async () => {
+				await Promise.resolve();
+				resolved = true;
+			})
+			.runWhenEmpty()
+			.setProcess(() => {});
+
+		world.update(1 / 60);
+		// Fire-and-forget on the late path — give the microtask a chance to run.
+		await Promise.resolve();
+		await Promise.resolve();
+		expect(resolved).toBe(true);
+	});
+
+	test('rejected async onInitialize on a late-added system surfaces as console error, not unhandled', async () => {
+		const errors: unknown[] = [];
+		const originalError = console.error;
+		console.error = (...args: unknown[]) => { errors.push(args); };
+
+		try {
+			const world = ECSpresso.create().withComponentTypes<TestComponents>().build();
+			await world.initialize();
+
+			world.addSystem('lateBoom')
+				.setOnInitialize(async () => { throw new Error('boom'); })
+				.runWhenEmpty()
+				.setProcess(() => {});
+
+			world.update(1 / 60);
+			await Promise.resolve();
+			await Promise.resolve();
+
+			expect(errors.length).toBeGreaterThan(0);
+			const flat = errors.flat().map(String).join(' ');
+			expect(flat).toContain('lateBoom');
+			expect(flat).toContain('boom');
+		} finally {
+			console.error = originalError;
+		}
+	});
+});
