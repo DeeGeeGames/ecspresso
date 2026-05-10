@@ -1,27 +1,6 @@
 import type { Entity, FilteredEntity, RemoveEntityOptions, HierarchyEntry, HierarchyIteratorOptions } from "./types";
 import HierarchyManager from "./hierarchy-manager";
-
-/** Returns true if `components` contains ALL keys in `required`. */
-function hasAllComponents(
-	components: Record<string | number | symbol, unknown>,
-	required: ReadonlyArray<string | number | symbol>,
-): boolean {
-	for (const key of required) {
-		if (!(key in components)) return false;
-	}
-	return true;
-}
-
-/** Returns true if `components` contains ANY key in `excluded`. */
-function hasAnyComponent(
-	components: Record<string | number | symbol, unknown>,
-	excluded: ReadonlyArray<string | number | symbol>,
-): boolean {
-	for (const key of excluded) {
-		if (key in components) return true;
-	}
-	return false;
-}
+import QueryCache from "./query-cache";
 
 /** Returns true if any component in `changed` was modified after `threshold`. */
 function hasChangedComponent(
@@ -119,6 +98,20 @@ class EntityManager<ComponentTypes> {
 	private _beforeEntityRemovedHooks: Array<(entityId: number) => void> = [];
 	private _afterParentChangedHooks: Array<(childId: number) => void> = [];
 
+	/**
+	 * Incrementally-maintained query result cache. Caches the static portion
+	 * (with / without / parentHas) of each registered query shape and is
+	 * updated via the lifecycle hook arrays above. Lazily created on the
+	 * first cacheable query lookup.
+	 */
+	private readonly _queryCache: QueryCache<ComponentTypes> = new QueryCache<ComponentTypes>({
+		getEntity: (id) => this.entities.get(id),
+		getParent: (id) => this.hierarchyManager.getParent(id),
+		getChildren: (id) => this.hierarchyManager.getChildren(id),
+		allEntities: () => this.entities.values(),
+		componentIndex: (c) => this.componentIndices.get(c),
+	});
+
 	// ==================== Batching Fields ====================
 	private _batchingDepth: number = 0;
 	private _batchedEntityIds: Set<number> = new Set();
@@ -207,6 +200,9 @@ class EntityManager<ComponentTypes> {
 		if (callbacks) {
 			callbacks.invoke({ value: data, entity });
 		}
+
+		// Update query cache before user hooks so any hook-driven query sees fresh state
+		this._queryCache.onComponentChanged(entity.id, componentName);
 
 		// Fire afterComponentAdded hooks (may trigger recursive addComponent)
 		this._batchingDepth++;
@@ -301,6 +297,7 @@ class EntityManager<ComponentTypes> {
 
 		// Fire afterComponentRemoved hooks (only if component was present)
 		if (oldValue !== undefined) {
+			this._queryCache.onComponentChanged(entity.id, componentName);
 			for (const hook of this._afterComponentRemovedHooks) {
 				hook(entity.id, componentName);
 			}
@@ -344,75 +341,58 @@ class EntityManager<ComponentTypes> {
 		output.length = 0;
 
 		const hasChangedFilter = changed !== undefined && changed.length > 0 && changeThreshold !== undefined;
-		const hasParentHasFilter = parentHas !== undefined && parentHas.length > 0;
 
 		// Runtime query filtering guarantees WithComponents/WithoutComponents constraints,
 		// but TypeScript can't narrow Entity<CT> to FilteredEntity from imperative logic.
 		type ResultEntry = FilteredEntity<ComponentTypes, WithComponents extends never ? never : WithComponents, WithoutComponents extends never ? never : WithoutComponents>;
 
-		if (required.length === 0) {
-			if (excluded.length === 0 && !hasChangedFilter && !hasParentHasFilter) {
+		// Empty static shape: walk all entities. Cheaper than maintaining a
+		// cache that mirrors the entity set.
+		const hasParentHasFilter = parentHas !== undefined && parentHas.length > 0;
+		if (required.length === 0 && excluded.length === 0 && !hasParentHasFilter) {
+			if (!hasChangedFilter) {
 				for (const entity of this.entities.values()) {
 					output.push(entity as unknown as ResultEntry);
 				}
 				return output;
 			}
-
 			for (const entity of this.entities.values()) {
-				if (excluded.length > 0 && hasAnyComponent(entity.components, excluded)) continue;
-				if (hasChangedFilter && !hasChangedComponent(this.changeSeqs.get(entity.id), changed, changeThreshold)) continue;
-				if (hasParentHasFilter && !this.parentHasComponents(entity.id, parentHas)) continue;
+				if (!hasChangedComponent(this.changeSeqs.get(entity.id), changed, changeThreshold)) continue;
 				output.push(entity as unknown as ResultEntry);
 			}
 			return output;
 		}
 
-		// Find the component with the smallest entity set to start with
-		const firstRequired = required[0];
-		if (firstRequired === undefined) return output;
-		let smallestComponent: WithComponents = firstRequired;
-		let smallestSize = this.componentIndices.get(firstRequired)?.size ?? 0;
-		// Start at 1 — firstRequired is already the initial candidate
-		for (let i = 1; i < required.length; i++) {
-			const comp = required[i];
-			if (comp === undefined) continue;
-			const size = this.componentIndices.get(comp)?.size ?? 0;
-			if (size < smallestSize) {
-				smallestComponent = comp;
-				smallestSize = size;
-			}
-		}
+		const members = this._queryCache.getOrCreate(
+			required as ReadonlyArray<keyof ComponentTypes>,
+			excluded as ReadonlyArray<keyof ComponentTypes>,
+			(parentHas ?? []) as ReadonlyArray<keyof ComponentTypes>,
+		);
 
-		// Start with the entities from the smallest component set
-		const candidateSet = this.componentIndices.get(smallestComponent);
-		if (!candidateSet || candidateSet.size === 0) {
+		if (members.size === 0) return output;
+
+		if (hasChangedFilter) {
+			for (const id of members) {
+				if (!hasChangedComponent(this.changeSeqs.get(id), changed, changeThreshold)) continue;
+				const entity = this.entities.get(id);
+				if (!entity) continue;
+				output.push(entity as unknown as ResultEntry);
+			}
 			return output;
 		}
 
-		for (const id of candidateSet) {
+		for (const id of members) {
 			const entity = this.entities.get(id);
 			if (!entity) continue;
-			if (!hasAllComponents(entity.components, required)) continue;
-			if (excluded.length > 0 && hasAnyComponent(entity.components, excluded)) continue;
-			if (hasChangedFilter && !hasChangedComponent(this.changeSeqs.get(id), changed, changeThreshold)) continue;
-			if (hasParentHasFilter && !this.parentHasComponents(id, parentHas)) continue;
 			output.push(entity as unknown as ResultEntry);
 		}
 
 		return output;
 	}
 
-	/**
-	 * Check if an entity's direct parent has all specified components
-	 */
-	private parentHasComponents(entityId: number, components: ReadonlyArray<keyof ComponentTypes>): boolean {
-		const parentId = this.hierarchyManager.getParent(entityId);
-		if (parentId === null) return false;
-
-		const parentEntity = this.entities.get(parentId);
-		if (!parentEntity) return false;
-
-		return hasAllComponents(parentEntity.components, components);
+	/** Test-only accessor for the internal query cache. @internal */
+	get _queryCacheForTesting(): QueryCache<ComponentTypes> {
+		return this._queryCache;
 	}
 
 	removeEntity(entityId: number, options?: RemoveEntityOptions): boolean {
@@ -429,11 +409,13 @@ class EntityManager<ComponentTypes> {
 			for (let i = descendants.length - 1; i >= 0; i--) {
 				const descendantId = descendants[i];
 				if (descendantId === undefined) continue;
+				this._queryCache.onEntityRemoved(descendantId);
 				for (const hook of this._beforeEntityRemovedHooks) {
 					hook(descendantId);
 				}
 			}
 			// Fire beforeEntityRemoved for the entity itself
+			this._queryCache.onEntityRemoved(entity.id);
 			for (const hook of this._beforeEntityRemovedHooks) {
 				hook(entity.id);
 			}
@@ -445,6 +427,7 @@ class EntityManager<ComponentTypes> {
 			}
 		} else {
 			// Fire beforeEntityRemoved for just this entity
+			this._queryCache.onEntityRemoved(entity.id);
 			for (const hook of this._beforeEntityRemovedHooks) {
 				hook(entity.id);
 			}
@@ -639,6 +622,7 @@ class EntityManager<ComponentTypes> {
 	 */
 	setParent(childId: number, parentId: number): this {
 		this.hierarchyManager.setParent(childId, parentId);
+		this._queryCache.onParentChanged(childId);
 		for (const hook of this._afterParentChangedHooks) {
 			hook(childId);
 		}
@@ -653,6 +637,7 @@ class EntityManager<ComponentTypes> {
 	removeParent(childId: number): boolean {
 		const result = this.hierarchyManager.removeParent(childId);
 		if (result) {
+			this._queryCache.onParentChanged(childId);
 			for (const hook of this._afterParentChangedHooks) {
 				hook(childId);
 			}

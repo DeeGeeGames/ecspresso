@@ -1,5 +1,6 @@
 import type { Entity, FilteredEntity } from "./types";
 import type EntityManager from "./entity-manager";
+import { entityMatchesShape } from "./query-match";
 
 /**
  * Definition for a reactive query with enter/exit callbacks
@@ -104,45 +105,17 @@ export default class ReactiveQueryManager<ComponentTypes extends Record<string, 
 		return result;
 	}
 
-	/**
-	 * Check if an entity matches a query definition
-	 */
 	private entityMatchesQuery(
 		entity: Entity<ComponentTypes>,
 		definition: ReactiveQueryDefinition<ComponentTypes, any, any, any>
 	): boolean {
-		// Check required components
-		for (const comp of definition.with) {
-			if (!(comp in entity.components)) {
-				return false;
-			}
-		}
-
-		// Check excluded components
-		if (definition.without) {
-			for (const comp of definition.without) {
-				if (comp in entity.components) {
-					return false;
-				}
-			}
-		}
-
-		// Check parentHas
-		if (definition.parentHas?.length) {
-			const parentId = this.entityManager.getParent(entity.id);
-			if (parentId === null) return false;
-
-			const parentEntity = this.entityManager.getEntity(parentId);
-			if (!parentEntity) return false;
-
-			for (const comp of definition.parentHas) {
-				if (!(comp in parentEntity.components)) {
-					return false;
-				}
-			}
-		}
-
-		return true;
+		return entityMatchesShape(
+			entity,
+			definition.with as ReadonlyArray<keyof ComponentTypes>,
+			definition.without as ReadonlyArray<keyof ComponentTypes> | undefined,
+			definition.parentHas,
+			this.entityManager,
+		);
 	}
 
 	/**
