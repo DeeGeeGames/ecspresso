@@ -15,15 +15,27 @@ export interface SpatialEntry3D {
 	halfW: number;
 	halfH: number;
 	halfD: number;
+	/** Rebuild generation when this entry was last inserted. Internal. */
+	_aliveGen: number;
 }
 
 export interface SpatialHashGrid3D {
 	cellSize: number;
 	invCellSize: number;
 	cells: Map<number, number[]>;
-	entries: Map<number, SpatialEntry3D>;
-	/** Previous-frame entries held for in-place reuse during rebuild. Internal. */
-	_entriesPrev: Map<number, SpatialEntry3D>;
+	/**
+	 * Dense, indexed by entityId. Holes are `undefined`. Entries from previous
+	 * rebuilds remain in place for in-place reuse (zero allocation in steady
+	 * state); liveness is determined by `entry._aliveGen === grid._aliveGen`.
+	 * Internal — read live entries via `getLiveEntry3D` / `liveEntryCount3D` helpers.
+	 *
+	 * High-water-mark grows with max entityId ever inserted; despawned ids
+	 * leave their slot occupied by a stale entry. Acceptable when the entity
+	 * manager recycles ids or peak count is bounded.
+	 */
+	entries: (SpatialEntry3D | undefined)[];
+	/** Monotonic counter bumped by each `clearGrid3D` call. Internal. */
+	_aliveGen: number;
 }
 
 // ==================== Pure Functions ====================
@@ -45,27 +57,25 @@ export function createGrid3D(cellSize: number): SpatialHashGrid3D {
 		cellSize,
 		invCellSize: 1 / cellSize,
 		cells: new Map(),
-		entries: new Map(),
-		_entriesPrev: new Map(),
+		entries: [],
+		_aliveGen: 0,
 	};
 }
 
 /**
  * Prepare the grid for a rebuild.
  *
- * Swaps `entries` with `_entriesPrev` so `insertEntity3D` can reuse existing
- * `SpatialEntry3D` objects in place (steady-state rebuilds allocate zero
- * entries). Any stale entries left in `_entriesPrev` from the previous
- * rebuild are dropped here.
+ * Bumps the alive-generation counter so entries inserted prior to this call
+ * are implicitly stale (any access via `getLiveEntry3D` / `liveEntryCount3D`
+ * filters by the current gen). Existing `SpatialEntry3D` objects remain in
+ * the `entries` array for in-place reuse by the next `insertEntity3D`, so
+ * steady-state rebuilds allocate zero entries.
  *
  * Cell buckets are cleared in place — keys are retained so subsequent
  * inserts hit the existing array rather than allocating a fresh one.
  */
 export function clearGrid3D(grid: SpatialHashGrid3D): void {
-	grid._entriesPrev.clear();
-	const tmp = grid.entries;
-	grid.entries = grid._entriesPrev;
-	grid._entriesPrev = tmp;
+	grid._aliveGen++;
 
 	for (const bucket of grid.cells.values()) {
 		bucket.length = 0;
@@ -85,18 +95,18 @@ export function insertEntity3D(
 	halfH: number,
 	halfD: number,
 ): void {
-	const recycled = grid._entriesPrev.get(entityId);
-	if (recycled) {
-		grid._entriesPrev.delete(entityId);
-		recycled.x = x;
-		recycled.y = y;
-		recycled.z = z;
-		recycled.halfW = halfW;
-		recycled.halfH = halfH;
-		recycled.halfD = halfD;
-		grid.entries.set(entityId, recycled);
+	const gen = grid._aliveGen;
+	const existing = grid.entries[entityId];
+	if (existing) {
+		existing.x = x;
+		existing.y = y;
+		existing.z = z;
+		existing.halfW = halfW;
+		existing.halfH = halfH;
+		existing.halfD = halfD;
+		existing._aliveGen = gen;
 	} else {
-		grid.entries.set(entityId, { entityId, x, y, z, halfW, halfH, halfD });
+		grid.entries[entityId] = { entityId, x, y, z, halfW, halfH, halfD, _aliveGen: gen };
 	}
 
 	const inv = grid.invCellSize;
@@ -189,7 +199,7 @@ export function gridQueryRadius3D(
 	const rSq = radius * radius;
 
 	for (const entityId of candidates) {
-		const entry = grid.entries.get(entityId);
+		const entry = grid.entries[entityId];
 		if (!entry) continue;
 
 		// Closest point on entity AABB to query center
@@ -204,6 +214,30 @@ export function gridQueryRadius3D(
 			result.add(entityId);
 		}
 	}
+}
+
+/**
+ * Get the current-generation entry for an entityId, or `undefined` if the
+ * entity isn't in the index for this rebuild. Stale entries from previous
+ * rebuilds remain in `entries` for in-place reuse but are filtered here.
+ */
+export function getLiveEntry3D(grid: SpatialHashGrid3D, entityId: number): SpatialEntry3D | undefined {
+	const entry = grid.entries[entityId];
+	if (!entry || entry._aliveGen !== grid._aliveGen) return undefined;
+	return entry;
+}
+
+/**
+ * Count entries inserted in the current rebuild generation. Linear scan —
+ * intended for tests and diagnostics, not hot paths.
+ */
+export function liveEntryCount3D(grid: SpatialHashGrid3D): number {
+	const gen = grid._aliveGen;
+	let n = 0;
+	for (const entry of grid.entries) {
+		if (entry && entry._aliveGen === gen) n++;
+	}
+	return n;
 }
 
 // ==================== SpatialIndex3D Interface ====================

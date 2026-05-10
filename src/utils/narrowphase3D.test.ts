@@ -17,6 +17,7 @@ import {
 	createGrid3D,
 	insertEntity3D,
 	gridQueryBox3D,
+	getLiveEntry3D,
 	type SpatialIndex3D,
 	type SpatialHashGrid3D,
 } from './spatial-hash3D';
@@ -63,7 +64,7 @@ function stubSpatialIndex3D(grid: SpatialHashGrid3D): SpatialIndex3D {
 			gridQueryBox3D(grid, minX, minY, minZ, maxX, maxY, maxZ, result, minId),
 		queryRadius: () => [],
 		queryRadiusInto: () => {},
-		getEntry: (id) => grid.entries.get(id),
+		getEntry: (id) => getLiveEntry3D(grid, id),
 	};
 }
 

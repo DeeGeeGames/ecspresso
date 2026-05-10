@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
 	clearGrid3D,
 	createGrid3D,
+	getLiveEntry3D,
 	gridQueryBox3D,
 	gridQueryRadius3D,
 	insertEntity3D,
@@ -12,7 +13,7 @@ describe("spatial-hash3D", () => {
 		test("stores entry with correct position and half-extents", () => {
 			const grid = createGrid3D(10);
 			insertEntity3D(grid, 1, 5, 10, 15, 2, 3, 4);
-			const entry = grid.entries.get(1);
+			const entry = getLiveEntry3D(grid, 1);
 			expect(entry).toBeDefined();
 			expect(entry?.entityId).toBe(1);
 			expect(entry?.x).toBe(5);
@@ -103,11 +104,11 @@ describe("spatial-hash3D", () => {
 		test("reuses the same entry object across rebuilds", () => {
 			const grid = createGrid3D(10);
 			insertEntity3D(grid, 1, 5, 5, 5, 1, 1, 1);
-			const entryBefore = grid.entries.get(1);
+			const entryBefore = getLiveEntry3D(grid, 1);
 
 			clearGrid3D(grid);
 			insertEntity3D(grid, 1, 6, 7, 8, 2, 2, 2);
-			const entryAfter = grid.entries.get(1);
+			const entryAfter = getLiveEntry3D(grid, 1);
 
 			// Same object reference — no allocation
 			expect(entryAfter).toBe(entryBefore);

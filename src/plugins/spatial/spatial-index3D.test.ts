@@ -7,6 +7,8 @@ import {
 	hashCell3D,
 	gridQueryBox3D,
 	gridQueryRadius3D,
+	getLiveEntry3D,
+	liveEntryCount3D,
 	type SpatialHashGrid3D,
 	type SpatialIndex3D,
 } from '../../utils/spatial-hash3D';
@@ -45,16 +47,16 @@ describe('Spatial Hash Grid 3D — Data Structure', () => {
 		expect(grid.cellSize).toBe(64);
 		expect(grid.invCellSize).toBeCloseTo(1 / 64, 10);
 		expect(grid.cells.size).toBe(0);
-		expect(grid.entries.size).toBe(0);
+		expect(liveEntryCount3D(grid)).toBe(0);
 	});
 
 	test('insertEntity3D places entity in correct cell', () => {
 		const grid = createGrid3D(100);
 		insertEntity3D(grid, 1, 50, 50, 50, 10, 10, 10);
-		expect(grid.entries.has(1)).toBe(true);
+		expect((getLiveEntry3D(grid, 1) !== undefined)).toBe(true);
 		expect(grid.cells.size).toBeGreaterThan(0);
 
-		const entry = grid.entries.get(1);
+		const entry = getLiveEntry3D(grid, 1);
 		expect(entry).toBeDefined();
 		expect(entry!.entityId).toBe(1);
 		expect(entry!.x).toBe(50);
@@ -80,12 +82,12 @@ describe('Spatial Hash Grid 3D — Data Structure', () => {
 		insertEntity3D(grid, 1, 50, 50, 50, 10, 10, 10);
 		insertEntity3D(grid, 2, 200, 200, 200, 10, 10, 10);
 
-		expect(grid.entries.size).toBe(2);
+		expect(liveEntryCount3D(grid)).toBe(2);
 		expect(grid.cells.size).toBeGreaterThan(0);
 
 		clearGrid3D(grid);
 
-		expect(grid.entries.size).toBe(0);
+		expect(liveEntryCount3D(grid)).toBe(0);
 		for (const bucket of grid.cells.values()) {
 			expect(bucket.length).toBe(0);
 		}
@@ -98,13 +100,13 @@ describe('Spatial Hash Grid 3D — Data Structure', () => {
 	test('clearGrid3D + rebuild reuses SpatialEntry3D objects in place for persistent ids', () => {
 		const grid = createGrid3D(64);
 		insertEntity3D(grid, 1, 50, 50, 50, 10, 10, 10);
-		const originalEntry = grid.entries.get(1);
+		const originalEntry = getLiveEntry3D(grid, 1);
 		expect(originalEntry).toBeDefined();
 
 		clearGrid3D(grid);
 		insertEntity3D(grid, 1, 120, 75, 30, 10, 10, 10);
 
-		const rebuiltEntry = grid.entries.get(1);
+		const rebuiltEntry = getLiveEntry3D(grid, 1);
 		// Same object identity — fields updated in place
 		expect(rebuiltEntry).toBe(originalEntry);
 		expect(rebuiltEntry!.x).toBe(120);
@@ -121,8 +123,8 @@ describe('Spatial Hash Grid 3D — Data Structure', () => {
 		insertEntity3D(grid, 1, 55, 55, 55, 10, 10, 10);
 		// Entity 2 deliberately not re-inserted
 
-		expect(grid.entries.has(1)).toBe(true);
-		expect(grid.entries.has(2)).toBe(false);
+		expect((getLiveEntry3D(grid, 1) !== undefined)).toBe(true);
+		expect((getLiveEntry3D(grid, 2) !== undefined)).toBe(false);
 
 		const result = new Set<number>();
 		gridQueryBox3D(grid, 150, 150, 150, 250, 250, 250, result);
@@ -261,7 +263,7 @@ describe('Spatial Index 3D Plugin — Integration', () => {
 		ecs.update(1 / 60);
 
 		const si = ecs.getResource('spatialIndex3D') as SpatialIndex3D;
-		expect(si.grid.entries.size).toBe(2);
+		expect(liveEntryCount3D(si.grid)).toBe(2);
 	});
 
 	test('rebuild populates grid from entities with sphere colliders', () => {
@@ -275,7 +277,7 @@ describe('Spatial Index 3D Plugin — Integration', () => {
 		ecs.update(1 / 60);
 
 		const si = ecs.getResource('spatialIndex3D') as SpatialIndex3D;
-		expect(si.grid.entries.size).toBe(1);
+		expect(liveEntryCount3D(si.grid)).toBe(1);
 	});
 
 	test('entities without colliders are not inserted', () => {
@@ -294,7 +296,7 @@ describe('Spatial Index 3D Plugin — Integration', () => {
 		ecs.update(1 / 60);
 
 		const si = ecs.getResource('spatialIndex3D') as SpatialIndex3D;
-		expect(si.grid.entries.size).toBe(1);
+		expect(liveEntryCount3D(si.grid)).toBe(1);
 	});
 
 	test('AABB3D collider stores correct half-extents', () => {
@@ -400,13 +402,13 @@ describe('Spatial Index 3D Plugin — Integration', () => {
 		ecs.update(1 / 60);
 
 		const si = ecs.getResource('spatialIndex3D') as SpatialIndex3D;
-		expect(si.grid.entries.size).toBe(1);
+		expect(liveEntryCount3D(si.grid)).toBe(1);
 
 		ecs.removeEntity(entity.id);
 		ecs.update(1 / 60); // removal buffered; entity still present in this rebuild
 		ecs.update(1 / 60); // entity gone; grid should be empty
 
-		expect(si.grid.entries.size).toBe(0);
+		expect(liveEntryCount3D(si.grid)).toBe(0);
 	});
 
 	test('custom cellSize is passed to the grid', () => {
@@ -437,7 +439,7 @@ describe('Spatial Index 3D Plugin — Integration', () => {
 		ecs.update(1 / 60);
 
 		const si = ecs.getResource('spatialIndex3D') as SpatialIndex3D;
-		expect(si.grid.entries.size).toBe(1);
+		expect(liveEntryCount3D(si.grid)).toBe(1);
 	});
 });
 

@@ -22,6 +22,7 @@ import {
 	insertEntity3D,
 	gridQueryBox3D,
 	gridQueryRadius3D,
+	getLiveEntry3D,
 } from '../../utils/spatial-hash3D';
 
 // Module-scoped reusable set to reduce GC pressure
@@ -84,7 +85,7 @@ function createSpatialIndex3DResource(grid: SpatialHashGrid3D): SpatialIndex3D {
 			gridQueryRadius3D(grid, cx, cy, cz, radius, result);
 		},
 		getEntry(entityId: number): SpatialEntry3D | undefined {
-			return grid.entries.get(entityId);
+			return getLiveEntry3D(grid, entityId);
 		},
 	};
 }
