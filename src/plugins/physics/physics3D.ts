@@ -490,6 +490,8 @@ export function createPhysics3DPlugin<L extends string = never, G extends string
 								z: localTransform3D.z,
 								layer: collisionLayer.layer,
 								collidesWith: collisionLayer.collidesWith,
+								layerBit: 0,
+								collidesWithMask: 0,
 								shape: AABB3D_SHAPE,
 								halfWidth: 0,
 								halfHeight: 0,

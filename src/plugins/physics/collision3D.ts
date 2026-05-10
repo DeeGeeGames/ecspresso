@@ -222,6 +222,8 @@ export function createCollision3DPlugin<L extends string, G extends string = 'ph
 								z: worldTransform3D.z,
 								layer: collisionLayer.layer,
 								collidesWith: collisionLayer.collidesWith,
+								layerBit: 0,
+								collidesWithMask: 0,
 								shape: AABB3D_SHAPE,
 								halfWidth: 0,
 								halfHeight: 0,

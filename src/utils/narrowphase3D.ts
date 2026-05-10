@@ -8,6 +8,7 @@
  */
 
 import type { SpatialIndex3D } from './spatial-hash3D';
+import { createLayerBitRegistry } from './layer-bit-registry';
 
 // ==================== Contact3D ====================
 
@@ -58,12 +59,28 @@ export interface BaseColliderInfo3D<L extends string = string> {
 	z: number;
 	layer: L;
 	collidesWith: readonly L[];
+	/**
+	 * Bit assigned to `layer` from the lazy layer registry. Populated by
+	 * `fillBaseColliderInfo3D`. Used together with `collidesWithMask` to
+	 * replace per-pair `Array.includes` layer checks with a single AND.
+	 */
+	layerBit: number;
+	/** OR of `getLayerBit3D` for every entry in `collidesWith`. */
+	collidesWithMask: number;
 	shape: ColliderShape3D;
 	halfWidth: number;
 	halfHeight: number;
 	halfDepth: number;
 	radius: number;
 }
+
+// ==================== Layer Bit Registry ====================
+
+// Independent from the 2D registry: 2D and 3D layer namespaces are
+// defined separately by user code, so bits should not collide.
+const _layerRegistry = createLayerBitRegistry('3D collision');
+export const getLayerBit3D = _layerRegistry.getLayerBit;
+export const getCollidesWithMask3D = _layerRegistry.getCollidesWithMask;
 
 // ==================== Collider Construction ====================
 
@@ -89,6 +106,8 @@ export function fillBaseColliderInfo3D<L extends string>(
 	info.entityId = entityId;
 	info.layer = layer;
 	info.collidesWith = collidesWith;
+	info.layerBit = getLayerBit3D(layer);
+	info.collidesWithMask = getCollidesWithMask3D(collidesWith);
 
 	if (aabb3D) {
 		info.x = x + (aabb3D.offsetX ?? 0);
@@ -376,7 +395,7 @@ function bruteForceDetect<I extends BaseColliderInfo3D, C>(
 			const b = colliders[j];
 			if (!b) continue;
 
-			if (!a.collidesWith.includes(b.layer) && !b.collidesWith.includes(a.layer)) continue;
+			if (((a.collidesWithMask & b.layerBit) | (b.collidesWithMask & a.layerBit)) === 0) continue;
 
 			if (!computeContact3D(a, b, _sharedContact)) continue;
 
@@ -420,7 +439,7 @@ function broadphaseDetect<I extends BaseColliderInfo3D, C>(
 			const b = colliderMap.get(bId);
 			if (!b) continue;
 
-			if (!a.collidesWith.includes(b.layer) && !b.collidesWith.includes(a.layer)) continue;
+			if (((a.collidesWithMask & b.layerBit) | (b.collidesWithMask & a.layerBit)) === 0) continue;
 
 			if (!computeContact3D(a, b, _sharedContact)) continue;
 

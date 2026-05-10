@@ -6,6 +6,8 @@ import {
 	computeContact3D,
 	detectCollisions3D,
 	fillBaseColliderInfo3D,
+	getLayerBit3D,
+	getCollidesWithMask3D,
 	AABB3D_SHAPE,
 	SPHERE_SHAPE,
 	type Contact3D,
@@ -27,6 +29,8 @@ function makeAABB3D<L extends string>(
 ): BaseColliderInfo3D<L> {
 	return {
 		entityId, x, y, z, layer, collidesWith,
+		layerBit: getLayerBit3D(layer),
+		collidesWithMask: getCollidesWithMask3D(collidesWith),
 		shape: AABB3D_SHAPE,
 		halfWidth, halfHeight, halfDepth,
 		radius: 0,
@@ -39,6 +43,8 @@ function makeSphere<L extends string>(
 ): BaseColliderInfo3D<L> {
 	return {
 		entityId, x, y, z, layer, collidesWith,
+		layerBit: getLayerBit3D(layer),
+		collidesWithMask: getCollidesWithMask3D(collidesWith),
 		shape: SPHERE_SHAPE,
 		halfWidth: 0, halfHeight: 0, halfDepth: 0,
 		radius,
@@ -67,6 +73,7 @@ describe('fillBaseColliderInfo3D', () => {
 	function freshSlot<L extends string>(layer: L): BaseColliderInfo3D<L> {
 		return {
 			entityId: 0, x: 0, y: 0, z: 0, layer, collidesWith: [],
+			layerBit: 0, collidesWithMask: 0,
 			shape: AABB3D_SHAPE, halfWidth: 0, halfHeight: 0, halfDepth: 0, radius: 0,
 		};
 	}

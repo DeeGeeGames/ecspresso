@@ -495,6 +495,8 @@ export function createCollisionPlugin<L extends string, G extends string = 'phys
 								y: worldTransform.y,
 								layer: collisionLayer.layer,
 								collidesWith: collisionLayer.collidesWith,
+								layerBit: 0,
+								collidesWithMask: 0,
 								shape: AABB_SHAPE,
 								halfWidth: 0,
 								halfHeight: 0,

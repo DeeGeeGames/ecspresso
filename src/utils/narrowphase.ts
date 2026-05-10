@@ -7,6 +7,7 @@
  */
 
 import type { SpatialIndex } from './spatial-hash';
+import { createLayerBitRegistry } from './layer-bit-registry';
 
 // ==================== Contact ====================
 
@@ -56,11 +57,25 @@ export interface BaseColliderInfo<L extends string = string> {
 	y: number;
 	layer: L;
 	collidesWith: readonly L[];
+	/**
+	 * Bit assigned to `layer` from the lazy layer registry. Populated by
+	 * `fillBaseColliderInfo`. Used together with `collidesWithMask` to
+	 * replace per-pair `Array.includes` layer checks with a single AND.
+	 */
+	layerBit: number;
+	/** OR of `getLayerBit` for every entry in `collidesWith`. */
+	collidesWithMask: number;
 	shape: ColliderShape;
 	halfWidth: number;
 	halfHeight: number;
 	radius: number;
 }
+
+// ==================== Layer Bit Registry ====================
+
+const _layerRegistry = createLayerBitRegistry('Collision');
+export const getLayerBit = _layerRegistry.getLayerBit;
+export const getCollidesWithMask = _layerRegistry.getCollidesWithMask;
 
 // ==================== Collider Construction ====================
 
@@ -87,6 +102,8 @@ export function fillBaseColliderInfo<L extends string>(
 	info.entityId = entityId;
 	info.layer = layer;
 	info.collidesWith = collidesWith;
+	info.layerBit = getLayerBit(layer);
+	info.collidesWithMask = getCollidesWithMask(collidesWith);
 
 	if (aabb) {
 		info.x = x + (aabb.offsetX ?? 0);
@@ -328,7 +345,7 @@ function bruteForceDetect<I extends BaseColliderInfo, C>(
 			const b = colliders[j];
 			if (!b) continue;
 
-			if (!a.collidesWith.includes(b.layer) && !b.collidesWith.includes(a.layer)) continue;
+			if (((a.collidesWithMask & b.layerBit) | (b.collidesWithMask & a.layerBit)) === 0) continue;
 
 			if (!computeContact(a, b, _sharedContact)) continue;
 
@@ -371,7 +388,7 @@ function broadphaseDetect<I extends BaseColliderInfo, C>(
 			const b = colliderMap.get(bId);
 			if (!b) continue;
 
-			if (!a.collidesWith.includes(b.layer) && !b.collidesWith.includes(a.layer)) continue;
+			if (((a.collidesWithMask & b.layerBit) | (b.collidesWithMask & a.layerBit)) === 0) continue;
 
 			if (!computeContact(a, b, _sharedContact)) continue;
 

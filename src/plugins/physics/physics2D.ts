@@ -480,6 +480,8 @@ export function createPhysics2DPlugin<L extends string = never, G extends string
 								y: localTransform.y,
 								layer: collisionLayer.layer,
 								collidesWith: collisionLayer.collidesWith,
+								layerBit: 0,
+								collidesWithMask: 0,
 								shape: AABB_SHAPE,
 								halfWidth: 0,
 								halfHeight: 0,

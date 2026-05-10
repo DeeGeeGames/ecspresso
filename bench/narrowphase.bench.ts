@@ -69,6 +69,7 @@ function buildColliders(count: number, worldSize: number, radius: number): BaseC
 		const y = rng() * worldSize;
 		const info: BaseColliderInfo<'ball'> = {
 			entityId: i, x, y, layer: 'ball', collidesWith: ['ball'],
+			layerBit: 0, collidesWithMask: 0,
 			shape: AABB_SHAPE, halfWidth: 0, halfHeight: 0, radius: 0,
 		};
 		if (fillBaseColliderInfo(info, i, x, y, 'ball', ['ball'], undefined, { radius })) {

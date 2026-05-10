@@ -6,6 +6,8 @@ import {
 	computeContact,
 	detectCollisions,
 	fillBaseColliderInfo,
+	getLayerBit,
+	getCollidesWithMask,
 	AABB_SHAPE,
 	CIRCLE_SHAPE,
 	type Contact,
@@ -26,6 +28,8 @@ function makeAABB<L extends string>(
 ): BaseColliderInfo<L> {
 	return {
 		entityId, x, y, layer, collidesWith,
+		layerBit: getLayerBit(layer),
+		collidesWithMask: getCollidesWithMask(collidesWith),
 		shape: AABB_SHAPE,
 		halfWidth, halfHeight,
 		radius: 0,
@@ -38,6 +42,8 @@ function makeCircle<L extends string>(
 ): BaseColliderInfo<L> {
 	return {
 		entityId, x, y, layer, collidesWith,
+		layerBit: getLayerBit(layer),
+		collidesWithMask: getCollidesWithMask(collidesWith),
 		shape: CIRCLE_SHAPE,
 		halfWidth: 0, halfHeight: 0,
 		radius,
@@ -98,6 +104,7 @@ describe('BaseColliderInfo generic layer type', () => {
 			// @ts-expect-error — 'goblin' is not assignable to Layer
 			layer: 'goblin',
 			collidesWith: [],
+			layerBit: 0, collidesWithMask: 0,
 			shape: AABB_SHAPE,
 			halfWidth: 0, halfHeight: 0, radius: 0,
 		};
@@ -111,6 +118,7 @@ describe('fillBaseColliderInfo', () => {
 	function freshSlot<L extends string>(layer: L): BaseColliderInfo<L> {
 		return {
 			entityId: 0, x: 0, y: 0, layer, collidesWith: [],
+			layerBit: 0, collidesWithMask: 0,
 			shape: AABB_SHAPE, halfWidth: 0, halfHeight: 0, radius: 0,
 		};
 	}
