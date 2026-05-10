@@ -110,7 +110,6 @@ export function insertEntity3D(
 		existing.halfW = halfW;
 		existing.halfH = halfH;
 		existing.halfD = halfD;
-		existing._lastSeenGen = 0;
 		existing._aliveGen = gen;
 		entry = existing;
 	} else {

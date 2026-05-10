@@ -104,7 +104,6 @@ export function insertEntity(
 		existing.y = y;
 		existing.halfW = halfW;
 		existing.halfH = halfH;
-		existing._lastSeenGen = 0;
 		existing._aliveGen = gen;
 		entry = existing;
 	} else {
