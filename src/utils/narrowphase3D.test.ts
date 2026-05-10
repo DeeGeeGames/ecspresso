@@ -53,8 +53,8 @@ function stubSpatialIndex3D(grid: SpatialHashGrid3D): SpatialIndex3D {
 	return {
 		grid,
 		queryBox: () => [],
-		queryBoxInto: (minX, minY, minZ, maxX, maxY, maxZ, result) =>
-			gridQueryBox3D(grid, minX, minY, minZ, maxX, maxY, maxZ, result),
+		queryBoxInto: (minX, minY, minZ, maxX, maxY, maxZ, result, minId) =>
+			gridQueryBox3D(grid, minX, minY, minZ, maxX, maxY, maxZ, result, minId),
 		queryRadius: () => [],
 		queryRadiusInto: () => {},
 		getEntry: (id) => grid.entries.get(id),

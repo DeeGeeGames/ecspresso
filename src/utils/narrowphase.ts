@@ -364,16 +364,10 @@ function broadphaseDetect<I extends BaseColliderInfo, C>(
 			a.x - aHalfW, a.y - aHalfH,
 			a.x + aHalfW, a.y + aHalfH,
 			_broadphaseCandidates,
+			a.entityId,
 		);
 
-		// TODO(perf): mirrors narrowphase3D — dense grids add every candidate
-		// (including `a` itself and lower-ID entities) to the set before the
-		// filter below discards ~half of them. Emitting only pairs with larger
-		// IDs at query time would remove the post-hoc filter. Keep in sync with
-		// whatever fix lands in narrowphase3D.
 		for (const bId of _broadphaseCandidates) {
-			if (bId <= a.entityId) continue;
-
 			const b = colliderMap.get(bId);
 			if (!b) continue;
 

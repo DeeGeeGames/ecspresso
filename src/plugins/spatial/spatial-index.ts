@@ -42,8 +42,8 @@ function createSpatialIndexResource(grid: SpatialHashGrid): SpatialIndex {
 			gridQueryRect(grid, minX, minY, maxX, maxY, _reusableQuerySet);
 			return Array.from(_reusableQuerySet);
 		},
-		queryRectInto(minX: number, minY: number, maxX: number, maxY: number, result: Set<number>): void {
-			gridQueryRect(grid, minX, minY, maxX, maxY, result);
+		queryRectInto(minX: number, minY: number, maxX: number, maxY: number, result: Set<number>, minId?: number): void {
+			gridQueryRect(grid, minX, minY, maxX, maxY, result, minId);
 		},
 		queryRadius(cx: number, cy: number, radius: number): number[] {
 			_reusableQuerySet.clear();

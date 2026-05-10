@@ -72,8 +72,8 @@ function createSpatialIndex3DResource(grid: SpatialHashGrid3D): SpatialIndex3D {
 			gridQueryBox3D(grid, minX, minY, minZ, maxX, maxY, maxZ, _reusableQuerySet);
 			return Array.from(_reusableQuerySet);
 		},
-		queryBoxInto(minX: number, minY: number, minZ: number, maxX: number, maxY: number, maxZ: number, result: Set<number>): void {
-			gridQueryBox3D(grid, minX, minY, minZ, maxX, maxY, maxZ, result);
+		queryBoxInto(minX: number, minY: number, minZ: number, maxX: number, maxY: number, maxZ: number, result: Set<number>, minId?: number): void {
+			gridQueryBox3D(grid, minX, minY, minZ, maxX, maxY, maxZ, result, minId);
 		},
 		queryRadius(cx: number, cy: number, cz: number, radius: number): number[] {
 			_reusableQuerySet.clear();

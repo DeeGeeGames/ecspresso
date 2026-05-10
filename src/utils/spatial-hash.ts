@@ -114,6 +114,11 @@ export function insertEntity(
 
 /**
  * Collect entity IDs from all cells overlapping the given rectangle.
+ *
+ * When `minId` is provided, only entries with `entityId > minId` are added.
+ * This is used by symmetric broadphase pair generation to avoid emitting
+ * (a, b) pairs where `b.id <= a.id`, removing the need for a post-hoc filter
+ * and halving Set churn in dense scenes.
  */
 export function gridQueryRect(
 	grid: SpatialHashGrid,
@@ -122,6 +127,7 @@ export function gridQueryRect(
 	maxX: number,
 	maxY: number,
 	result: Set<number>,
+	minId: number = -1,
 ): void {
 	const inv = grid.invCellSize;
 	const minCX = Math.floor(minX * inv);
@@ -135,7 +141,7 @@ export function gridQueryRect(
 			if (!bucket) continue;
 			for (let i = 0; i < bucket.length; i++) {
 				const entry = bucket[i];
-				if (entry !== undefined) result.add(entry);
+				if (entry !== undefined && entry > minId) result.add(entry);
 			}
 		}
 	}
@@ -187,7 +193,7 @@ export function gridQueryRadius(
 export interface SpatialIndex {
 	readonly grid: SpatialHashGrid;
 	queryRect(minX: number, minY: number, maxX: number, maxY: number): number[];
-	queryRectInto(minX: number, minY: number, maxX: number, maxY: number, result: Set<number>): void;
+	queryRectInto(minX: number, minY: number, maxX: number, maxY: number, result: Set<number>, minId?: number): void;
 	queryRadius(cx: number, cy: number, radius: number): number[];
 	queryRadiusInto(cx: number, cy: number, radius: number, result: Set<number>): void;
 	getEntry(entityId: number): SpatialEntry | undefined;

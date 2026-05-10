@@ -544,7 +544,7 @@ describe('detectCollisions', () => {
 		const index: SpatialIndex = {
 			grid,
 			queryRect: () => [],
-			queryRectInto: (minX, minY, maxX, maxY, result) => gridQueryRect(grid, minX, minY, maxX, maxY, result),
+			queryRectInto: (minX, minY, maxX, maxY, result, minId) => gridQueryRect(grid, minX, minY, maxX, maxY, result, minId),
 			queryRadius: () => [],
 			queryRadiusInto: () => {},
 			getEntry: (id) => grid.entries.get(id),

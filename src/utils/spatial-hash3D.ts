@@ -124,6 +124,11 @@ export function insertEntity3D(
 
 /**
  * Collect entity IDs from all cells overlapping the given 3D box.
+ *
+ * When `minId` is provided, only entries with `entityId > minId` are added.
+ * This is used by symmetric broadphase pair generation to avoid emitting
+ * (a, b) pairs where `b.id <= a.id`, removing the need for a post-hoc filter
+ * and halving Set churn in dense scenes.
  */
 export function gridQueryBox3D(
 	grid: SpatialHashGrid3D,
@@ -134,6 +139,7 @@ export function gridQueryBox3D(
 	maxY: number,
 	maxZ: number,
 	result: Set<number>,
+	minId: number = -1,
 ): void {
 	const inv = grid.invCellSize;
 	const minCX = Math.floor(minX * inv);
@@ -148,7 +154,9 @@ export function gridQueryBox3D(
 			for (let cz = minCZ; cz <= maxCZ; cz++) {
 				const bucket = grid.cells.get(hashCell3D(cx, cy, cz));
 				if (!bucket) continue;
-				for (const id of bucket) result.add(id);
+				for (const id of bucket) {
+					if (id > minId) result.add(id);
+				}
 			}
 		}
 	}
@@ -210,7 +218,7 @@ export function gridQueryRadius3D(
 export interface SpatialIndex3D {
 	readonly grid: SpatialHashGrid3D;
 	queryBox(minX: number, minY: number, minZ: number, maxX: number, maxY: number, maxZ: number): number[];
-	queryBoxInto(minX: number, minY: number, minZ: number, maxX: number, maxY: number, maxZ: number, result: Set<number>): void;
+	queryBoxInto(minX: number, minY: number, minZ: number, maxX: number, maxY: number, maxZ: number, result: Set<number>, minId?: number): void;
 	queryRadius(cx: number, cy: number, cz: number, radius: number): number[];
 	queryRadiusInto(cx: number, cy: number, cz: number, radius: number, result: Set<number>): void;
 	getEntry(entityId: number): SpatialEntry3D | undefined;
