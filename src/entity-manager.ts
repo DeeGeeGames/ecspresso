@@ -372,18 +372,14 @@ class EntityManager<ComponentTypes> {
 		if (members.size === 0) return output;
 
 		if (hasChangedFilter) {
-			for (const id of members) {
-				if (!hasChangedComponent(this.changeSeqs.get(id), changed, changeThreshold)) continue;
-				const entity = this.entities.get(id);
-				if (!entity) continue;
+			for (const entity of members.values()) {
+				if (!hasChangedComponent(this.changeSeqs.get(entity.id), changed, changeThreshold)) continue;
 				output.push(entity as unknown as ResultEntry);
 			}
 			return output;
 		}
 
-		for (const id of members) {
-			const entity = this.entities.get(id);
-			if (!entity) continue;
+		for (const entity of members.values()) {
 			output.push(entity as unknown as ResultEntry);
 		}
 

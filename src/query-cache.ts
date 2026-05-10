@@ -15,7 +15,7 @@ interface CacheEntry<ComponentTypes> {
 	with: ReadonlyArray<keyof ComponentTypes>;
 	without: ReadonlyArray<keyof ComponentTypes>;
 	parentHas: ReadonlyArray<keyof ComponentTypes>;
-	members: Set<number>;
+	members: Map<number, Entity<ComponentTypes>>;
 }
 
 function makeKey(
@@ -30,8 +30,8 @@ function makeKey(
 }
 
 /**
- * Maintains incrementally-updated Sets of entity IDs matching the static
- * portion of registered query shapes (with / without / parentHas).
+ * Maintains incrementally-updated Maps of entity id → Entity matching the
+ * static portion of registered query shapes (with / without / parentHas).
  * EntityManager calls the on* hooks on component add/remove, entity
  * removal, and parent change. The `changed` filter is applied as a
  * post-pass by the caller, since its threshold advances each tick.
@@ -47,16 +47,16 @@ export default class QueryCache<ComponentTypes> {
 	}
 
 	/**
-	 * Returns the Set of entity IDs matching the (with, without, parentHas)
-	 * shape. Caches are interned by canonical shape — identical shapes share
-	 * a single Set across systems. Cold-start populates by iterating the
-	 * smallest matching component index.
+	 * Returns the Map of entity id → Entity matching the (with, without,
+	 * parentHas) shape. Caches are interned by canonical shape — identical
+	 * shapes share a single Map across systems. Cold-start populates by
+	 * iterating the smallest matching component index.
 	 */
 	getOrCreate(
 		withC: ReadonlyArray<keyof ComponentTypes>,
 		withoutC: ReadonlyArray<keyof ComponentTypes>,
 		parentHas: ReadonlyArray<keyof ComponentTypes>,
-	): Set<number> {
+	): Map<number, Entity<ComponentTypes>> {
 		const key = makeKey(withC, withoutC, parentHas);
 		const existing = this.caches.get(key);
 		if (existing) return existing.members;
@@ -65,7 +65,7 @@ export default class QueryCache<ComponentTypes> {
 			with: [...withC],
 			without: [...withoutC],
 			parentHas: [...parentHas],
-			members: new Set(),
+			members: new Map(),
 		};
 		this.caches.set(key, entry);
 
@@ -87,7 +87,7 @@ export default class QueryCache<ComponentTypes> {
 		const required = entry.with;
 		if (required.length === 0) {
 			for (const e of host.allEntities()) {
-				if (this.matches(e, entry)) entry.members.add(e.id);
+				if (this.matches(e, entry)) entry.members.set(e.id, e);
 			}
 			return;
 		}
@@ -106,7 +106,7 @@ export default class QueryCache<ComponentTypes> {
 		for (const id of candidates) {
 			const e = host.getEntity(id);
 			if (!e) continue;
-			if (this.matches(e, entry)) entry.members.add(id);
+			if (this.matches(e, entry)) entry.members.set(id, e);
 		}
 	}
 
@@ -121,7 +121,7 @@ export default class QueryCache<ComponentTypes> {
 			return;
 		}
 		if (this.matches(e, entry)) {
-			entry.members.add(entityId);
+			entry.members.set(entityId, e);
 		} else {
 			entry.members.delete(entityId);
 		}
