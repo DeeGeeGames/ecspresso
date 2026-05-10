@@ -25,9 +25,6 @@ import {
 	gridQueryRadius,
 } from '../../utils/spatial-hash';
 
-// Module-scoped reusable set to reduce GC pressure
-const _reusableQuerySet = new Set<number>();
-
 // ==================== Resource API ====================
 
 export interface SpatialIndexResourceTypes {
@@ -38,19 +35,19 @@ function createSpatialIndexResource(grid: SpatialHashGrid): SpatialIndex {
 	return {
 		grid,
 		queryRect(minX: number, minY: number, maxX: number, maxY: number): number[] {
-			_reusableQuerySet.clear();
-			gridQueryRect(grid, minX, minY, maxX, maxY, _reusableQuerySet);
-			return Array.from(_reusableQuerySet);
+			const out: number[] = [];
+			gridQueryRect(grid, minX, minY, maxX, maxY, out);
+			return out;
 		},
-		queryRectInto(minX: number, minY: number, maxX: number, maxY: number, result: Set<number>, minId?: number): void {
+		queryRectInto(minX: number, minY: number, maxX: number, maxY: number, result: number[], minId?: number): void {
 			gridQueryRect(grid, minX, minY, maxX, maxY, result, minId);
 		},
 		queryRadius(cx: number, cy: number, radius: number): number[] {
-			_reusableQuerySet.clear();
-			gridQueryRadius(grid, cx, cy, radius, _reusableQuerySet);
-			return Array.from(_reusableQuerySet);
+			const out: number[] = [];
+			gridQueryRadius(grid, cx, cy, radius, out);
+			return out;
 		},
-		queryRadiusInto(cx: number, cy: number, radius: number, result: Set<number>): void {
+		queryRadiusInto(cx: number, cy: number, radius: number, result: number[]): void {
 			gridQueryRadius(grid, cx, cy, radius, result);
 		},
 		getEntry(entityId: number): SpatialEntry | undefined {

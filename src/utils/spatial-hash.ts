@@ -13,15 +13,19 @@ export interface SpatialEntry {
 	y: number;
 	halfW: number;
 	halfH: number;
+	/** Generation stamp used by query functions to dedup multi-cell hits without a Set. Internal. */
+	_lastSeenGen: number;
 }
 
 export interface SpatialHashGrid {
 	cellSize: number;
 	invCellSize: number;
-	cells: Map<number, number[]>;
+	cells: Map<number, SpatialEntry[]>;
 	entries: Map<number, SpatialEntry>;
 	/** Previous-frame entries held for in-place reuse during rebuild. Internal. */
 	_entriesPrev: Map<number, SpatialEntry>;
+	/** Monotonic counter bumped on each query; entries record their last-seen gen for O(1) dedup. Internal. */
+	_queryGen: number;
 }
 
 // ==================== Pure Functions ====================
@@ -45,6 +49,7 @@ export function createGrid(cellSize: number): SpatialHashGrid {
 		cells: new Map(),
 		entries: new Map(),
 		_entriesPrev: new Map(),
+		_queryGen: 0,
 	};
 }
 
@@ -82,16 +87,19 @@ export function insertEntity(
 	halfH: number,
 ): void {
 	const recycled = grid._entriesPrev.get(entityId);
+	let entry: SpatialEntry;
 	if (recycled) {
 		grid._entriesPrev.delete(entityId);
 		recycled.x = x;
 		recycled.y = y;
 		recycled.halfW = halfW;
 		recycled.halfH = halfH;
-		grid.entries.set(entityId, recycled);
+		recycled._lastSeenGen = 0;
+		entry = recycled;
 	} else {
-		grid.entries.set(entityId, { entityId, x, y, halfW, halfH });
+		entry = { entityId, x, y, halfW, halfH, _lastSeenGen: 0 };
 	}
+	grid.entries.set(entityId, entry);
 
 	const inv = grid.invCellSize;
 	const minCX = Math.floor((x - halfW) * inv);
@@ -104,9 +112,9 @@ export function insertEntity(
 			const key = hashCell(cx, cy);
 			const bucket = grid.cells.get(key);
 			if (bucket) {
-				bucket.push(entityId);
+				bucket.push(entry);
 			} else {
-				grid.cells.set(key, [entityId]);
+				grid.cells.set(key, [entry]);
 			}
 		}
 	}
@@ -115,10 +123,12 @@ export function insertEntity(
 /**
  * Collect entity IDs from all cells overlapping the given rectangle.
  *
- * When `minId` is provided, only entries with `entityId > minId` are added.
- * This is used by symmetric broadphase pair generation to avoid emitting
- * (a, b) pairs where `b.id <= a.id`, removing the need for a post-hoc filter
- * and halving Set churn in dense scenes.
+ * Appends to `result` (caller clears/truncates first if reusing). Multi-cell
+ * entries are deduplicated via a per-grid generation stamp on each
+ * `SpatialEntry`.
+ *
+ * When `minId` is provided, only entries with `entityId > minId` are added —
+ * used for symmetric broadphase pair generation.
  */
 export function gridQueryRect(
 	grid: SpatialHashGrid,
@@ -126,7 +136,7 @@ export function gridQueryRect(
 	minY: number,
 	maxX: number,
 	maxY: number,
-	result: Set<number>,
+	result: number[],
 	minId: number = -1,
 ): void {
 	const inv = grid.invCellSize;
@@ -135,51 +145,58 @@ export function gridQueryRect(
 	const minCY = Math.floor(minY * inv);
 	const maxCY = Math.floor(maxY * inv);
 
+	const gen = ++grid._queryGen;
+
 	for (let cx = minCX; cx <= maxCX; cx++) {
 		for (let cy = minCY; cy <= maxCY; cy++) {
 			const bucket = grid.cells.get(hashCell(cx, cy));
 			if (!bucket) continue;
-			for (let i = 0; i < bucket.length; i++) {
-				const entry = bucket[i];
-				if (entry !== undefined && entry > minId) result.add(entry);
+			for (const entry of bucket) {
+				if (entry.entityId <= minId || entry._lastSeenGen === gen) continue;
+				entry._lastSeenGen = gen;
+				result.push(entry.entityId);
 			}
 		}
 	}
 }
 
-// Module-scoped reusable set to reduce GC pressure
-const _radiusCandidates = new Set<number>();
-
 /**
- * Collect entity IDs within a circle. Uses rect broadphase then
- * AABB-to-point distance filter.
+ * Collect entity IDs within a circle. AABB-to-point distance filter against
+ * the cells overlapping the circle's bounding rect. Appends to `result`.
  */
 export function gridQueryRadius(
 	grid: SpatialHashGrid,
 	cx: number,
 	cy: number,
 	radius: number,
-	result: Set<number>,
+	result: number[],
 ): void {
-	// Broadphase: rect query for bounding box of circle
-	const candidates = _radiusCandidates;
-	candidates.clear();
-	gridQueryRect(grid, cx - radius, cy - radius, cx + radius, cy + radius, candidates);
-
 	const rSq = radius * radius;
+	const inv = grid.invCellSize;
+	const minCX = Math.floor((cx - radius) * inv);
+	const maxCX = Math.floor((cx + radius) * inv);
+	const minCY = Math.floor((cy - radius) * inv);
+	const maxCY = Math.floor((cy + radius) * inv);
 
-	for (const entityId of candidates) {
-		const entry = grid.entries.get(entityId);
-		if (!entry) continue;
+	const gen = ++grid._queryGen;
 
-		// Closest point on entity AABB to query center
-		const closestX = Math.max(entry.x - entry.halfW, Math.min(cx, entry.x + entry.halfW));
-		const closestY = Math.max(entry.y - entry.halfH, Math.min(cy, entry.y + entry.halfH));
-		const dx = cx - closestX;
-		const dy = cy - closestY;
+	for (let icx = minCX; icx <= maxCX; icx++) {
+		for (let icy = minCY; icy <= maxCY; icy++) {
+			const bucket = grid.cells.get(hashCell(icx, icy));
+			if (!bucket) continue;
+			for (const entry of bucket) {
+				if (entry._lastSeenGen === gen) continue;
+				entry._lastSeenGen = gen;
 
-		if (dx * dx + dy * dy <= rSq) {
-			result.add(entityId);
+				const closestX = Math.max(entry.x - entry.halfW, Math.min(cx, entry.x + entry.halfW));
+				const closestY = Math.max(entry.y - entry.halfH, Math.min(cy, entry.y + entry.halfH));
+				const dx = cx - closestX;
+				const dy = cy - closestY;
+
+				if (dx * dx + dy * dy <= rSq) {
+					result.push(entry.entityId);
+				}
+			}
 		}
 	}
 }
@@ -193,8 +210,8 @@ export function gridQueryRadius(
 export interface SpatialIndex {
 	readonly grid: SpatialHashGrid;
 	queryRect(minX: number, minY: number, maxX: number, maxY: number): number[];
-	queryRectInto(minX: number, minY: number, maxX: number, maxY: number, result: Set<number>, minId?: number): void;
+	queryRectInto(minX: number, minY: number, maxX: number, maxY: number, result: number[], minId?: number): void;
 	queryRadius(cx: number, cy: number, radius: number): number[];
-	queryRadiusInto(cx: number, cy: number, radius: number, result: Set<number>): void;
+	queryRadiusInto(cx: number, cy: number, radius: number, result: number[]): void;
 	getEntry(entityId: number): SpatialEntry | undefined;
 }

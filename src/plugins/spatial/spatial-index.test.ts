@@ -76,8 +76,8 @@ describe('Spatial Hash Grid — Data Structure', () => {
 
 		// Count how many cells reference entity 1
 		let cellCount = 0;
-		for (const entities of grid.cells.values()) {
-			if (entities.includes(1)) cellCount++;
+		for (const entries of grid.cells.values()) {
+			if (entries.some(e => e.entityId === 1)) cellCount++;
 		}
 		expect(cellCount).toBe(4);
 	});
@@ -99,9 +99,9 @@ describe('Spatial Hash Grid — Data Structure', () => {
 		}
 
 		// Post-clear queries return nothing
-		const result = new Set<number>();
+		const result: number[] = [];
 		gridQueryRect(grid, 0, 0, 500, 500, result);
-		expect(result.size).toBe(0);
+		expect(result.length).toBe(0);
 	});
 
 	test('clearGrid + rebuild reuses SpatialEntry objects in place for persistent ids', () => {
@@ -132,9 +132,9 @@ describe('Spatial Hash Grid — Data Structure', () => {
 		expect(grid.entries.has(1)).toBe(true);
 		expect(grid.entries.has(2)).toBe(false);
 
-		const result = new Set<number>();
+		const result: number[] = [];
 		gridQueryRect(grid, 150, 150, 250, 250, result);
-		expect(result.has(2)).toBe(false);
+		expect(result.includes(2)).toBe(false);
 	});
 });
 
@@ -154,40 +154,40 @@ describe('Spatial Hash Grid — Queries', () => {
 
 	test('gridQueryRect returns entities overlapping the rectangle', () => {
 		const grid = buildTestGrid();
-		const result = new Set<number>();
+		const result: number[] = [];
 		gridQueryRect(grid, 0, 0, 100, 50, result);
 
-		expect(result.has(1)).toBe(true);
-		expect(result.has(2)).toBe(true);
+		expect(result.includes(1)).toBe(true);
+		expect(result.includes(2)).toBe(true);
 	});
 
 	test('gridQueryRect excludes entities outside the rectangle', () => {
 		const grid = buildTestGrid();
-		const result = new Set<number>();
+		const result: number[] = [];
 		gridQueryRect(grid, 0, 0, 100, 50, result);
 
-		expect(result.has(3)).toBe(false);
+		expect(result.includes(3)).toBe(false);
 	});
 
 	test('gridQueryRect with tight bounds only returns matching entities', () => {
 		const grid = buildTestGrid();
-		const result = new Set<number>();
+		const result: number[] = [];
 		// Only query area around entity 1
 		gridQueryRect(grid, 0, 0, 40, 40, result);
 
-		expect(result.has(1)).toBe(true);
-		expect(result.has(2)).toBe(false);
-		expect(result.has(3)).toBe(false);
+		expect(result.includes(1)).toBe(true);
+		expect(result.includes(2)).toBe(false);
+		expect(result.includes(3)).toBe(false);
 	});
 
 	test('gridQueryRadius returns entities within the circle', () => {
 		const grid = buildTestGrid();
-		const result = new Set<number>();
+		const result: number[] = [];
 		// Center at (25, 25) with radius 60 — should reach entity 2 at (75,25), dist=50
 		gridQueryRadius(grid, 25, 25, 60, result);
 
-		expect(result.has(1)).toBe(true);
-		expect(result.has(2)).toBe(true);
+		expect(result.includes(1)).toBe(true);
+		expect(result.includes(2)).toBe(true);
 	});
 
 	test('gridQueryRadius excludes entities outside circle but inside bounding square', () => {
@@ -203,35 +203,35 @@ describe('Spatial Hash Grid — Queries', () => {
 		insertEntity(grid, 3, 140, 140, 5, 5);
 		// distance from (50,50) to (140,140) = sqrt(90^2+90^2) ≈ 127.28 > 100
 
-		const result = new Set<number>();
+		const result: number[] = [];
 		gridQueryRadius(grid, 50, 50, 100, result);
 
-		expect(result.has(1)).toBe(true);
-		expect(result.has(2)).toBe(true);
-		expect(result.has(3)).toBe(false);
+		expect(result.includes(1)).toBe(true);
+		expect(result.includes(2)).toBe(true);
+		expect(result.includes(3)).toBe(false);
 	});
 
 	test('queries work correctly after clear + rebuild', () => {
 		const grid = createGrid(50);
 		insertEntity(grid, 1, 25, 25, 10, 10);
 
-		const result1 = new Set<number>();
+		const result1: number[] = [];
 		gridQueryRect(grid, 0, 0, 50, 50, result1);
-		expect(result1.has(1)).toBe(true);
+		expect(result1.includes(1)).toBe(true);
 
 		clearGrid(grid);
 
 		// Entity 1 is gone
-		const result2 = new Set<number>();
+		const result2: number[] = [];
 		gridQueryRect(grid, 0, 0, 50, 50, result2);
-		expect(result2.has(1)).toBe(false);
+		expect(result2.includes(1)).toBe(false);
 
 		// Re-insert at different position
 		insertEntity(grid, 2, 300, 300, 10, 10);
 
-		const result3 = new Set<number>();
+		const result3: number[] = [];
 		gridQueryRect(grid, 280, 280, 320, 320, result3);
-		expect(result3.has(2)).toBe(true);
+		expect(result3.includes(2)).toBe(true);
 	});
 });
 

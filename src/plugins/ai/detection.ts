@@ -182,8 +182,7 @@ export function createDetectionPlugin<G extends string = 'ai'>(
 	// Per-detector tracking of previous frame's detected set for event diffing
 	const previousSets = new Map<number, Set<number>>();
 	const currentSet = new Set<number>();
-	// Reusable set for spatial index queries (avoids allocation per frame)
-	const candidateSet = new Set<number>();
+	const candidateBuf: number[] = [];
 	// Cache: layerFilter array → Set for O(1) lookups
 	const layerFilterCache = new WeakMap<readonly string[], Set<string>>();
 
@@ -216,8 +215,8 @@ export function createDetectionPlugin<G extends string = 'ai'>(
 					for (const entity of queries.detectors) {
 						const { detector, worldTransform } = entity.components;
 
-						candidateSet.clear();
-						spatialIndex.queryRadiusInto(worldTransform.x, worldTransform.y, detector.range, candidateSet);
+						candidateBuf.length = 0;
+						spatialIndex.queryRadiusInto(worldTransform.x, worldTransform.y, detector.range, candidateBuf);
 
 						// Build sorted results, filtering by layer and excluding self
 						const entries: DetectedEntry[] = [];
@@ -228,7 +227,7 @@ export function createDetectionPlugin<G extends string = 'ai'>(
 							layerFilterCache.set(detector.layerFilter, filterSet);
 						}
 
-						for (const candidateId of candidateSet) {
+						for (const candidateId of candidateBuf) {
 							if (candidateId === entity.id) continue;
 							if (!ecs.getEntity(candidateId)) continue;
 

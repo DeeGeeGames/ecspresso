@@ -97,12 +97,12 @@ function buildSpatialIndex(cellSize: number): { grid: SpatialHashGrid; index: Sp
 	const index: SpatialIndex = {
 		grid,
 		queryRect(minX, minY, maxX, maxY) {
-			const out = new Set<number>();
+			const out: number[] = [];
 			gridQueryRect(grid, minX, minY, maxX, maxY, out);
-			return Array.from(out);
+			return out;
 		},
-		queryRectInto(minX, minY, maxX, maxY, result) {
-			gridQueryRect(grid, minX, minY, maxX, maxY, result);
+		queryRectInto(minX, minY, maxX, maxY, result, minId) {
+			gridQueryRect(grid, minX, minY, maxX, maxY, result, minId);
 		},
 		queryRadius() { return []; },
 		queryRadiusInto() {},

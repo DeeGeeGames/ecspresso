@@ -107,8 +107,7 @@ export function createFlockingAgent(
 
 // ==================== Plugin Factory ====================
 
-// Module-scoped reusable set to reduce GC pressure in neighbor queries
-const _neighborSet = new Set<number>();
+const _neighborBuf: number[] = [];
 
 const SPEED_EPSILON = 0.01;
 
@@ -168,8 +167,8 @@ export function createFlockingPlugin<G extends string = 'ai'>(
 						const { perceptionRadius, separationWeight, alignmentWeight, cohesionWeight, maxForce, flockGroup } = flockingAgent;
 
 						// Query neighbors via spatial index
-						_neighborSet.clear();
-						spatialIndex.queryRadiusInto(worldTransform.x, worldTransform.y, perceptionRadius, _neighborSet);
+						_neighborBuf.length = 0;
+						spatialIndex.queryRadiusInto(worldTransform.x, worldTransform.y, perceptionRadius, _neighborBuf);
 
 						// Accumulate steering forces — all inline scalars, no allocations
 						let sepX = 0, sepY = 0, sepCount = 0;
@@ -179,7 +178,7 @@ export function createFlockingPlugin<G extends string = 'ai'>(
 						const separationRadius = perceptionRadius * 0.5;
 						const separationRadiusSq = separationRadius * separationRadius;
 
-						for (const neighborId of _neighborSet) {
+						for (const neighborId of _neighborBuf) {
 							if (neighborId === entity.id) continue;
 
 							const neighborAgent = ecs.getComponent(neighborId, 'flockingAgent');

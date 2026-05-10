@@ -285,8 +285,7 @@ export function computeContact(a: BaseColliderInfo, b: BaseColliderInfo, out: Co
 
 // ==================== Collision Iteration ====================
 
-/** Module-level reusable set for broadphase candidates. */
-const _broadphaseCandidates = new Set<number>();
+const _broadphaseCandidates: number[] = [];
 
 let _bruteForceWarned = false;
 const BRUTE_FORCE_WARN_THRESHOLD = 50;
@@ -376,7 +375,7 @@ function broadphaseDetect<I extends BaseColliderInfo, C>(
 		const aHalfW = a.shape === AABB_SHAPE ? a.halfWidth : a.radius;
 		const aHalfH = a.shape === AABB_SHAPE ? a.halfHeight : a.radius;
 
-		_broadphaseCandidates.clear();
+		_broadphaseCandidates.length = 0;
 		spatialIndex.queryRectInto(
 			a.x - aHalfW, a.y - aHalfH,
 			a.x + aHalfW, a.y + aHalfH,
