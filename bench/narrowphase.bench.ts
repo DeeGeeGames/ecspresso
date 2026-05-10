@@ -31,9 +31,11 @@ import {
 	clearGrid,
 	insertEntity,
 	gridQueryRect,
+	getLiveEntry,
 	type SpatialHashGrid,
 } from '../src/utils/spatial-hash';
 import type { SpatialIndex } from '../src/utils/spatial-hash';
+import { mulberry32, printRow } from './bench-utils';
 
 // -- CLI --
 
@@ -80,17 +82,6 @@ function buildColliders(count: number, worldSize: number, radius: number): BaseC
 	return colliders;
 }
 
-function mulberry32(seed: number): () => number {
-	let s = seed >>> 0;
-	return function(): number {
-		s = (s + 0x6D2B79F5) >>> 0;
-		let t = s;
-		t = Math.imul(t ^ (t >>> 15), t | 1);
-		t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-		return (((t ^ (t >>> 14)) >>> 0) / 4294967296);
-	};
-}
-
 // -- Spatial index construction --
 
 function buildSpatialIndex(cellSize: number): { grid: SpatialHashGrid; index: SpatialIndex } {
@@ -107,7 +98,7 @@ function buildSpatialIndex(cellSize: number): { grid: SpatialHashGrid; index: Sp
 		},
 		queryRadius() { return []; },
 		queryRadiusInto() {},
-		getEntry(id) { return grid.entries.get(id); },
+		getEntry(id) { return getLiveEntry(grid, id); },
 	};
 	return { grid, index };
 }
@@ -208,11 +199,6 @@ function main() {
 		console.log(`  → broadphase is ${speedup.toFixed(1)}× faster at N=${count}`);
 		console.log();
 	}
-}
-
-function printRow(cells: string[], widths: number[]): void {
-	const row = cells.map((c, i) => c.padStart(widths[i] ?? 8)).join('  ');
-	console.log('  ' + row);
 }
 
 main();

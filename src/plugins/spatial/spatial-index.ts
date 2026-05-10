@@ -23,6 +23,7 @@ import {
 	insertEntity,
 	gridQueryRect,
 	gridQueryRadius,
+	getLiveEntry,
 } from '../../utils/spatial-hash';
 
 // ==================== Resource API ====================
@@ -51,7 +52,7 @@ function createSpatialIndexResource(grid: SpatialHashGrid): SpatialIndex {
 			gridQueryRadius(grid, cx, cy, radius, result);
 		},
 		getEntry(entityId: number): SpatialEntry | undefined {
-			return grid.entries.get(entityId);
+			return getLiveEntry(grid, entityId);
 		},
 	};
 }

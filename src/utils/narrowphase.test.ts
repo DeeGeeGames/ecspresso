@@ -18,6 +18,7 @@ import {
 	createGrid,
 	insertEntity,
 	gridQueryRect,
+	getLiveEntry,
 	type SpatialIndex,
 } from './spatial-hash';
 
@@ -557,7 +558,7 @@ describe('detectCollisions', () => {
 			queryRectInto: (minX, minY, maxX, maxY, result, minId) => gridQueryRect(grid, minX, minY, maxX, maxY, result, minId),
 			queryRadius: () => [],
 			queryRadiusInto: () => {},
-			getEntry: (id) => grid.entries.get(id),
+			getEntry: (id) => getLiveEntry(grid, id),
 		};
 		const scratch = createBroadphaseScratch<BaseColliderInfo>();
 

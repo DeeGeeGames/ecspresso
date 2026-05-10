@@ -7,6 +7,8 @@ import {
 	hashCell,
 	gridQueryRect,
 	gridQueryRadius,
+	getLiveEntry,
+	liveEntryCount,
 	type SpatialHashGrid,
 	type SpatialIndex,
 } from '../../utils/spatial-hash';
@@ -50,18 +52,18 @@ describe('Spatial Hash Grid — Data Structure', () => {
 		expect(grid.cellSize).toBe(64);
 		expect(grid.invCellSize).toBeCloseTo(1 / 64, 10);
 		expect(grid.cells.size).toBe(0);
-		expect(grid.entries.size).toBe(0);
+		expect(liveEntryCount(grid)).toBe(0);
 	});
 
 	test('insertEntity places entity in correct cell', () => {
 		const grid = createGrid(100);
 		insertEntity(grid, 1, 50, 50, 10, 10);
-		expect(grid.entries.has(1)).toBe(true);
+		expect(getLiveEntry(grid, 1)).toBeDefined();
 		expect(grid.cells.size).toBeGreaterThan(0);
 
 		// Entity at (50,50) with halfW=10, halfH=10 spans [40,60]x[40,60]
 		// At cellSize=100, all corners map to cell (0,0)
-		const entry = grid.entries.get(1);
+		const entry = getLiveEntry(grid, 1);
 		expect(entry).toBeDefined();
 		expect(entry!.entityId).toBe(1);
 		expect(entry!.x).toBe(50);
@@ -87,12 +89,12 @@ describe('Spatial Hash Grid — Data Structure', () => {
 		insertEntity(grid, 1, 50, 50, 10, 10);
 		insertEntity(grid, 2, 200, 200, 10, 10);
 
-		expect(grid.entries.size).toBe(2);
+		expect(liveEntryCount(grid)).toBe(2);
 		expect(grid.cells.size).toBeGreaterThan(0);
 
 		clearGrid(grid);
 
-		expect(grid.entries.size).toBe(0);
+		expect(liveEntryCount(grid)).toBe(0);
 		// Cell keys are retained for bucket reuse, but every bucket must be empty
 		for (const bucket of grid.cells.values()) {
 			expect(bucket.length).toBe(0);
@@ -107,13 +109,13 @@ describe('Spatial Hash Grid — Data Structure', () => {
 	test('clearGrid + rebuild reuses SpatialEntry objects in place for persistent ids', () => {
 		const grid = createGrid(64);
 		insertEntity(grid, 1, 50, 50, 10, 10);
-		const originalEntry = grid.entries.get(1);
+		const originalEntry = getLiveEntry(grid, 1);
 		expect(originalEntry).toBeDefined();
 
 		clearGrid(grid);
 		insertEntity(grid, 1, 120, 75, 10, 10);
 
-		const rebuiltEntry = grid.entries.get(1);
+		const rebuiltEntry = getLiveEntry(grid, 1);
 		// Same object identity — fields updated in place
 		expect(rebuiltEntry).toBe(originalEntry);
 		expect(rebuiltEntry!.x).toBe(120);
@@ -129,8 +131,8 @@ describe('Spatial Hash Grid — Data Structure', () => {
 		insertEntity(grid, 1, 55, 55, 10, 10);
 		// Entity 2 deliberately not re-inserted
 
-		expect(grid.entries.has(1)).toBe(true);
-		expect(grid.entries.has(2)).toBe(false);
+		expect(getLiveEntry(grid, 1)).toBeDefined();
+		expect(getLiveEntry(grid, 2)).toBeUndefined();
 
 		const result: number[] = [];
 		gridQueryRect(grid, 150, 150, 250, 250, result);
@@ -277,7 +279,7 @@ describe('Spatial Index Plugin — Integration', () => {
 
 		const si = ecs.getResource('spatialIndex') as SpatialIndex;
 		// Both entities should be in the grid
-		expect(si.grid.entries.size).toBe(2);
+		expect(liveEntryCount(si.grid)).toBe(2);
 	});
 
 	test('entities without colliders are not inserted', () => {
@@ -304,7 +306,7 @@ describe('Spatial Index Plugin — Integration', () => {
 		ecs.update(1 / 60);
 
 		const si = ecs.getResource('spatialIndex') as SpatialIndex;
-		expect(si.grid.entries.size).toBe(1);
+		expect(liveEntryCount(si.grid)).toBe(1);
 	});
 
 	test('circle collider uses radius as half-extents', () => {
@@ -398,7 +400,7 @@ describe('Spatial Index Plugin — Integration', () => {
 		ecs.update(1 / 60);
 
 		const si = ecs.getResource('spatialIndex') as SpatialIndex;
-		expect(si.grid.entries.size).toBe(1);
+		expect(liveEntryCount(si.grid)).toBe(1);
 	});
 
 	test('custom phases option limits to specified phases', () => {
@@ -420,7 +422,7 @@ describe('Spatial Index Plugin — Integration', () => {
 
 		// Grid should still be populated from postUpdate rebuild
 		const si = ecs.getResource('spatialIndex') as SpatialIndex;
-		expect(si.grid.entries.size).toBe(1);
+		expect(liveEntryCount(si.grid)).toBe(1);
 	});
 
 	test('SpatialIndex queryRect returns correct entity IDs', () => {

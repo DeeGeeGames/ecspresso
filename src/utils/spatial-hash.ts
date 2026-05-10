@@ -15,15 +15,27 @@ export interface SpatialEntry {
 	halfH: number;
 	/** Generation stamp used by query functions to dedup multi-cell hits without a Set. Internal. */
 	_lastSeenGen: number;
+	/** Rebuild generation when this entry was last inserted. Internal. */
+	_aliveGen: number;
 }
 
 export interface SpatialHashGrid {
 	cellSize: number;
 	invCellSize: number;
 	cells: Map<number, SpatialEntry[]>;
-	entries: Map<number, SpatialEntry>;
-	/** Previous-frame entries held for in-place reuse during rebuild. Internal. */
-	_entriesPrev: Map<number, SpatialEntry>;
+	/**
+	 * Dense, indexed by entityId. Holes are `undefined`. Entries from previous
+	 * rebuilds remain in place for in-place reuse (zero allocation in steady
+	 * state); liveness is determined by `entry._aliveGen === grid._aliveGen`.
+	 * Internal — read live entries via `getEntry` / `liveEntryCount` helpers.
+	 *
+	 * High-water-mark grows with max entityId ever inserted; despawned ids
+	 * leave their slot occupied by a stale entry. Acceptable when the entity
+	 * manager recycles ids or peak count is bounded.
+	 */
+	entries: (SpatialEntry | undefined)[];
+	/** Monotonic counter bumped by each `clearGrid` call. Internal. */
+	_aliveGen: number;
 	/** Monotonic counter bumped on each query; entries record their last-seen gen for O(1) dedup. Internal. */
 	_queryGen: number;
 }
@@ -47,8 +59,8 @@ export function createGrid(cellSize: number): SpatialHashGrid {
 		cellSize,
 		invCellSize: 1 / cellSize,
 		cells: new Map(),
-		entries: new Map(),
-		_entriesPrev: new Map(),
+		entries: [],
+		_aliveGen: 0,
 		_queryGen: 0,
 	};
 }
@@ -56,19 +68,17 @@ export function createGrid(cellSize: number): SpatialHashGrid {
 /**
  * Prepare the grid for a rebuild.
  *
- * Swaps `entries` with `_entriesPrev` so `insertEntity` can reuse existing
- * `SpatialEntry` objects in place (steady-state rebuilds allocate zero
- * entries). Any stale entries left in `_entriesPrev` from the previous
- * rebuild are dropped here.
+ * Bumps the alive-generation counter so entries inserted prior to this call
+ * are implicitly stale (any access via `getEntry`/`liveEntryCount` filters by
+ * the current gen). Existing `SpatialEntry` objects remain in the `entries`
+ * array for in-place reuse by the next `insertEntity`, so steady-state
+ * rebuilds allocate zero entries.
  *
  * Cell buckets are cleared in place — keys are retained so subsequent
  * inserts hit the existing array rather than allocating a fresh one.
  */
 export function clearGrid(grid: SpatialHashGrid): void {
-	grid._entriesPrev.clear();
-	const tmp = grid.entries;
-	grid.entries = grid._entriesPrev;
-	grid._entriesPrev = tmp;
+	grid._aliveGen++;
 
 	for (const bucket of grid.cells.values()) {
 		bucket.length = 0;
@@ -86,20 +96,21 @@ export function insertEntity(
 	halfW: number,
 	halfH: number,
 ): void {
-	const recycled = grid._entriesPrev.get(entityId);
+	const gen = grid._aliveGen;
+	const existing = grid.entries[entityId];
 	let entry: SpatialEntry;
-	if (recycled) {
-		grid._entriesPrev.delete(entityId);
-		recycled.x = x;
-		recycled.y = y;
-		recycled.halfW = halfW;
-		recycled.halfH = halfH;
-		recycled._lastSeenGen = 0;
-		entry = recycled;
+	if (existing) {
+		existing.x = x;
+		existing.y = y;
+		existing.halfW = halfW;
+		existing.halfH = halfH;
+		existing._lastSeenGen = 0;
+		existing._aliveGen = gen;
+		entry = existing;
 	} else {
-		entry = { entityId, x, y, halfW, halfH, _lastSeenGen: 0 };
+		entry = { entityId, x, y, halfW, halfH, _lastSeenGen: 0, _aliveGen: gen };
+		grid.entries[entityId] = entry;
 	}
-	grid.entries.set(entityId, entry);
 
 	const inv = grid.invCellSize;
 	const minCX = Math.floor((x - halfW) * inv);
@@ -199,6 +210,30 @@ export function gridQueryRadius(
 			}
 		}
 	}
+}
+
+/**
+ * Get the current-generation entry for an entityId, or `undefined` if the
+ * entity isn't in the index for this rebuild. Stale entries from previous
+ * rebuilds remain in `entries` for in-place reuse but are filtered here.
+ */
+export function getLiveEntry(grid: SpatialHashGrid, entityId: number): SpatialEntry | undefined {
+	const entry = grid.entries[entityId];
+	if (!entry || entry._aliveGen !== grid._aliveGen) return undefined;
+	return entry;
+}
+
+/**
+ * Count entries inserted in the current rebuild generation. Linear scan —
+ * intended for tests and diagnostics, not hot paths.
+ */
+export function liveEntryCount(grid: SpatialHashGrid): number {
+	const gen = grid._aliveGen;
+	let n = 0;
+	for (const entry of grid.entries) {
+		if (entry && entry._aliveGen === gen) n++;
+	}
+	return n;
 }
 
 // ==================== Resource API ====================
