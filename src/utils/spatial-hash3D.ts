@@ -15,6 +15,8 @@ export interface SpatialEntry3D {
 	halfW: number;
 	halfH: number;
 	halfD: number;
+	/** Generation stamp used by query functions to dedup multi-cell hits without a Set. Internal. */
+	_lastSeenGen: number;
 	/** Rebuild generation when this entry was last inserted. Internal. */
 	_aliveGen: number;
 }
@@ -22,7 +24,7 @@ export interface SpatialEntry3D {
 export interface SpatialHashGrid3D {
 	cellSize: number;
 	invCellSize: number;
-	cells: Map<number, number[]>;
+	cells: Map<number, SpatialEntry3D[]>;
 	/**
 	 * Dense, indexed by entityId. Holes are `undefined`. Entries from previous
 	 * rebuilds remain in place for in-place reuse (zero allocation in steady
@@ -36,6 +38,8 @@ export interface SpatialHashGrid3D {
 	entries: (SpatialEntry3D | undefined)[];
 	/** Monotonic counter bumped by each `clearGrid3D` call. Internal. */
 	_aliveGen: number;
+	/** Monotonic counter bumped on each query; entries record their last-seen gen for O(1) dedup. Internal. */
+	_queryGen: number;
 }
 
 // ==================== Pure Functions ====================
@@ -59,6 +63,7 @@ export function createGrid3D(cellSize: number): SpatialHashGrid3D {
 		cells: new Map(),
 		entries: [],
 		_aliveGen: 0,
+		_queryGen: 0,
 	};
 }
 
@@ -97,6 +102,7 @@ export function insertEntity3D(
 ): void {
 	const gen = grid._aliveGen;
 	const existing = grid.entries[entityId];
+	let entry: SpatialEntry3D;
 	if (existing) {
 		existing.x = x;
 		existing.y = y;
@@ -104,9 +110,12 @@ export function insertEntity3D(
 		existing.halfW = halfW;
 		existing.halfH = halfH;
 		existing.halfD = halfD;
+		existing._lastSeenGen = 0;
 		existing._aliveGen = gen;
+		entry = existing;
 	} else {
-		grid.entries[entityId] = { entityId, x, y, z, halfW, halfH, halfD, _aliveGen: gen };
+		entry = { entityId, x, y, z, halfW, halfH, halfD, _lastSeenGen: 0, _aliveGen: gen };
+		grid.entries[entityId] = entry;
 	}
 
 	const inv = grid.invCellSize;
@@ -123,9 +132,9 @@ export function insertEntity3D(
 				const key = hashCell3D(cx, cy, cz);
 				const bucket = grid.cells.get(key);
 				if (bucket) {
-					bucket.push(entityId);
+					bucket.push(entry);
 				} else {
-					grid.cells.set(key, [entityId]);
+					grid.cells.set(key, [entry]);
 				}
 			}
 		}
@@ -135,10 +144,12 @@ export function insertEntity3D(
 /**
  * Collect entity IDs from all cells overlapping the given 3D box.
  *
- * When `minId` is provided, only entries with `entityId > minId` are added.
- * This is used by symmetric broadphase pair generation to avoid emitting
- * (a, b) pairs where `b.id <= a.id`, removing the need for a post-hoc filter
- * and halving Set churn in dense scenes.
+ * Appends to `result` (caller clears/truncates first if reusing). Multi-cell
+ * entries are deduplicated via a per-grid generation stamp on each
+ * `SpatialEntry3D`.
+ *
+ * When `minId` is provided, only entries with `entityId > minId` are added —
+ * used for symmetric broadphase pair generation.
  */
 export function gridQueryBox3D(
 	grid: SpatialHashGrid3D,
@@ -148,7 +159,7 @@ export function gridQueryBox3D(
 	maxX: number,
 	maxY: number,
 	maxZ: number,
-	result: Set<number>,
+	result: number[],
 	minId: number = -1,
 ): void {
 	const inv = grid.invCellSize;
@@ -159,25 +170,26 @@ export function gridQueryBox3D(
 	const minCZ = Math.floor(minZ * inv);
 	const maxCZ = Math.floor(maxZ * inv);
 
+	const gen = ++grid._queryGen;
+
 	for (let cx = minCX; cx <= maxCX; cx++) {
 		for (let cy = minCY; cy <= maxCY; cy++) {
 			for (let cz = minCZ; cz <= maxCZ; cz++) {
 				const bucket = grid.cells.get(hashCell3D(cx, cy, cz));
 				if (!bucket) continue;
-				for (const id of bucket) {
-					if (id > minId) result.add(id);
+				for (const entry of bucket) {
+					if (entry.entityId <= minId || entry._lastSeenGen === gen) continue;
+					entry._lastSeenGen = gen;
+					result.push(entry.entityId);
 				}
 			}
 		}
 	}
 }
 
-// Module-scoped reusable set to reduce GC pressure
-const _radiusCandidates3D = new Set<number>();
-
 /**
- * Collect entity IDs within a sphere. Uses box broadphase then
- * 3D AABB-to-point distance filter.
+ * Collect entity IDs within a sphere. AABB-to-point distance filter against
+ * the cells overlapping the sphere's bounding box. Appends to `result`.
  */
 export function gridQueryRadius3D(
 	grid: SpatialHashGrid3D,
@@ -185,35 +197,40 @@ export function gridQueryRadius3D(
 	cy: number,
 	cz: number,
 	radius: number,
-	result: Set<number>,
+	result: number[],
 ): void {
-	const candidates = _radiusCandidates3D;
-	candidates.clear();
-	gridQueryBox3D(
-		grid,
-		cx - radius, cy - radius, cz - radius,
-		cx + radius, cy + radius, cz + radius,
-		candidates,
-	);
-
 	const rSq = radius * radius;
+	const inv = grid.invCellSize;
+	const minCX = Math.floor((cx - radius) * inv);
+	const maxCX = Math.floor((cx + radius) * inv);
+	const minCY = Math.floor((cy - radius) * inv);
+	const maxCY = Math.floor((cy + radius) * inv);
+	const minCZ = Math.floor((cz - radius) * inv);
+	const maxCZ = Math.floor((cz + radius) * inv);
 
-	// Candidates come from cell buckets cleared each rebuild, so every entry
-	// here was inserted this gen — no _aliveGen filter needed.
-	for (const entityId of candidates) {
-		const entry = grid.entries[entityId];
-		if (!entry) continue;
+	const gen = ++grid._queryGen;
 
-		// Closest point on entity AABB to query center
-		const closestX = Math.max(entry.x - entry.halfW, Math.min(cx, entry.x + entry.halfW));
-		const closestY = Math.max(entry.y - entry.halfH, Math.min(cy, entry.y + entry.halfH));
-		const closestZ = Math.max(entry.z - entry.halfD, Math.min(cz, entry.z + entry.halfD));
-		const dx = cx - closestX;
-		const dy = cy - closestY;
-		const dz = cz - closestZ;
+	for (let icx = minCX; icx <= maxCX; icx++) {
+		for (let icy = minCY; icy <= maxCY; icy++) {
+			for (let icz = minCZ; icz <= maxCZ; icz++) {
+				const bucket = grid.cells.get(hashCell3D(icx, icy, icz));
+				if (!bucket) continue;
+				for (const entry of bucket) {
+					if (entry._lastSeenGen === gen) continue;
+					entry._lastSeenGen = gen;
 
-		if (dx * dx + dy * dy + dz * dz <= rSq) {
-			result.add(entityId);
+					const closestX = Math.max(entry.x - entry.halfW, Math.min(cx, entry.x + entry.halfW));
+					const closestY = Math.max(entry.y - entry.halfH, Math.min(cy, entry.y + entry.halfH));
+					const closestZ = Math.max(entry.z - entry.halfD, Math.min(cz, entry.z + entry.halfD));
+					const dx = cx - closestX;
+					const dy = cy - closestY;
+					const dz = cz - closestZ;
+
+					if (dx * dx + dy * dy + dz * dz <= rSq) {
+						result.push(entry.entityId);
+					}
+				}
+			}
 		}
 	}
 }
@@ -254,8 +271,8 @@ export function liveEntryCount3D(grid: SpatialHashGrid3D): number {
 export interface SpatialIndex3D {
 	readonly grid: SpatialHashGrid3D;
 	queryBox(minX: number, minY: number, minZ: number, maxX: number, maxY: number, maxZ: number): number[];
-	queryBoxInto(minX: number, minY: number, minZ: number, maxX: number, maxY: number, maxZ: number, result: Set<number>, minId?: number): void;
+	queryBoxInto(minX: number, minY: number, minZ: number, maxX: number, maxY: number, maxZ: number, result: number[], minId?: number): void;
 	queryRadius(cx: number, cy: number, cz: number, radius: number): number[];
-	queryRadiusInto(cx: number, cy: number, cz: number, radius: number, result: Set<number>): void;
+	queryRadiusInto(cx: number, cy: number, cz: number, radius: number, result: number[]): void;
 	getEntry(entityId: number): SpatialEntry3D | undefined;
 }

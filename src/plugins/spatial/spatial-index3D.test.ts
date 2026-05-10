@@ -71,8 +71,8 @@ describe('Spatial Hash Grid 3D — Data Structure', () => {
 		insertEntity3D(grid, 1, 50, 50, 50, 30, 30, 30);
 
 		let cellCount = 0;
-		for (const entities of grid.cells.values()) {
-			if (entities.includes(1)) cellCount++;
+		for (const entries of grid.cells.values()) {
+			if (entries.some(e => e.entityId === 1)) cellCount++;
 		}
 		expect(cellCount).toBe(8);
 	});
@@ -92,9 +92,9 @@ describe('Spatial Hash Grid 3D — Data Structure', () => {
 			expect(bucket.length).toBe(0);
 		}
 
-		const result = new Set<number>();
+		const result = [] as number[];
 		gridQueryBox3D(grid, 0, 0, 0, 500, 500, 500, result);
-		expect(result.size).toBe(0);
+		expect(result.length).toBe(0);
 	});
 
 	test('clearGrid3D + rebuild reuses SpatialEntry3D objects in place for persistent ids', () => {
@@ -126,9 +126,9 @@ describe('Spatial Hash Grid 3D — Data Structure', () => {
 		expect(getLiveEntry3D(grid, 1)).toBeDefined();
 		expect(getLiveEntry3D(grid, 2)).toBeUndefined();
 
-		const result = new Set<number>();
+		const result = [] as number[];
 		gridQueryBox3D(grid, 150, 150, 150, 250, 250, 250, result);
-		expect(result.has(2)).toBe(false);
+		expect(result.includes(2)).toBe(false);
 	});
 });
 
@@ -148,39 +148,39 @@ describe('Spatial Hash Grid 3D — Queries', () => {
 
 	test('gridQueryBox3D returns entities overlapping the box', () => {
 		const grid = buildTestGrid();
-		const result = new Set<number>();
+		const result = [] as number[];
 		gridQueryBox3D(grid, 0, 0, 0, 100, 50, 50, result);
 
-		expect(result.has(1)).toBe(true);
-		expect(result.has(2)).toBe(true);
+		expect(result.includes(1)).toBe(true);
+		expect(result.includes(2)).toBe(true);
 	});
 
 	test('gridQueryBox3D excludes entities outside the box', () => {
 		const grid = buildTestGrid();
-		const result = new Set<number>();
+		const result = [] as number[];
 		gridQueryBox3D(grid, 0, 0, 0, 100, 50, 50, result);
 
-		expect(result.has(3)).toBe(false);
+		expect(result.includes(3)).toBe(false);
 	});
 
 	test('gridQueryBox3D with tight bounds only returns matching entities', () => {
 		const grid = buildTestGrid();
-		const result = new Set<number>();
+		const result = [] as number[];
 		gridQueryBox3D(grid, 0, 0, 0, 40, 40, 40, result);
 
-		expect(result.has(1)).toBe(true);
-		expect(result.has(2)).toBe(false);
-		expect(result.has(3)).toBe(false);
+		expect(result.includes(1)).toBe(true);
+		expect(result.includes(2)).toBe(false);
+		expect(result.includes(3)).toBe(false);
 	});
 
 	test('gridQueryRadius3D returns entities within the sphere', () => {
 		const grid = buildTestGrid();
-		const result = new Set<number>();
+		const result = [] as number[];
 		// Center at (25,25,25) with radius 60 — reaches entity 2 at (75,25,25), dist=50
 		gridQueryRadius3D(grid, 25, 25, 25, 60, result);
 
-		expect(result.has(1)).toBe(true);
-		expect(result.has(2)).toBe(true);
+		expect(result.includes(1)).toBe(true);
+		expect(result.includes(2)).toBe(true);
 	});
 
 	test('gridQueryRadius3D excludes entities outside the sphere', () => {
@@ -189,11 +189,11 @@ describe('Spatial Hash Grid 3D — Queries', () => {
 		// Distance from (50,50,50) to (190,50,50) = 140 — outside radius 100
 		insertEntity3D(grid, 2, 190, 50, 50, 5, 5, 5);
 
-		const result = new Set<number>();
+		const result = [] as number[];
 		gridQueryRadius3D(grid, 50, 50, 50, 100, result);
 
-		expect(result.has(1)).toBe(true);
-		expect(result.has(2)).toBe(false);
+		expect(result.includes(1)).toBe(true);
+		expect(result.includes(2)).toBe(false);
 	});
 
 	test('gridQueryRadius3D corner case: entity at exact sphere boundary is included', () => {
@@ -202,31 +202,31 @@ describe('Spatial Hash Grid 3D — Queries', () => {
 		// Closest point on AABB to (50,50,50) is (95,50,50), dist=45 < 50
 		insertEntity3D(grid, 2, 100, 50, 50, 5, 5, 5);
 
-		const result = new Set<number>();
+		const result = [] as number[];
 		gridQueryRadius3D(grid, 50, 50, 50, 50, result);
 
-		expect(result.has(2)).toBe(true);
+		expect(result.includes(2)).toBe(true);
 	});
 
 	test('queries work correctly after clear + rebuild', () => {
 		const grid = createGrid3D(50);
 		insertEntity3D(grid, 1, 25, 25, 25, 10, 10, 10);
 
-		const r1 = new Set<number>();
+		const r1 = [] as number[];
 		gridQueryBox3D(grid, 0, 0, 0, 50, 50, 50, r1);
-		expect(r1.has(1)).toBe(true);
+		expect(r1.includes(1)).toBe(true);
 
 		clearGrid3D(grid);
 
-		const r2 = new Set<number>();
+		const r2 = [] as number[];
 		gridQueryBox3D(grid, 0, 0, 0, 50, 50, 50, r2);
-		expect(r2.has(1)).toBe(false);
+		expect(r2.includes(1)).toBe(false);
 
 		insertEntity3D(grid, 2, 300, 300, 300, 10, 10, 10);
 
-		const r3 = new Set<number>();
+		const r3 = [] as number[];
 		gridQueryBox3D(grid, 280, 280, 280, 320, 320, 320, r3);
-		expect(r3.has(2)).toBe(true);
+		expect(r3.includes(2)).toBe(true);
 	});
 });
 
@@ -489,9 +489,9 @@ describe('Spatial Index 3D — Resource Query API', () => {
 		const { ecs, e1 } = buildEcsWithEntities();
 		const si = ecs.getResource('spatialIndex3D') as SpatialIndex3D;
 
-		const result = new Set<number>();
+		const result = [] as number[];
 		si.queryBoxInto(50, 50, 50, 150, 150, 150, result);
-		expect(result.has(e1.id)).toBe(true);
+		expect(result.includes(e1.id)).toBe(true);
 	});
 
 	test('queryRadius returns entity IDs within the sphere', () => {
@@ -515,9 +515,9 @@ describe('Spatial Index 3D — Resource Query API', () => {
 		const { ecs, e1 } = buildEcsWithEntities();
 		const si = ecs.getResource('spatialIndex3D') as SpatialIndex3D;
 
-		const result = new Set<number>();
+		const result = [] as number[];
 		si.queryRadiusInto(100, 100, 100, 50, result);
-		expect(result.has(e1.id)).toBe(true);
+		expect(result.includes(e1.id)).toBe(true);
 	});
 
 	test('getEntry returns the spatial entry for a known entity', () => {

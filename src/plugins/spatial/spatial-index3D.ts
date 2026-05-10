@@ -25,8 +25,6 @@ import {
 	getLiveEntry3D,
 } from '../../utils/spatial-hash3D';
 
-// Module-scoped reusable set to reduce GC pressure
-const _reusableQuerySet = new Set<number>();
 
 // ==================== Collider Component Types ====================
 
@@ -69,19 +67,19 @@ function createSpatialIndex3DResource(grid: SpatialHashGrid3D): SpatialIndex3D {
 	return {
 		grid,
 		queryBox(minX: number, minY: number, minZ: number, maxX: number, maxY: number, maxZ: number): number[] {
-			_reusableQuerySet.clear();
-			gridQueryBox3D(grid, minX, minY, minZ, maxX, maxY, maxZ, _reusableQuerySet);
-			return Array.from(_reusableQuerySet);
+			const out: number[] = [];
+			gridQueryBox3D(grid, minX, minY, minZ, maxX, maxY, maxZ, out);
+			return out;
 		},
-		queryBoxInto(minX: number, minY: number, minZ: number, maxX: number, maxY: number, maxZ: number, result: Set<number>, minId?: number): void {
+		queryBoxInto(minX: number, minY: number, minZ: number, maxX: number, maxY: number, maxZ: number, result: number[], minId?: number): void {
 			gridQueryBox3D(grid, minX, minY, minZ, maxX, maxY, maxZ, result, minId);
 		},
 		queryRadius(cx: number, cy: number, cz: number, radius: number): number[] {
-			_reusableQuerySet.clear();
-			gridQueryRadius3D(grid, cx, cy, cz, radius, _reusableQuerySet);
-			return Array.from(_reusableQuerySet);
+			const out: number[] = [];
+			gridQueryRadius3D(grid, cx, cy, cz, radius, out);
+			return out;
 		},
-		queryRadiusInto(cx: number, cy: number, cz: number, radius: number, result: Set<number>): void {
+		queryRadiusInto(cx: number, cy: number, cz: number, radius: number, result: number[]): void {
 			gridQueryRadius3D(grid, cx, cy, cz, radius, result);
 		},
 		getEntry(entityId: number): SpatialEntry3D | undefined {
