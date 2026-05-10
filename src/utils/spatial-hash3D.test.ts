@@ -29,7 +29,7 @@ describe("spatial-hash3D", () => {
 		test("includes entity fully inside query box", () => {
 			const grid = createGrid3D(10);
 			insertEntity3D(grid, 1, 5, 5, 5, 1, 1, 1);
-			const result = [] as number[];
+			const result : number[] = [];
 			gridQueryBox3D(grid, 0, 0, 0, 10, 10, 10, result);
 			expect(result.includes(1)).toBe(true);
 		});
@@ -37,7 +37,7 @@ describe("spatial-hash3D", () => {
 		test("excludes entity fully outside query box", () => {
 			const grid = createGrid3D(10);
 			insertEntity3D(grid, 1, 50, 50, 50, 1, 1, 1);
-			const result = [] as number[];
+			const result : number[] = [];
 			gridQueryBox3D(grid, 0, 0, 0, 10, 10, 10, result);
 			expect(result.includes(1)).toBe(false);
 		});
@@ -46,7 +46,7 @@ describe("spatial-hash3D", () => {
 			const grid = createGrid3D(10);
 			// Entity centered at (9, 9, 9) with half-extents 2 — spans into [0,10] box
 			insertEntity3D(grid, 1, 9, 9, 9, 2, 2, 2);
-			const result = [] as number[];
+			const result : number[] = [];
 			gridQueryBox3D(grid, 0, 0, 0, 8, 8, 8, result);
 			expect(result.includes(1)).toBe(true);
 		});
@@ -56,7 +56,7 @@ describe("spatial-hash3D", () => {
 			insertEntity3D(grid, 1, 5, 5, 5, 1, 1, 1);
 			insertEntity3D(grid, 2, 6, 6, 6, 1, 1, 1);
 			insertEntity3D(grid, 3, 50, 50, 50, 1, 1, 1);
-			const result = [] as number[];
+			const result : number[] = [];
 			gridQueryBox3D(grid, 0, 0, 0, 10, 10, 10, result);
 			expect(result.includes(1)).toBe(true);
 			expect(result.includes(2)).toBe(true);
@@ -68,7 +68,7 @@ describe("spatial-hash3D", () => {
 		test("includes entity within radius", () => {
 			const grid = createGrid3D(10);
 			insertEntity3D(grid, 1, 5, 5, 5, 1, 1, 1);
-			const result = [] as number[];
+			const result : number[] = [];
 			gridQueryRadius3D(grid, 5, 5, 5, 10, result);
 			expect(result.includes(1)).toBe(true);
 		});
@@ -76,7 +76,7 @@ describe("spatial-hash3D", () => {
 		test("excludes entity beyond radius", () => {
 			const grid = createGrid3D(10);
 			insertEntity3D(grid, 1, 50, 50, 50, 1, 1, 1);
-			const result = [] as number[];
+			const result : number[] = [];
 			gridQueryRadius3D(grid, 0, 0, 0, 5, result);
 			expect(result.includes(1)).toBe(false);
 		});
@@ -85,7 +85,7 @@ describe("spatial-hash3D", () => {
 			const grid = createGrid3D(10);
 			// Entity AABB: [8,12] x [0,10] x [0,10] — closest point to origin is (8,0,0), distance = 8
 			insertEntity3D(grid, 1, 10, 5, 5, 2, 5, 5);
-			const result = [] as number[];
+			const result : number[] = [];
 			gridQueryRadius3D(grid, 0, 5, 5, 8, result);
 			expect(result.includes(1)).toBe(true);
 		});
@@ -94,7 +94,7 @@ describe("spatial-hash3D", () => {
 			const grid = createGrid3D(10);
 			// Entity AABB closest point to origin is (9,0,0), distance = 9 > radius 8
 			insertEntity3D(grid, 1, 11, 5, 5, 2, 5, 5);
-			const result = [] as number[];
+			const result : number[] = [];
 			gridQueryRadius3D(grid, 0, 5, 5, 8, result);
 			expect(result.includes(1)).toBe(false);
 		});
@@ -123,7 +123,7 @@ describe("spatial-hash3D", () => {
 			insertEntity3D(grid, 1, 5, 5, 5, 1, 1, 1);
 			clearGrid3D(grid);
 			// No inserts after clear — grid should return nothing
-			const result = [] as number[];
+			const result : number[] = [];
 			gridQueryBox3D(grid, 0, 0, 0, 10, 10, 10, result);
 			expect(result.length).toBe(0);
 		});
@@ -136,12 +136,12 @@ describe("spatial-hash3D", () => {
 			insertEntity3D(grid, 1, 0, 0, 0, 15, 15, 15);
 
 			// Query a cell far from center but still within the entity's span
-			const result1 = [] as number[];
+			const result1 : number[] = [];
 			gridQueryBox3D(grid, 12, 12, 12, 14, 14, 14, result1);
 			expect(result1.includes(1)).toBe(true);
 
 			// Query from the other side
-			const result2 = [] as number[];
+			const result2 : number[] = [];
 			gridQueryBox3D(grid, -14, -14, -14, -12, -12, -12, result2);
 			expect(result2.includes(1)).toBe(true);
 		});

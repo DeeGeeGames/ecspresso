@@ -92,7 +92,7 @@ describe('Spatial Hash Grid 3D — Data Structure', () => {
 			expect(bucket.length).toBe(0);
 		}
 
-		const result = [] as number[];
+		const result : number[] = [];
 		gridQueryBox3D(grid, 0, 0, 0, 500, 500, 500, result);
 		expect(result.length).toBe(0);
 	});
@@ -126,7 +126,7 @@ describe('Spatial Hash Grid 3D — Data Structure', () => {
 		expect(getLiveEntry3D(grid, 1)).toBeDefined();
 		expect(getLiveEntry3D(grid, 2)).toBeUndefined();
 
-		const result = [] as number[];
+		const result : number[] = [];
 		gridQueryBox3D(grid, 150, 150, 150, 250, 250, 250, result);
 		expect(result.includes(2)).toBe(false);
 	});
@@ -148,7 +148,7 @@ describe('Spatial Hash Grid 3D — Queries', () => {
 
 	test('gridQueryBox3D returns entities overlapping the box', () => {
 		const grid = buildTestGrid();
-		const result = [] as number[];
+		const result : number[] = [];
 		gridQueryBox3D(grid, 0, 0, 0, 100, 50, 50, result);
 
 		expect(result.includes(1)).toBe(true);
@@ -157,7 +157,7 @@ describe('Spatial Hash Grid 3D — Queries', () => {
 
 	test('gridQueryBox3D excludes entities outside the box', () => {
 		const grid = buildTestGrid();
-		const result = [] as number[];
+		const result : number[] = [];
 		gridQueryBox3D(grid, 0, 0, 0, 100, 50, 50, result);
 
 		expect(result.includes(3)).toBe(false);
@@ -165,7 +165,7 @@ describe('Spatial Hash Grid 3D — Queries', () => {
 
 	test('gridQueryBox3D with tight bounds only returns matching entities', () => {
 		const grid = buildTestGrid();
-		const result = [] as number[];
+		const result : number[] = [];
 		gridQueryBox3D(grid, 0, 0, 0, 40, 40, 40, result);
 
 		expect(result.includes(1)).toBe(true);
@@ -175,7 +175,7 @@ describe('Spatial Hash Grid 3D — Queries', () => {
 
 	test('gridQueryRadius3D returns entities within the sphere', () => {
 		const grid = buildTestGrid();
-		const result = [] as number[];
+		const result : number[] = [];
 		// Center at (25,25,25) with radius 60 — reaches entity 2 at (75,25,25), dist=50
 		gridQueryRadius3D(grid, 25, 25, 25, 60, result);
 
@@ -189,7 +189,7 @@ describe('Spatial Hash Grid 3D — Queries', () => {
 		// Distance from (50,50,50) to (190,50,50) = 140 — outside radius 100
 		insertEntity3D(grid, 2, 190, 50, 50, 5, 5, 5);
 
-		const result = [] as number[];
+		const result : number[] = [];
 		gridQueryRadius3D(grid, 50, 50, 50, 100, result);
 
 		expect(result.includes(1)).toBe(true);
@@ -202,7 +202,7 @@ describe('Spatial Hash Grid 3D — Queries', () => {
 		// Closest point on AABB to (50,50,50) is (95,50,50), dist=45 < 50
 		insertEntity3D(grid, 2, 100, 50, 50, 5, 5, 5);
 
-		const result = [] as number[];
+		const result : number[] = [];
 		gridQueryRadius3D(grid, 50, 50, 50, 50, result);
 
 		expect(result.includes(2)).toBe(true);
@@ -212,19 +212,19 @@ describe('Spatial Hash Grid 3D — Queries', () => {
 		const grid = createGrid3D(50);
 		insertEntity3D(grid, 1, 25, 25, 25, 10, 10, 10);
 
-		const r1 = [] as number[];
+		const r1 : number[] = [];
 		gridQueryBox3D(grid, 0, 0, 0, 50, 50, 50, r1);
 		expect(r1.includes(1)).toBe(true);
 
 		clearGrid3D(grid);
 
-		const r2 = [] as number[];
+		const r2 : number[] = [];
 		gridQueryBox3D(grid, 0, 0, 0, 50, 50, 50, r2);
 		expect(r2.includes(1)).toBe(false);
 
 		insertEntity3D(grid, 2, 300, 300, 300, 10, 10, 10);
 
-		const r3 = [] as number[];
+		const r3 : number[] = [];
 		gridQueryBox3D(grid, 280, 280, 280, 320, 320, 320, r3);
 		expect(r3.includes(2)).toBe(true);
 	});
@@ -489,7 +489,7 @@ describe('Spatial Index 3D — Resource Query API', () => {
 		const { ecs, e1 } = buildEcsWithEntities();
 		const si = ecs.getResource('spatialIndex3D') as SpatialIndex3D;
 
-		const result = [] as number[];
+		const result : number[] = [];
 		si.queryBoxInto(50, 50, 50, 150, 150, 150, result);
 		expect(result.includes(e1.id)).toBe(true);
 	});
@@ -515,7 +515,7 @@ describe('Spatial Index 3D — Resource Query API', () => {
 		const { ecs, e1 } = buildEcsWithEntities();
 		const si = ecs.getResource('spatialIndex3D') as SpatialIndex3D;
 
-		const result = [] as number[];
+		const result : number[] = [];
 		si.queryRadiusInto(100, 100, 100, 50, result);
 		expect(result.includes(e1.id)).toBe(true);
 	});

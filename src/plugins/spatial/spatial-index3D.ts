@@ -25,7 +25,6 @@ import {
 	getLiveEntry3D,
 } from '../../utils/spatial-hash3D';
 
-
 // ==================== Collider Component Types ====================
 
 /**

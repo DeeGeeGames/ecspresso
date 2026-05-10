@@ -69,20 +69,18 @@ function measureBox(bodies: Body[], args: Args): RunResult {
 	const rng = mulberry32(0xdeadbeef);
 	const half = args.queryHalf;
 
-	const xs: number[] = new Array(args.queries);
-	const ys: number[] = new Array(args.queries);
-	const zs: number[] = new Array(args.queries);
-	for (let i = 0; i < args.queries; i++) {
-		xs[i] = rng() * args.worldSize;
-		ys[i] = rng() * args.worldSize;
-		zs[i] = rng() * args.worldSize;
-	}
+	type QueryPoint = { x: number; y: number; z: number };
+	const points: QueryPoint[] = Array.from({ length: args.queries }, () => ({
+		x: rng() * args.worldSize,
+		y: rng() * args.worldSize,
+		z: rng() * args.worldSize,
+	}));
 
 	const result: number[] = [];
-
+	const warmup = points[0] ?? { x: 0, y: 0, z: 0 };
 	for (let i = 0; i < 20; i++) {
 		result.length = 0;
-		gridQueryBox3D(grid, xs[0]! - half, ys[0]! - half, zs[0]! - half, xs[0]! + half, ys[0]! + half, zs[0]! + half, result);
+		gridQueryBox3D(grid, warmup.x - half, warmup.y - half, warmup.z - half, warmup.x + half, warmup.y + half, warmup.z + half, result);
 	}
 
 	Bun.gc(true);
@@ -90,12 +88,12 @@ function measureBox(bodies: Body[], args: Args): RunResult {
 	const t0 = Bun.nanoseconds();
 	let hits = 0;
 
-	for (let i = 0; i < args.queries; i++) {
+	for (const p of points) {
 		result.length = 0;
 		gridQueryBox3D(
 			grid,
-			xs[i]! - half, ys[i]! - half, zs[i]! - half,
-			xs[i]! + half, ys[i]! + half, zs[i]! + half,
+			p.x - half, p.y - half, p.z - half,
+			p.x + half, p.y + half, p.z + half,
 			result,
 		);
 		hits += result.length;

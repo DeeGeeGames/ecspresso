@@ -336,7 +336,7 @@ export function computeContact3D(a: BaseColliderInfo3D, b: BaseColliderInfo3D, o
 
 // ==================== Collision Iteration ====================
 
-/** Module-level reusable set for broadphase candidates. */
+/** Module-level reusable array for broadphase candidates. */
 const _broadphaseCandidates: number[] = [];
 
 let _bruteForceWarned = false;
