@@ -82,22 +82,22 @@ const ecs = ECSpresso.create()
 ecs
 	.addSystem('bounce')
 	.inPhase('postUpdate')
-	.setProcessEach({ with: ['worldTransform', 'velocity', 'radius'] }, ({ entity }) => {
-		const { worldTransform, velocity, radius } = entity.components;
+	.setProcessEach({ with: ['localTransform', 'velocity', 'radius'] }, ({ entity }) => {
+		const { localTransform, velocity, radius } = entity.components;
 
-		if (worldTransform.x < radius) {
-			worldTransform.x = radius;
+		if (localTransform.x < radius) {
+			localTransform.x = radius;
 			velocity.x = Math.abs(velocity.x);
-		} else if (worldTransform.x > WORLD_W - radius) {
-			worldTransform.x = WORLD_W - radius;
+		} else if (localTransform.x > WORLD_W - radius) {
+			localTransform.x = WORLD_W - radius;
 			velocity.x = -Math.abs(velocity.x);
 		}
 
-		if (worldTransform.y < radius) {
-			worldTransform.y = radius;
+		if (localTransform.y < radius) {
+			localTransform.y = radius;
 			velocity.y = Math.abs(velocity.y);
-		} else if (worldTransform.y > WORLD_H - radius) {
-			worldTransform.y = WORLD_H - radius;
+		} else if (localTransform.y > WORLD_H - radius) {
+			localTransform.y = WORLD_H - radius;
 			velocity.y = -Math.abs(velocity.y);
 		}
 	});
