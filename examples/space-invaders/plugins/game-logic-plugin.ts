@@ -58,7 +58,16 @@ export default function createGameLogicPlugin() {
 
 					levelComplete({ ecs }) {
 						ecs.getResource('gameState').level += 1;
-						ecs.spawn(createTimer(1.5, { onComplete: () => ecs.eventBus.publish('levelTransitionComplete') }));
+						ecs.spawn({
+							timers: {
+								levelTransition: createTimer(1.5, {
+									onComplete: ({ entityId }) => {
+										ecs.eventBus.publish('levelTransitionComplete');
+										ecs.commands.removeEntity(entityId);
+									},
+								}),
+							},
+						});
 					},
 
 					levelTransitionComplete({ ecs }) {
@@ -140,7 +149,16 @@ export default function createGameLogicPlugin() {
 						movementState.lastEdgeHit = currentEdge;
 						movementState.isMovingDown = true;
 						ecs.eventBus.publish('enemyMove', { direction: 'down' });
-						ecs.spawn(createTimer(0.5, { onComplete: () => ecs.eventBus.publish('descentComplete') }));
+						ecs.spawn({
+							timers: {
+								descent: createTimer(0.5, {
+									onComplete: ({ entityId }) => {
+										ecs.eventBus.publish('descentComplete');
+										ecs.commands.removeEntity(entityId);
+									},
+								}),
+							},
+						});
 					}
 
 					// Random enemy shooting
