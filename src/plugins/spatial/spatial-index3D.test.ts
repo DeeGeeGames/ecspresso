@@ -53,7 +53,7 @@ describe('Spatial Hash Grid 3D — Data Structure', () => {
 	test('insertEntity3D places entity in correct cell', () => {
 		const grid = createGrid3D(100);
 		insertEntity3D(grid, 1, 50, 50, 50, 10, 10, 10);
-		expect((getLiveEntry3D(grid, 1) !== undefined)).toBe(true);
+		expect(getLiveEntry3D(grid, 1)).toBeDefined();
 		expect(grid.cells.size).toBeGreaterThan(0);
 
 		const entry = getLiveEntry3D(grid, 1);
@@ -123,8 +123,8 @@ describe('Spatial Hash Grid 3D — Data Structure', () => {
 		insertEntity3D(grid, 1, 55, 55, 55, 10, 10, 10);
 		// Entity 2 deliberately not re-inserted
 
-		expect((getLiveEntry3D(grid, 1) !== undefined)).toBe(true);
-		expect((getLiveEntry3D(grid, 2) !== undefined)).toBe(false);
+		expect(getLiveEntry3D(grid, 1)).toBeDefined();
+		expect(getLiveEntry3D(grid, 2)).toBeUndefined();
 
 		const result = new Set<number>();
 		gridQueryBox3D(grid, 150, 150, 150, 250, 250, 250, result);

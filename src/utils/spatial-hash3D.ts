@@ -198,6 +198,8 @@ export function gridQueryRadius3D(
 
 	const rSq = radius * radius;
 
+	// Candidates come from cell buckets cleared each rebuild, so every entry
+	// here was inserted this gen — no _aliveGen filter needed.
 	for (const entityId of candidates) {
 		const entry = grid.entries[entityId];
 		if (!entry) continue;
