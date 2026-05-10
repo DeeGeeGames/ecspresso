@@ -8,7 +8,7 @@
 
 import { definePlugin, type BasePluginOptions } from 'ecspresso';
 import type { TransformWorldConfig } from '../spatial/transform';
-import { fillBaseColliderInfo, detectCollisions, AABB_SHAPE, type Contact, type BaseColliderInfo } from '../../utils/narrowphase';
+import { fillBaseColliderInfo, detectCollisions, createBroadphaseScratch, AABB_SHAPE, type Contact, type BaseColliderInfo } from '../../utils/narrowphase';
 import type { SpatialIndex } from '../../utils/spatial-hash';
 
 // ==================== Component Types ====================
@@ -459,8 +459,7 @@ export function createCollisionPlugin<L extends string, G extends string = 'phys
 			// Grow-only pool of BaseColliderInfo slots reused across frames.
 			// Steady-state: zero allocations per frame once the pool is warm.
 			const colliderPool: BaseColliderInfo<L>[] = [];
-			// Reusable entityId → collider lookup for the broadphase path.
-			const broadphaseMap = new Map<number, BaseColliderInfo<L>>();
+			const broadphaseScratch = createBroadphaseScratch<BaseColliderInfo<L>>();
 			// Cached spatial index reference (resolved once on first frame).
 			let cachedSI: SpatialIndex | undefined;
 			let siResolved = false;
@@ -519,7 +518,7 @@ export function createCollisionPlugin<L extends string, G extends string = 'phys
 						cachedSI = ecs.tryGetResource<SpatialIndex>('spatialIndex');
 						siResolved = true;
 					}
-					detectCollisions(colliderPool, count, broadphaseMap, cachedSI, onCollisionDetected<L>, ecs.eventBus);
+					detectCollisions(colliderPool, count, broadphaseScratch, cachedSI, onCollisionDetected<L>, ecs.eventBus);
 				});
 		});
 }

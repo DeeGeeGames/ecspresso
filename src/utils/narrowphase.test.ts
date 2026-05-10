@@ -5,6 +5,7 @@ import {
 	computeAABBvsCircle,
 	computeContact,
 	detectCollisions,
+	createBroadphaseScratch,
 	fillBaseColliderInfo,
 	getLayerBit,
 	getCollidesWithMask,
@@ -81,7 +82,7 @@ describe('BaseColliderInfo generic layer type', () => {
 		detectCollisions(
 			colliders,
 			colliders.length,
-			new Map(),
+			createBroadphaseScratch(),
 			undefined,
 			(a, b, _contact, ctx) => {
 				// a.layer and b.layer should be Layer, not string
@@ -401,7 +402,7 @@ describe('detectCollisions', () => {
 		detectCollisions(
 			colliders,
 			colliders.length,
-			new Map(),
+			createBroadphaseScratch(),
 			undefined,
 			(a, b, contact, ctx) => { ctx.push({ a: a.entityId, b: b.entityId, contact }); },
 			contacts,
@@ -422,7 +423,7 @@ describe('detectCollisions', () => {
 		detectCollisions(
 			colliders,
 			colliders.length,
-			new Map(),
+			createBroadphaseScratch(),
 			undefined,
 			(a, b, _contact, ctx) => { ctx.push({ a: a.entityId, b: b.entityId }); },
 			contacts,
@@ -441,7 +442,7 @@ describe('detectCollisions', () => {
 		detectCollisions(
 			colliders,
 			colliders.length,
-			new Map(),
+			createBroadphaseScratch(),
 			undefined,
 			(a, b, _contact, ctx) => { ctx.push({ a: a.entityId, b: b.entityId }); },
 			contacts,
@@ -461,7 +462,7 @@ describe('detectCollisions', () => {
 		detectCollisions(
 			colliders,
 			colliders.length,
-			new Map(),
+			createBroadphaseScratch(),
 			undefined,
 			(a, b, _contact, ctx) => { ctx.push({ a: a.entityId, b: b.entityId }); },
 			contacts,
@@ -483,7 +484,7 @@ describe('detectCollisions', () => {
 		detectCollisions(
 			colliders,
 			colliders.length,
-			new Map(),
+			createBroadphaseScratch(),
 			undefined,
 			(_a, _b, _contact, ctx) => { ctx.called = true; },
 			context,
@@ -497,7 +498,7 @@ describe('detectCollisions', () => {
 		detectCollisions(
 			[],
 			0,
-			new Map(),
+			createBroadphaseScratch(),
 			undefined,
 			() => { called = true; },
 			null,
@@ -510,7 +511,7 @@ describe('detectCollisions', () => {
 		detectCollisions(
 			[makeAABB(1, 0, 0, 'a', ['b'], 10, 10)],
 			1,
-			new Map(),
+			createBroadphaseScratch(),
 			undefined,
 			() => { called = true; },
 			null,
@@ -535,7 +536,7 @@ describe('detectCollisions', () => {
 		detectCollisions(
 			pool,
 			2, // only first 2 are live
-			new Map(),
+			createBroadphaseScratch(),
 			undefined,
 			(a, b, _c, ctx) => { ctx.push({ a: a.entityId, b: b.entityId }); },
 			contacts,
@@ -546,8 +547,9 @@ describe('detectCollisions', () => {
 		expect(contacts[0]!.b).toBe(2);
 	});
 
-	test('broadphase uses caller-provided workingMap (reused across calls)', () => {
-		// Minimal SpatialIndex stub backed by a real grid
+	test('broadphase isolates entries across calls (gen-stamp invalidates stale lookups)', () => {
+		// Reuse one scratch across two calls so the gen-stamp invalidation is
+		// the only thing keeping prior-call entries out of the current call.
 		const grid = createGrid(64);
 		const index: SpatialIndex = {
 			grid,
@@ -557,6 +559,7 @@ describe('detectCollisions', () => {
 			queryRadiusInto: () => {},
 			getEntry: (id) => grid.entries.get(id),
 		};
+		const scratch = createBroadphaseScratch<BaseColliderInfo>();
 
 		const colliders: BaseColliderInfo[] = [
 			makeAABB(1, 0, 0, 'a', ['a'], 10, 10),
@@ -565,46 +568,33 @@ describe('detectCollisions', () => {
 		insertEntity(grid, 1, 0, 0, 10, 10);
 		insertEntity(grid, 2, 15, 0, 10, 10);
 
-		// Pre-populate the workingMap with stale garbage.
-		// detectCollisions must clear it before repopulating.
-		const workingMap = new Map<number, BaseColliderInfo>();
-		workingMap.set(99, makeAABB(99, 0, 0, 'a', [], 0, 0));
-		workingMap.set(98, makeAABB(98, 0, 0, 'a', [], 0, 0));
-
 		const contacts: Array<{ a: number; b: number }> = [];
 		detectCollisions(
 			colliders,
 			colliders.length,
-			workingMap,
+			scratch,
 			index,
 			(a, b, _c, ctx) => { ctx.push({ a: a.entityId, b: b.entityId }); },
 			contacts,
 		);
-
 		expect(contacts.length).toBe(1);
-		// Stale entries are gone, live entries are present
-		expect(workingMap.has(99)).toBe(false);
-		expect(workingMap.has(98)).toBe(false);
-		expect(workingMap.has(1)).toBe(true);
-		expect(workingMap.has(2)).toBe(true);
 
-		// Call again with a different colliders array — same map should still work
+		// Second call: only entity 10 is in `colliders2`, but the spatial grid
+		// still surfaces ids 1 and 2 as candidates — the gen stamp must reject
+		// them.
 		const colliders2: BaseColliderInfo[] = [
 			makeAABB(10, 0, 0, 'a', ['a'], 10, 10),
 		];
+		insertEntity(grid, 10, 0, 0, 10, 10);
 		contacts.length = 0;
 		detectCollisions(
 			colliders2,
 			colliders2.length,
-			workingMap,
+			scratch,
 			index,
 			(a, b, _c, ctx) => { ctx.push({ a: a.entityId, b: b.entityId }); },
 			contacts,
 		);
-
-		// Map was cleared: old entries 1, 2 are gone; new entry 10 is present
-		expect(workingMap.has(1)).toBe(false);
-		expect(workingMap.has(2)).toBe(false);
-		expect(workingMap.has(10)).toBe(true);
+		expect(contacts.length).toBe(0);
 	});
 });

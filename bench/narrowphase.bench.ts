@@ -20,6 +20,7 @@
 import {
 	fillBaseColliderInfo,
 	detectCollisions,
+	createBroadphaseScratch,
 	AABB_SHAPE,
 	CIRCLE_SHAPE,
 	type BaseColliderInfo,
@@ -135,11 +136,11 @@ function measure(
 ): RunResult {
 	let pairHits = 0;
 	const onContact = (_a: BaseColliderInfo<'ball'>, _b: BaseColliderInfo<'ball'>, _c: Contact) => { pairHits++; };
-	const workingMap = new Map<number, BaseColliderInfo<'ball'>>();
+	const scratch = createBroadphaseScratch<BaseColliderInfo<'ball'>>();
 
 	// Warmup — let the JIT settle
 	for (let i = 0; i < 10; i++) {
-		detectCollisions(colliders, colliders.length, workingMap, spatialIndex, onContact, null);
+		detectCollisions(colliders, colliders.length, scratch, spatialIndex, onContact, null);
 	}
 	pairHits = 0;
 
@@ -148,7 +149,7 @@ function measure(
 	const t0 = Bun.nanoseconds();
 
 	for (let i = 0; i < iters; i++) {
-		detectCollisions(colliders, colliders.length, workingMap, spatialIndex, onContact, null);
+		detectCollisions(colliders, colliders.length, scratch, spatialIndex, onContact, null);
 	}
 
 	const t1 = Bun.nanoseconds();

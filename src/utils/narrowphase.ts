@@ -287,6 +287,27 @@ export function computeContact(a: BaseColliderInfo, b: BaseColliderInfo, out: Co
 
 const _broadphaseCandidates: number[] = [];
 
+/**
+ * Per-caller scratch for the broadphase entityId → collider lookup.
+ *
+ * Dense `arr` indexed by entityId, paired with a `gen` stamp array that marks
+ * which slots are live this call. Bumping `current` invalidates all prior
+ * entries without clearing — replaces the per-frame `Map.clear()` + N
+ * `Map.set()` allocation churn that a `Map<number, I>` would incur.
+ *
+ * Owned per plugin instance (alongside its `colliderPool`), so concurrent
+ * worlds don't share state and `I` stays fully typed without erasure.
+ */
+export interface BroadphaseScratch<I extends BaseColliderInfo> {
+	arr: (I | undefined)[];
+	gen: number[];
+	current: number;
+}
+
+export function createBroadphaseScratch<I extends BaseColliderInfo>(): BroadphaseScratch<I> {
+	return { arr: [], gen: [], current: 0 };
+}
+
 let _bruteForceWarned = false;
 const BRUTE_FORCE_WARN_THRESHOLD = 50;
 
@@ -298,11 +319,9 @@ const BRUTE_FORCE_WARN_THRESHOLD = 50;
  * The array itself may be a grow-only pool — only indices `[0, count)`
  * are iterated, so trailing pool slots are ignored.
  *
- * `workingMap` is a caller-owned `Map<number, I>` used by the broadphase
- * path as an entityId → collider lookup. It is cleared and repopulated on
- * each call; callers should allocate it once and pass the same instance
- * every frame. Unused by the brute-force path but still required so that
- * typed reuse is the default, not an opt-in.
+ * `scratch` is a caller-owned `BroadphaseScratch<I>` used by the broadphase
+ * path as an entityId → collider lookup. Allocate it once per plugin instance
+ * and pass the same reference every call.
  *
  * Uses a context parameter forwarded to the callback to avoid
  * per-frame closure allocation.
@@ -310,13 +329,13 @@ const BRUTE_FORCE_WARN_THRESHOLD = 50;
 export function detectCollisions<I extends BaseColliderInfo, C>(
 	colliders: I[],
 	count: number,
-	workingMap: Map<number, I>,
+	scratch: BroadphaseScratch<I>,
 	spatialIndex: SpatialIndex | undefined,
 	onContact: (a: I, b: I, contact: Contact, context: C) => void,
 	context: C,
 ): void {
 	if (spatialIndex) {
-		broadphaseDetect(colliders, count, workingMap, spatialIndex, onContact, context);
+		broadphaseDetect(colliders, count, scratch, spatialIndex, onContact, context);
 	} else {
 		bruteForceDetect(colliders, count, onContact, context);
 	}
@@ -356,16 +375,20 @@ function bruteForceDetect<I extends BaseColliderInfo, C>(
 function broadphaseDetect<I extends BaseColliderInfo, C>(
 	colliders: I[],
 	count: number,
-	colliderMap: Map<number, I>,
+	scratch: BroadphaseScratch<I>,
 	spatialIndex: SpatialIndex,
 	onContact: (a: I, b: I, contact: Contact, context: C) => void,
 	context: C,
 ): void {
-	colliderMap.clear();
+	const arr = scratch.arr;
+	const stamps = scratch.gen;
+	const gen = ++scratch.current;
 	for (let i = 0; i < count; i++) {
 		const c = colliders[i];
 		if (!c) continue;
-		colliderMap.set(c.entityId, c);
+		const id = c.entityId;
+		arr[id] = c;
+		stamps[id] = gen;
 	}
 
 	for (let i = 0; i < count; i++) {
@@ -384,7 +407,8 @@ function broadphaseDetect<I extends BaseColliderInfo, C>(
 		);
 
 		for (const bId of _broadphaseCandidates) {
-			const b = colliderMap.get(bId);
+			if (stamps[bId] !== gen) continue;
+			const b = arr[bId];
 			if (!b) continue;
 
 			if (((a.collidesWithMask & b.layerBit) | (b.collidesWithMask & a.layerBit)) === 0) continue;
