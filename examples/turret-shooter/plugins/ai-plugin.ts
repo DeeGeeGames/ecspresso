@@ -1,23 +1,22 @@
 import { Vector3 } from 'three';
-import { createTimer } from '../../../src/plugins/scripting/timers';
 import { definePlugin } from '../types';
 
 export default function createAIPlugin() {
 	return definePlugin({
 		id: 'ai-plugin',
 		install(world) {
-			// Enemy AI system
+			// Enemy AI system — steer toward player. Player↔enemy contact is
+			// handled by the collision-router in gameplay-plugin.
 			world.addSystem('enemy-ai')
 				.inGroup('gameplay')
 				.addQuery('enemies', {
 					with: ['enemy', 'localTransform3D', 'velocity']
 				})
-				.setProcess(({ queries: { enemies }, ecs }) => {
-					const playerEntities = ecs.entityManager.getEntitiesWithQuery(['player', 'localTransform3D']);
-
-					if (playerEntities.length === 0) return;
-
-					const playerEntity = playerEntities[0];
+				.addQuery('players', {
+					with: ['player', 'localTransform3D']
+				})
+				.setProcess(({ queries: { enemies, players } }) => {
+					const playerEntity = players[0];
 					if (!playerEntity) return;
 
 					const playerTransform = playerEntity.components.localTransform3D;
@@ -25,50 +24,18 @@ export default function createAIPlugin() {
 					for (const enemy of enemies) {
 						const { localTransform3D, velocity, enemy: enemyComponent } = enemy.components;
 
-						// Skip enemies already marked for destruction
 						if (enemyComponent.isDestroying) continue;
 
-						// Calculate direction to player
 						const directionX = playerTransform.x - localTransform3D.x;
 						const directionZ = playerTransform.z - localTransform3D.z;
 						const distance = Math.sqrt(directionX * directionX + directionZ * directionZ);
 
-						// Skip if enemy is too close to player
-						const minDistance = 10;
-						if (distance < minDistance) {
-							// Damage player and mark for destruction
-							if (!enemyComponent.isDestroying) {
-								enemyComponent.isDestroying = true;
-
-								// Stop movement
-								velocity.x = 0;
-								velocity.y = 0;
-								velocity.z = 0;
-
-								// Deal damage to player
-								ecs.eventBus.publish('playerHit', {
-									damage: enemyComponent.attackDamage * 0.1
-								});
-
-								// Create destruction effect and award score
-								ecs.eventBus.publish('enemyDestroyed', {
-									entityId: enemy.id,
-									points: Math.floor(enemyComponent.scoreValue / 2)
-								});
-
-								// Add timer for pending destruction
-								ecs.addComponent(enemy.id, 'timers', { destroy: createTimer(0.5) });
-								ecs.addComponent(enemy.id, 'pendingDestroy', true);
-							}
-						} else {
-							// Normalize direction
+						if (distance > 0) {
 							const normalizedDirX = directionX / distance;
 							const normalizedDirZ = directionZ / distance;
 
-							// Calculate rotation to face player
 							localTransform3D.ry = Math.atan2(normalizedDirX, normalizedDirZ);
 
-							// Update velocity to move towards player
 							velocity.x = normalizedDirX * enemyComponent.speed;
 							velocity.z = normalizedDirZ * enemyComponent.speed;
 						}

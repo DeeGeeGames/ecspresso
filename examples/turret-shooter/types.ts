@@ -4,11 +4,26 @@ import {
 import ECSpresso from '../../src';
 import type { TimerComponentTypes } from '../../src/plugins/scripting/timers';
 import type { Renderer3DComponentTypes, Renderer3DResourceTypes, Renderer3DEventTypes } from '../../src/plugins/rendering/renderer3D';
+import {
+	defineCollisionLayers,
+	type Collision3DComponentTypes,
+	type Collision3DEventTypes,
+	type LayersOf,
+} from '../../src/plugins/physics/collision3D';
+
+export const collisionLayers = defineCollisionLayers({
+	player: ['enemy'],
+	enemy: ['player', 'projectile'],
+	projectile: ['enemy'],
+});
+
+export type CollisionLayerName = LayersOf<typeof collisionLayers>;
 
 export const builder = ECSpresso.create()
 	.withComponentTypes<
 		TimerComponentTypes &
 		Renderer3DComponentTypes &
+		Collision3DComponentTypes<CollisionLayerName> &
 		{
 			// Timer tags
 			enemySpawner: true;
@@ -43,11 +58,6 @@ export const builder = ECSpresso.create()
 				speed: number;
 			};
 
-			// Collisions
-			collider: {
-				radius: number; // Simple sphere collider
-			};
-
 			// Additional components
 			lifetime: {
 				remaining: number;
@@ -61,6 +71,7 @@ export const builder = ECSpresso.create()
 	>()
 	.withEventTypes<
 		Renderer3DEventTypes &
+		Collision3DEventTypes<CollisionLayerName> &
 		{
 			// Game state events
 			gameInit: true;

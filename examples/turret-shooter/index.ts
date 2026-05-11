@@ -1,5 +1,8 @@
 import { createTimerPlugin } from '../../src/plugins/scripting/timers';
 import { createRenderer3DPlugin } from '../../src/plugins/rendering/renderer3D';
+import { createCollision3DPlugin } from '../../src/plugins/physics/collision3D';
+import { createSpatialIndex3DPlugin } from '../../src/plugins/spatial/spatial-index3D';
+import { builder, collisionLayers } from './types';
 import createInitPlugin from './plugins/init-plugin';
 import createInputPlugin from './plugins/input-plugin';
 import createRenderPlugin from './plugins/render-plugin';
@@ -8,7 +11,6 @@ import createAIPlugin from './plugins/ai-plugin';
 import createGameplayPlugin from './plugins/gameplay-plugin';
 import createUIPlugin from './plugins/ui-plugin';
 import createGameStatePlugin from './plugins/game-state-plugin';
-import { builder } from './types';
 
 // Create and initialize the game
 async function initGame() {
@@ -30,6 +32,8 @@ async function initGame() {
 			},
 		}))
 		.withPlugin(createTimerPlugin())
+		.withPlugin(createSpatialIndex3DPlugin())
+		.withPlugin(createCollision3DPlugin({ layers: collisionLayers }))
 		.withPlugin(createInitPlugin())
 		.withPlugin(createInputPlugin())
 		.withPlugin(createRenderPlugin())

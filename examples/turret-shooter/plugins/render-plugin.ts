@@ -1,6 +1,7 @@
 import { Group, Mesh, Vector3, SphereGeometry, MeshBasicMaterial } from 'three';
-import { definePlugin } from '../types';
+import { definePlugin, collisionLayers } from '../types';
 import { createGroupComponents } from '../../../src/plugins/rendering/renderer3D';
+import { createSphereCollider } from '../../../src/plugins/physics/collision3D';
 import {
 	createTurret,
 	createGroundEnemy,
@@ -31,9 +32,10 @@ export default function createRenderPlugin() {
 								lastShotTime: 0,
 								fireRate: ecs.getResource('config').playerFireRate
 							},
-							collider: {
-								radius: 5
-							}
+							// Radius 7 (vs visual ~5) preserves the original AI's
+							// minDistance=10 player-touch trigger once enemy radii (2–3) are added.
+							...createSphereCollider(7),
+							...collisionLayers.player(),
 						});
 
 						// Create radar display (HTML overlay)
@@ -191,9 +193,8 @@ export default function createRenderPlugin() {
 								damage: 100,
 								speed: 3,
 							},
-							collider: {
-								radius: 2.5,
-							},
+							...createSphereCollider(2.5),
+							...collisionLayers.projectile(),
 							lifetime: {
 								remaining: 3, // seconds before auto-destroy
 							},
@@ -232,9 +233,8 @@ export default function createRenderPlugin() {
 								scoreValue: data.type === 'ground' ? 100 : 150,
 								isDestroying: false
 							},
-							collider: {
-								radius: data.type === 'ground' ? 3 : 2
-							}
+							...createSphereCollider(data.type === 'ground' ? 3 : 2),
+							...collisionLayers.enemy(),
 						});
 
 						// Add radar blip for this enemy (HTML based)
