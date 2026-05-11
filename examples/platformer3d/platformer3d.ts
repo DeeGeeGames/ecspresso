@@ -20,6 +20,7 @@ import {
 	defineCollisionLayers,
 	createAABB3DCollider,
 } from '../../src/plugins/physics/collision3D';
+import { createTimerPlugin, createTimer, type Timer } from '../../src/plugins/scripting/timers';
 
 const MOVE_SPEED = 300;
 const JUMP_VELOCITY = 450;
@@ -59,10 +60,11 @@ const ecs = ECSpresso.create()
 			jump: { keys: ['w', 'ArrowUp', ' '] },
 		},
 	}))
+	.withPlugin(createTimerPlugin())
 	.withFixedTimestep(1 / 60)
 	.withComponentTypes<{
 		player: true;
-		groundContact: { grounded: boolean; coyoteTimer: number; coyoteDuration: number; jumpBufferTimer: number; jumpBufferDuration: number };
+		groundContact: { grounded: boolean };
 	}>()
 	.build();
 
@@ -70,22 +72,32 @@ const ecs = ECSpresso.create()
 ecs.addSystem('ground-reset')
 	.inPhase('fixedUpdate')
 	.setPriority(2000)
-	.setProcessEach({ with: ['groundContact'] }, ({ entity, dt }) => {
-		const gc = entity.components.groundContact;
-		gc.coyoteTimer = Math.max(0, gc.coyoteTimer - dt);
-		gc.jumpBufferTimer = Math.max(0, gc.jumpBufferTimer - dt);
-		gc.grounded = false;
+	.setProcessEach({ with: ['groundContact'] }, ({ entity }) => {
+		entity.components.groundContact.grounded = false;
 	});
 
+function restartTimer(t: Timer) {
+	t.elapsed = 0;
+	t.active = true;
+}
+
+function getPlayerTimers(timers: Record<string, Timer>): { coyote: Timer; jumpBuffer: Timer } | undefined {
+	const coyote = timers['coyote'];
+	const jumpBuffer = timers['jumpBuffer'];
+	if (!coyote || !jumpBuffer) return undefined;
+	return { coyote, jumpBuffer };
+}
+
 function applyGroundLanding(
-	gc: { grounded: boolean; coyoteTimer: number; coyoteDuration: number; jumpBufferTimer: number },
+	gc: { grounded: boolean },
+	timers: { coyote: Timer; jumpBuffer: Timer },
 	vel: { y: number } | undefined,
 ) {
 	gc.grounded = true;
-	gc.coyoteTimer = gc.coyoteDuration;
-	if (gc.jumpBufferTimer > 0 && vel) {
+	restartTimer(timers.coyote);
+	if (timers.jumpBuffer.active && vel) {
 		vel.y = JUMP_VELOCITY;
-		gc.jumpBufferTimer = 0;
+		timers.jumpBuffer.active = false;
 	}
 }
 
@@ -95,14 +107,19 @@ function applyGroundLanding(
 ecs.addSystem('ground-detect')
 	.setEventHandlers({
 		physics3DCollision({ data, ecs: world }) {
+			const handle = (id: number) => {
+				const gc = world.getComponent(id, 'groundContact');
+				const timers = world.getComponent(id, 'timers');
+				if (!gc || !timers) return;
+				const player = getPlayerTimers(timers);
+				if (player) applyGroundLanding(gc, player, world.getComponent(id, 'velocity3D'));
+			};
 			if (world.getComponent(data.entityA, 'player') && data.normalY < -0.5) {
-				const gc = world.getComponent(data.entityA, 'groundContact');
-				if (gc) applyGroundLanding(gc, world.getComponent(data.entityA, 'velocity3D'));
+				handle(data.entityA);
 				return;
 			}
 			if (world.getComponent(data.entityB, 'player') && data.normalY > 0.5) {
-				const gc = world.getComponent(data.entityB, 'groundContact');
-				if (gc) applyGroundLanding(gc, world.getComponent(data.entityB, 'velocity3D'));
+				handle(data.entityB);
 			}
 		},
 	});
@@ -111,21 +128,23 @@ ecs.addSystem('ground-detect')
 ecs.addSystem('player-input')
 	.inPhase('preUpdate')
 	.withResources(['inputState'])
-	.setProcessEach({ with: ['player', 'velocity3D', 'groundContact'] }, ({ entity, resources: { inputState: input } }) => {
-		const { velocity3D, groundContact } = entity.components;
+	.setProcessEach({ with: ['player', 'velocity3D', 'groundContact', 'timers'] }, ({ entity, resources: { inputState: input } }) => {
+		const { velocity3D, groundContact, timers } = entity.components;
+		const player = getPlayerTimers(timers);
+		if (!player) return;
 
 		const left = input.actions.isActive('moveLeft') ? -MOVE_SPEED : 0;
 		const right = input.actions.isActive('moveRight') ? MOVE_SPEED : 0;
 		velocity3D.x = left + right;
 
-		const canJump = groundContact.grounded || groundContact.coyoteTimer > 0;
+		const canJump = groundContact.grounded || player.coyote.active;
 		if (input.actions.justActivated('jump')) {
 			if (canJump) {
 				velocity3D.y = JUMP_VELOCITY;
-				groundContact.coyoteTimer = 0;
-				groundContact.jumpBufferTimer = 0;
+				player.coyote.active = false;
+				player.jumpBuffer.active = false;
 			} else {
-				groundContact.jumpBufferTimer = groundContact.jumpBufferDuration;
+				restartTimer(player.jumpBuffer);
 			}
 		}
 	});
@@ -185,7 +204,11 @@ ecs.spawn({
 	...createAABB3DCollider(PLAYER_WIDTH, PLAYER_HEIGHT, PLAYER_DEPTH),
 	...layers.player(),
 	player: true as const,
-	groundContact: { grounded: false, coyoteTimer: 0, coyoteDuration: COYOTE_DURATION, jumpBufferTimer: 0, jumpBufferDuration: JUMP_BUFFER_DURATION },
+	groundContact: { grounded: false },
+	timers: {
+		coyote: { ...createTimer(COYOTE_DURATION), active: false },
+		jumpBuffer: { ...createTimer(JUMP_BUFFER_DURATION), active: false },
+	},
 });
 
 // Ground (sits at the world bottom: y = GROUND_HEIGHT / 2 from the floor)
