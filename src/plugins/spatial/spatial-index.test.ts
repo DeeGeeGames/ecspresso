@@ -84,7 +84,7 @@ describe('Spatial Hash Grid — Data Structure', () => {
 		expect(cellCount).toBe(4);
 	});
 
-	test('clearGrid drops all entries and empties cell buckets', () => {
+	test('clearGrid drops all entries and hides stale bucket contents from queries', () => {
 		const grid = createGrid(64);
 		insertEntity(grid, 1, 50, 50, 10, 10);
 		insertEntity(grid, 2, 200, 200, 10, 10);
@@ -95,12 +95,8 @@ describe('Spatial Hash Grid — Data Structure', () => {
 		clearGrid(grid);
 
 		expect(liveEntryCount(grid)).toBe(0);
-		// Cell keys are retained for bucket reuse, but every bucket must be empty
-		for (const bucket of grid.cells.values()) {
-			expect(bucket.length).toBe(0);
-		}
-
-		// Post-clear queries return nothing
+		// Buckets retain their arrays for reuse — clearing is lazy at the bucket
+		// level, but queries must observe the grid as empty.
 		const result: number[] = [];
 		gridQueryRect(grid, 0, 0, 500, 500, result);
 		expect(result.length).toBe(0);

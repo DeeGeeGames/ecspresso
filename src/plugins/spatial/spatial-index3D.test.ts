@@ -77,7 +77,7 @@ describe('Spatial Hash Grid 3D — Data Structure', () => {
 		expect(cellCount).toBe(8);
 	});
 
-	test('clearGrid3D drops all entries and empties cell buckets', () => {
+	test('clearGrid3D drops all entries and hides stale bucket contents from queries', () => {
 		const grid = createGrid3D(64);
 		insertEntity3D(grid, 1, 50, 50, 50, 10, 10, 10);
 		insertEntity3D(grid, 2, 200, 200, 200, 10, 10, 10);
@@ -88,10 +88,8 @@ describe('Spatial Hash Grid 3D — Data Structure', () => {
 		clearGrid3D(grid);
 
 		expect(liveEntryCount3D(grid)).toBe(0);
-		for (const bucket of grid.cells.values()) {
-			expect(bucket.length).toBe(0);
-		}
-
+		// Buckets retain their arrays for reuse — clearing is lazy at the bucket
+		// level, but queries must observe the grid as empty.
 		const result : number[] = [];
 		gridQueryBox3D(grid, 0, 0, 0, 500, 500, 500, result);
 		expect(result.length).toBe(0);

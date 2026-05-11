@@ -19,10 +19,21 @@ export interface SpatialEntry {
 	_aliveGen: number;
 }
 
+/**
+ * A cell bucket — entries plus the alive-gen at which the bucket was last
+ * filled. Buckets are reset lazily on the next insert in a new generation
+ * (see `insertEntity`); queries skip buckets whose `_gen` is stale.
+ *
+ * Internal — exposed only through `SpatialHashGrid.cells`.
+ */
+interface CellBucket extends Array<SpatialEntry> {
+	_gen: number;
+}
+
 export interface SpatialHashGrid {
 	cellSize: number;
 	invCellSize: number;
-	cells: Map<number, SpatialEntry[]>;
+	cells: Map<number, CellBucket>;
 	/**
 	 * Dense, indexed by entityId. Holes are `undefined`. Entries from previous
 	 * rebuilds remain in place for in-place reuse (zero allocation in steady
@@ -68,21 +79,18 @@ export function createGrid(cellSize: number): SpatialHashGrid {
 /**
  * Prepare the grid for a rebuild.
  *
- * Bumps the alive-generation counter so entries inserted prior to this call
- * are implicitly stale (any access via `getEntry`/`liveEntryCount` filters by
- * the current gen). Existing `SpatialEntry` objects remain in the `entries`
- * array for in-place reuse by the next `insertEntity`, so steady-state
- * rebuilds allocate zero entries.
+ * O(1): bumps the alive-generation counter so entries inserted prior to this
+ * call are implicitly stale. `getLiveEntry` / `liveEntryCount` filter
+ * entries by the current gen; queries skip buckets whose own `_gen` lags
+ * behind the alive gen; `insertEntity` resets a bucket's `length` lazily
+ * the first time it is touched in a new generation.
  *
- * Cell buckets are cleared in place — keys are retained so subsequent
- * inserts hit the existing array rather than allocating a fresh one.
+ * Existing `SpatialEntry` objects and `CellBucket` arrays remain in place
+ * for reuse, so steady-state rebuilds allocate zero entries and zero
+ * buckets, regardless of how many cells have ever been touched.
  */
 export function clearGrid(grid: SpatialHashGrid): void {
 	grid._aliveGen++;
-
-	for (const bucket of grid.cells.values()) {
-		bucket.length = 0;
-	}
 }
 
 /**
@@ -121,10 +129,18 @@ export function insertEntity(
 		for (let cy = minCY; cy <= maxCY; cy++) {
 			const key = hashCell(cx, cy);
 			const bucket = grid.cells.get(key);
-			if (bucket) {
+			if (bucket && bucket._gen === gen) {
+				// Hot path: bucket already populated this generation.
+				bucket.push(entry);
+			} else if (bucket) {
+				// First touch in this generation — drop stale entries from prior rebuilds.
+				bucket.length = 0;
+				bucket._gen = gen;
 				bucket.push(entry);
 			} else {
-				grid.cells.set(key, [entry]);
+				const fresh = [entry] as CellBucket;
+				fresh._gen = gen;
+				grid.cells.set(key, fresh);
 			}
 		}
 	}
@@ -156,11 +172,12 @@ export function gridQueryRect(
 	const maxCY = Math.floor(maxY * inv);
 
 	const gen = ++grid._queryGen;
+	const aliveGen = grid._aliveGen;
 
 	for (let cx = minCX; cx <= maxCX; cx++) {
 		for (let cy = minCY; cy <= maxCY; cy++) {
 			const bucket = grid.cells.get(hashCell(cx, cy));
-			if (!bucket) continue;
+			if (!bucket || bucket._gen !== aliveGen) continue;
 			for (const entry of bucket) {
 				if (entry.entityId <= minId || entry._lastSeenGen === gen) continue;
 				entry._lastSeenGen = gen;
@@ -189,11 +206,12 @@ export function gridQueryRadius(
 	const maxCY = Math.floor((cy + radius) * inv);
 
 	const gen = ++grid._queryGen;
+	const aliveGen = grid._aliveGen;
 
 	for (let icx = minCX; icx <= maxCX; icx++) {
 		for (let icy = minCY; icy <= maxCY; icy++) {
 			const bucket = grid.cells.get(hashCell(icx, icy));
-			if (!bucket) continue;
+			if (!bucket || bucket._gen !== aliveGen) continue;
 			for (const entry of bucket) {
 				if (entry._lastSeenGen === gen) continue;
 				entry._lastSeenGen = gen;
