@@ -4,6 +4,7 @@ import {
 	createRenderer2DPlugin,
 	createSpriteComponents,
 } from "../../src/plugins/rendering/renderer2D";
+import { createTimerPlugin, createTimer } from "../../src/plugins/scripting/timers";
 
 // -- Constants --
 
@@ -12,9 +13,7 @@ const SCREEN_H = 500;
 const GAME_DURATION = 20;
 const DOT_COLORS = [0x4fc3f7, 0xf06292, 0xba68c8, 0x81c784, 0xffb74d, 0xe57373] as const;
 
-// -- Dot entity tracking (for cleanup on screen exit) --
-
-const activeDots = new Set<number>();
+const nextSpawnInterval = () => 0.4 + Math.random() * 0.7;
 
 // -- ECS setup with screen definitions --
 
@@ -25,20 +24,17 @@ const ecs = ECSpresso
 		width: SCREEN_W,
 		height: SCREEN_H,
 	}))
+	.withPlugin(createTimerPlugin())
 	.withComponentTypes<{
-		dot: { lifetime: number; speed: number };
+		dot: { speed: number };
+		clock: true;
 	}>()
 	.withScreens(screens => screens
 		.add('menu', {
 			initialState: () => ({}),
 		})
 		.add('playing', {
-			initialState: () => ({ score: 0, timeLeft: GAME_DURATION, spawnTimer: 0 }),
-			onExit(ecsParam) {
-				// Clean up all dot entities when leaving the playing screen
-				activeDots.forEach(id => ecsParam.removeEntity(id));
-				activeDots.clear();
-			},
+			initialState: () => ({ score: 0 }),
 		})
 		.add('paused', {
 			initialState: () => ({}),
@@ -125,6 +121,7 @@ function spawnDot() {
 	const color = DOT_COLORS[Math.floor(Math.random() * DOT_COLORS.length)]!;
 	const x = radius + Math.random() * (SCREEN_W - radius * 2);
 	const speed = 60 + Math.random() * 120;
+	const lifetime = (SCREEN_H + radius * 2) / speed;
 
 	const gfx = new Graphics().circle(0, 0, radius).fill(color);
 	const sprite = new Sprite(pixiApp.renderer.generateTexture(gfx));
@@ -132,41 +129,73 @@ function spawnDot() {
 	sprite.eventMode = 'static';
 	sprite.cursor = 'pointer';
 
-	// Reference to entity ID, set after spawn
-	const ref = { id: -1 };
+	const entity = ecs.spawn({
+		...createSpriteComponents(sprite, { x, y: -radius }, { anchor: { x: 0.5, y: 0.5 } }),
+		dot: { speed },
+		timers: {
+			life: createTimer(lifetime, {
+				onComplete: ({ entityId }) => ecs.removeEntity(entityId),
+			}),
+		},
+	});
 
 	sprite.on('pointerdown', () => {
 		if (!ecs.isCurrentScreen('playing')) return;
-		const state = ecs.getScreenState('playing');
-		state.score += 1;
-		activeDots.delete(ref.id);
-		ecs.removeEntity(ref.id);
+		ecs.getScreenState('playing').score += 1;
+		ecs.removeEntity(entity.id);
 	});
-
-	const entity = ecs.spawn({
-		...createSpriteComponents(sprite, { x, y: -radius }, { anchor: { x: 0.5, y: 0.5 } }),
-		dot: { lifetime: (SCREEN_H + radius * 2) / speed, speed },
-	});
-
-	ref.id = entity.id;
-	activeDots.add(entity.id);
 }
+
+// -- Screen lifecycle: spawn the playing-screen clock entity --
+
+ecs.onScreenEnter('playing', ({ ecs }) => {
+	ecs.spawn({
+		clock: true,
+		timers: {
+			gameOver: createTimer(GAME_DURATION, {
+				onComplete: () => {
+					const state = ecs.getScreenState('playing');
+					void ecs.setScreen('gameOver', { finalScore: state.score });
+				},
+			}),
+			dotSpawn: createTimer(nextSpawnInterval()),
+		},
+	}, { scope: 'playing' });
+});
+
+// -- Pause: freeze all timers while the paused overlay is on top --
+// The timer plugin's tick system runs globally, so screen-gating doesn't pause it.
+
+const setAllTimersActive = (predicate: (t: { elapsed: number; duration: number }) => boolean) => {
+	for (const entity of ecs.getEntitiesWithQuery(['timers']))
+		for (const slot in entity.components.timers) {
+			const t = entity.components.timers[slot];
+			if (t) t.active = predicate(t);
+		}
+};
+
+ecs.onScreenEnter('paused', () => setAllTimersActive(() => false));
+ecs.onScreenExit('paused', () => setAllTimersActive(t => t.elapsed < t.duration));
 
 // -- Systems --
 
 // Screen UI visibility — runs every frame regardless of current screen
 ecs.addSystem('screenUI')
 	.inPhase('render')
-	.setProcess(({ ecs }) => {
+	.addQuery('clock', { with: ['clock', 'timers'] })
+	.setProcess(({ ecs, queries }) => {
 		menuContainer.visible = ecs.isCurrentScreen('menu');
 		hudContainer.visible = ecs.isScreenActive('playing');
 		pauseContainer.visible = ecs.isCurrentScreen('paused');
 		gameOverContainer.visible = ecs.isCurrentScreen('gameOver');
 
 		const playingState = ecs.tryGetScreenState('playing');
-		if (playingState) {
+		const clock = queries.clock[0];
+		if (playingState && clock) {
+			const game = clock.components.timers['gameOver'];
+			const remaining = game ? Math.max(0, game.duration - game.elapsed) : 0;
 			scoreText.text = `Score: ${playingState.score}`;
-			timerText.text = `${Math.ceil(playingState.timeLeft)}`;
+			timerText.text = `${Math.ceil(remaining)}`;
 		}
 
 		const gameOverState = ecs.tryGetScreenState('gameOver');
@@ -175,44 +204,27 @@ ecs.addSystem('screenUI')
 		}
 	});
 
-// Countdown — only runs during 'playing' screen
-ecs.addSystem('countdown')
-	.inScreens(['playing'])
-	.setProcess(({ dt, ecs }) => {
-		const state = ecs.getScreenState('playing');
-		if (state.timeLeft <= 0) return; // transition already pending
-		state.timeLeft -= dt;
-		if (state.timeLeft <= 0) {
-			state.timeLeft = 0;
-			void ecs.setScreen('gameOver', { finalScore: state.score });
-		}
-	});
-
-// Dot spawner — only runs during 'playing' screen
+// Dot spawner — re-arms its slot each cycle with a fresh random duration
 ecs.addSystem('dotSpawner')
 	.inScreens(['playing'])
-	.setProcess(({ dt, ecs }) => {
-		const state = ecs.getScreenState('playing');
-		state.spawnTimer -= dt;
-		if (state.spawnTimer <= 0) {
-			state.spawnTimer = 0.4 + Math.random() * 0.7;
-			spawnDot();
-		}
+	.addQuery('clock', { with: ['clock', 'timers'] })
+	.setProcess(({ queries }) => {
+		const clock = queries.clock[0];
+		if (!clock) return;
+		const slot = clock.components.timers['dotSpawn'];
+		if (!slot?.justFinished) return;
+		spawnDot();
+		slot.elapsed = 0;
+		slot.duration = nextSpawnInterval();
+		slot.active = true;
 	});
 
-// Dot movement and expiry — only runs during 'playing' screen
-ecs.addSystem('dotLifecycle')
+// Dot movement — lifetime expiry is handled by the timer plugin's onComplete
+ecs.addSystem('dotMovement')
 	.inScreens(['playing'])
 	.setProcessEach({ with: ['dot', 'localTransform'] }, ({ entity, dt, ecs }) => {
-		const { dot } = entity.components;
-		dot.lifetime -= dt;
-		if (dot.lifetime <= 0) {
-			activeDots.delete(entity.id);
-			ecs.removeEntity(entity.id);
-			return;
-		}
 		ecs.mutateComponent(entity.id, 'localTransform', (lt) => {
-			lt.y += dot.speed * dt;
+			lt.y += entity.components.dot.speed * dt;
 		});
 	});
 
