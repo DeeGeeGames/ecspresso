@@ -19,9 +19,11 @@ export const collisionLayers = defineCollisionLayers({
 
 export type CollisionLayerName = LayersOf<typeof collisionLayers>;
 
+export type TimerSlot = 'spawn' | 'hide' | 'destroy';
+
 export const builder = ECSpresso.create()
 	.withComponentTypes<
-		TimerComponentTypes &
+		TimerComponentTypes<TimerSlot> &
 		Renderer3DComponentTypes &
 		Collision3DComponentTypes<CollisionLayerName> &
 		{

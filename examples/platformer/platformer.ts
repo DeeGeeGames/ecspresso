@@ -45,7 +45,7 @@ const ecs = ECSpresso.create()
 			jump: { keys: ['w', 'ArrowUp', ' '] },
 		},
 	}))
-	.withPlugin(createTimerPlugin())
+	.withPlugin(createTimerPlugin<'coyote' | 'jumpBuffer'>())
 	.withFixedTimestep(1 / 60)
 	.withComponentTypes<{
 		player: true;
@@ -61,14 +61,17 @@ ecs.addSystem('ground-reset')
 		entity.components.groundContact.grounded = false;
 	});
 
-function restartTimer(t: Timer) {
+type PlayerTimerSlot = 'coyote' | 'jumpBuffer';
+type PlayerTimer = Timer<PlayerTimerSlot>;
+
+function restartTimer(t: PlayerTimer) {
 	t.elapsed = 0;
 	t.active = true;
 }
 
 function applyGroundLanding(
 	gc: { grounded: boolean },
-	timers: { coyote: Timer; jumpBuffer: Timer },
+	timers: { coyote: PlayerTimer; jumpBuffer: PlayerTimer },
 	vel: { y: number } | undefined,
 ) {
 	gc.grounded = true;
@@ -79,9 +82,9 @@ function applyGroundLanding(
 	}
 }
 
-function getPlayerTimers(timers: Record<string, Timer>): { coyote: Timer; jumpBuffer: Timer } | undefined {
-	const coyote = timers['coyote'];
-	const jumpBuffer = timers['jumpBuffer'];
+function getPlayerTimers(timers: Partial<Record<PlayerTimerSlot, PlayerTimer>>): { coyote: PlayerTimer; jumpBuffer: PlayerTimer } | undefined {
+	const coyote = timers.coyote;
+	const jumpBuffer = timers.jumpBuffer;
 	if (!coyote || !jumpBuffer) return undefined;
 	return { coyote, jumpBuffer };
 }

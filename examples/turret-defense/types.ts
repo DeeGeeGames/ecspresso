@@ -18,9 +18,11 @@ export const SCREEN_HEIGHT = 800;
 export const CENTER_X = SCREEN_WIDTH / 2;
 export const CENTER_Y = SCREEN_HEIGHT / 2;
 
+export type TimerSlot = 'spawn' | 'fire';
+
 export const builder = ECSpresso.create()
 	.withComponentTypes<
-		TimerComponentTypes &
+		TimerComponentTypes<TimerSlot> &
 		TransformComponentTypes &
 		CollisionComponentTypes<Layer> &
 		Renderer2DComponentTypes &

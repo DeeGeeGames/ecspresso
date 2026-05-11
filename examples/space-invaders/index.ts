@@ -9,7 +9,7 @@ import createInputProcessingPlugin, { createInputPlugin } from './plugins/input-
 import createSpawnerPlugin from './plugins/spawner-plugin';
 import createUIPlugin from './plugins/ui-plugin';
 import createGameLogicPlugin from './plugins/game-logic-plugin';
-import { builder } from './types';
+import { builder, type TimerSlot } from './types';
 
 const game = builder
 	.withResource('gameState', { status: 'ready', level: 1, lives: 3 })
@@ -27,7 +27,7 @@ const game = builder
 		currentDirection: 'right',
 		lastEdgeHit: null,
 	})
-	.withPlugin(createTimerPlugin())
+	.withPlugin(createTimerPlugin<TimerSlot>())
 	.withPlugin(createRenderer2DPlugin({
 		background: '#000000',
 		container: '#game-container',

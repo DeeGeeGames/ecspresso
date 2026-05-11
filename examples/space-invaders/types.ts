@@ -11,9 +11,11 @@ import type { InputResourceTypes } from '../../src/plugins/input/input';
 
 type Layer = LayersOf<typeof collisionLayers>;
 
+export type TimerSlot = 'levelTransition' | 'descent' | 'respawn' | 'hide';
+
 export const builder = ECSpresso.create()
 	.withComponentTypes<
-		TimerComponentTypes &
+		TimerComponentTypes<TimerSlot> &
 		TransformComponentTypes &
 		Physics2DComponentTypes<Layer> &
 		BoundsComponentTypes &

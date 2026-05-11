@@ -26,11 +26,11 @@ import { definePlugin, type BasePluginOptions } from 'ecspresso';
  * }
  * ```
  */
-export interface TimerEventData {
+export interface TimerEventData<Slots extends string = string> {
 	/** The entity ID that owns the timer slot */
 	entityId: number;
 	/** The slot name within the entity's `timers` map */
-	slot: string;
+	slot: Slots;
 	/** The slot's configured duration in seconds */
 	duration: number;
 	/** The actual elapsed time (may exceed duration slightly) */
@@ -43,7 +43,7 @@ export interface TimerEventData {
  * A single timer's data. Multiple of these can live on one entity, keyed by slot name.
  * Use `justFinished` to detect completion in your systems.
  */
-export interface Timer {
+export interface Timer<Slots extends string = string> {
 	/** Time accumulated so far (seconds) */
 	elapsed: number;
 	/** Target duration (seconds) */
@@ -55,7 +55,7 @@ export interface Timer {
 	/** True for one frame after the timer completes */
 	justFinished: boolean;
 	/** Optional callback invoked when the timer completes */
-	onComplete?: (data: TimerEventData) => void;
+	onComplete?: (data: TimerEventData<Slots>) => void;
 }
 
 /**
@@ -79,8 +79,8 @@ export interface Timer {
  * });
  * ```
  */
-export interface TimerComponentTypes {
-	timers: Record<string, Timer>;
+export interface TimerComponentTypes<Slots extends string = string> {
+	timers: Partial<Record<Slots, Timer<Slots>>>;
 }
 
 // ==================== Plugin Options ====================
@@ -89,9 +89,9 @@ export interface TimerPluginOptions<G extends string = 'timers'> extends BasePlu
 
 // ==================== Helper Functions ====================
 
-export interface TimerOptions {
+export interface TimerOptions<Slots extends string = string> {
 	/** Callback invoked when the timer completes */
-	onComplete?: (data: TimerEventData) => void;
+	onComplete?: (data: TimerEventData<Slots>) => void;
 }
 
 /**
@@ -119,7 +119,7 @@ export interface TimerOptions {
  * });
  * ```
  */
-export function createTimer(duration: number, options?: TimerOptions): Timer {
+export function createTimer<Slots extends string = string>(duration: number, options?: TimerOptions<Slots>): Timer<Slots> {
 	return {
 		elapsed: 0,
 		duration,
@@ -142,7 +142,7 @@ export function createTimer(duration: number, options?: TimerOptions): Timer {
  * });
  * ```
  */
-export function createRepeatingTimer(duration: number, options?: TimerOptions): Timer {
+export function createRepeatingTimer<Slots extends string = string>(duration: number, options?: TimerOptions<Slots>): Timer<Slots> {
 	return {
 		elapsed: 0,
 		duration,
@@ -184,8 +184,36 @@ export function createRepeatingTimer(duration: number, options?: TimerOptions): 
  *     }
  *   });
  * ```
+ *
+ * @example
+ * Typed slot names — pass a string-union generic to lock the set of legal
+ * slot names. Spawn sites reject typos, autocomplete works on slot access,
+ * and `slot` is narrowed in `onComplete` callbacks. Defaults to `string`
+ * (any slot name) when omitted.
+ *
+ * ```typescript
+ * const ecs = ECSpresso.create()
+ *   .withPlugin(createTimerPlugin<'launch' | 'hangarCycle'>())
+ *   .build();
+ *
+ * ecs.spawn({ timers: { launch: createTimer(2.0) } });   // ok
+ * ecs.spawn({ timers: { typo:   createTimer(2.0) } });   // type error
+ *
+ * createTimer<'launch' | 'hangarCycle'>(1.0, {
+ *   onComplete: ({ slot }) => {
+ *     // slot is 'launch' | 'hangarCycle', not string
+ *   },
+ * });
+ * ```
+ *
+ * Only one timer plugin can be installed per world. Feature plugins should
+ * re-export their slot union as a type so the app can assemble them:
+ * `createTimerPlugin<FighterSlots | CarrierSlots>()`.
  */
-export function createTimerPlugin<G extends string = 'timers'>(
+export function createTimerPlugin<
+	Slots extends string = string,
+	G extends string = 'timers',
+>(
 	options?: TimerPluginOptions<G>
 ) {
 	const {
@@ -195,7 +223,7 @@ export function createTimerPlugin<G extends string = 'timers'>(
 	} = options ?? {};
 
 	return definePlugin('timers')
-		.withComponentTypes<TimerComponentTypes>()
+		.withComponentTypes<TimerComponentTypes<Slots>>()
 		.withLabels<'timer-update'>()
 		.withGroups<G>()
 		.install((world) => {

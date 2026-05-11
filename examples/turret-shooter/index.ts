@@ -2,7 +2,7 @@ import { createTimerPlugin } from '../../src/plugins/scripting/timers';
 import { createRenderer3DPlugin } from '../../src/plugins/rendering/renderer3D';
 import { createCollision3DPlugin } from '../../src/plugins/physics/collision3D';
 import { createSpatialIndex3DPlugin } from '../../src/plugins/spatial/spatial-index3D';
-import { builder, collisionLayers } from './types';
+import { builder, collisionLayers, type TimerSlot } from './types';
 import createInitPlugin from './plugins/init-plugin';
 import createInputPlugin from './plugins/input-plugin';
 import createRenderPlugin from './plugins/render-plugin';
@@ -31,7 +31,7 @@ async function initGame() {
 				lookAt: { x: 0, y: 5, z: -10 },
 			},
 		}))
-		.withPlugin(createTimerPlugin())
+		.withPlugin(createTimerPlugin<TimerSlot>())
 		.withPlugin(createSpatialIndex3DPlugin())
 		.withPlugin(createCollision3DPlugin({ layers: collisionLayers }))
 		.withPlugin(createInitPlugin())

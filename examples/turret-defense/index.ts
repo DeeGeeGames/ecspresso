@@ -13,7 +13,7 @@ import createTurretPlugin from './plugins/turret-plugin';
 import createEnemyPlugin from './plugins/enemy-plugin';
 import createCombatPlugin from './plugins/combat-plugin';
 import createUIPlugin from './plugins/ui-plugin';
-import { builder, SCREEN_WIDTH, SCREEN_HEIGHT } from './types';
+import { builder, SCREEN_WIDTH, SCREEN_HEIGHT, type TimerSlot } from './types';
 import { spawnTurret, spawnBase } from './utils';
 
 const game = builder
@@ -24,7 +24,7 @@ const game = builder
 		enemiesRemaining: 0,
 		baseEntityId: -1,
 	})
-	.withPlugin(createTimerPlugin())
+	.withPlugin(createTimerPlugin<TimerSlot>())
 	.withPlugin(createRenderer2DPlugin({
 		background: '#111122',
 		container: '#game-container',

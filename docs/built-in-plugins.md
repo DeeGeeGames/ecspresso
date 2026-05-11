@@ -268,7 +268,7 @@ world.spawn({
 });
 ```
 
-Reading slot state in a system uses bracket access (the `timers` map is an index signature, so `noPropertyAccessFromIndexSignature` blocks dot syntax):
+Reading slot state in a system uses bracket access (the default `timers` map is an index signature, so `noPropertyAccessFromIndexSignature` blocks dot syntax):
 
 ```typescript
 world.addSystem('launch-on-finish')
@@ -283,6 +283,40 @@ world.addSystem('launch-on-finish')
 ```
 
 Each `Timer` exposes `elapsed`, `duration`, `repeat`, `active`, `justFinished`, and optional `onComplete` for runtime control. Completed one-shot slots remain on the entity with `active = false` — they're idle data and cost nothing per frame, but the host keeps them until you remove the slot or despawn the entity.
+
+### Typed slot names
+
+`createTimerPlugin` accepts an optional string-union generic that names every slot the world is allowed to use. The component is then typed as `Partial<Record<Slots, Timer<Slots>>>`, so spawn sites reject typo slots, autocomplete works on slot access, and `slot` is narrowed to the union inside `onComplete`. Omitted, it defaults to `string` (any slot name) and the existing behavior is unchanged.
+
+```typescript
+const world = ECSpresso
+  .create()
+  .withPlugin(createTimerPlugin<'launch' | 'shieldDepletion' | 'hangarCycle'>())
+  .build();
+
+world.spawn({ timers: { launch: createTimer(2.0) } });        // ok
+world.spawn({ timers: { typo:   createTimer(2.0) } });        // type error
+```
+
+The union is world-global, not per-archetype: any entity with a `timers` component sees every declared slot as a valid (optional) key. Type safety here means "no typos, autocomplete works," not "this slot only belongs on fighters."
+
+Only one timer plugin can be installed per world (plugins are keyed by name), so feature plugins should re-export their slot union as a type and the app assembles them at install time:
+
+```typescript
+// fighter-plugin.ts
+export type FighterTimerSlots = 'launch' | 'reload';
+
+// carrier-plugin.ts
+export type CarrierTimerSlots = 'shieldDepletion' | 'hangarCycle';
+
+// main.ts
+const world = ECSpresso
+  .create()
+  .withPlugin(createTimerPlugin<FighterTimerSlots | CarrierTimerSlots>())
+  .withPlugin(fighterPlugin())
+  .withPlugin(carrierPlugin())
+  .build();
+```
 
 ## Collision Plugin
 

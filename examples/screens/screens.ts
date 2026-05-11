@@ -24,7 +24,7 @@ const ecs = ECSpresso
 		width: SCREEN_W,
 		height: SCREEN_H,
 	}))
-	.withPlugin(createTimerPlugin())
+	.withPlugin(createTimerPlugin<'life' | 'gameOver' | 'dotSpawn'>())
 	.withComponentTypes<{
 		dot: { speed: number };
 		clock: true;
@@ -168,10 +168,8 @@ ecs.onScreenEnter('playing', ({ ecs }) => {
 
 const setAllTimersActive = (predicate: (t: { elapsed: number; duration: number }) => boolean) => {
 	for (const entity of ecs.getEntitiesWithQuery(['timers']))
-		for (const slot in entity.components.timers) {
-			const t = entity.components.timers[slot];
+		for (const t of Object.values(entity.components.timers))
 			if (t) t.active = predicate(t);
-		}
 };
 
 ecs.onScreenEnter('paused', () => setAllTimersActive(() => false));
