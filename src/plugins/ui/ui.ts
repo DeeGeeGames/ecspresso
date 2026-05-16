@@ -492,7 +492,7 @@ export function createUIPlugin<G extends string = 'ui'>(
 						if (localTransform.x !== scratchPos.x || localTransform.y !== scratchPos.y) {
 							localTransform.x = scratchPos.x;
 							localTransform.y = scratchPos.y;
-							ecs.markChanged(entity.id, 'localTransform');
+							ecs.markChangedIfTracked(entity.id, 'localTransform');
 						}
 					}
 				});
@@ -537,7 +537,7 @@ export function createUIPlugin<G extends string = 'ui'>(
 						}
 						if (prev !== next) {
 							uiInteraction.state = next;
-							ecs.markChanged(entity.id, 'uiInteraction');
+							ecs.markChangedIfTracked(entity.id, 'uiInteraction');
 						}
 					}
 				});

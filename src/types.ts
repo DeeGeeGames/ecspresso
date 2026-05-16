@@ -337,6 +337,7 @@ export type BaseWorld<C extends Record<string, any> = {}> = Pick<ECSpresso<_Base
 	| 'removeEntity'
 	| 'spawn'
 	| 'markChanged'
+	| 'markChangedIfTracked'
 	| 'getResource'
 	| 'hasResource'
 > & {

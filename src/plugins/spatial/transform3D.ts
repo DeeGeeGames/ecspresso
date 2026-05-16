@@ -360,7 +360,7 @@ function propagateTransforms3D(
 		for (const entity of orphanBuffer) {
 			const { localTransform3D, worldTransform3D } = entity.components;
 			if (copyTransform3D(localTransform3D, worldTransform3D)) {
-				ecs.markChanged(entity.id, 'worldTransform3D');
+				ecs.markChangedIfTracked(entity.id, 'worldTransform3D');
 			}
 		}
 		return;
@@ -384,7 +384,7 @@ function propagateTransforms3D(
 			? combineTransforms3D(parentWorld, localTransform3D, worldTransform3D)
 			: copyTransform3D(localTransform3D, worldTransform3D);
 
-		if (changed) ecs.markChanged(entityId, 'worldTransform3D');
+		if (changed) ecs.markChangedIfTracked(entityId, 'worldTransform3D');
 	});
 
 	em.getEntitiesWithQueryInto(orphanBuffer, ['localTransform3D', 'worldTransform3D']);
@@ -392,7 +392,7 @@ function propagateTransforms3D(
 		if (hierarchyVisited.has(entity.id)) continue;
 		const { localTransform3D, worldTransform3D } = entity.components;
 		if (copyTransform3D(localTransform3D, worldTransform3D)) {
-			ecs.markChanged(entity.id, 'worldTransform3D');
+			ecs.markChangedIfTracked(entity.id, 'worldTransform3D');
 		}
 	}
 }

@@ -229,7 +229,7 @@ export class SystemBuilder<
 		definition: {
 			with: ReadonlyArray<WithComponents>;
 			without?: ReadonlyArray<WithoutComponents>;
-			changed?: ReadonlyArray<WithComponents>;
+			changed?: ReadonlyArray<WithComponents & keyof Cfg['trackedChanges']>;
 			optional?: ReadonlyArray<OptionalComponents>;
 			parentHas?: ReadonlyArray<keyof Cfg['components']>;
 			mutates?: ReadonlyArray<MutatesComponents>;
@@ -272,7 +272,7 @@ export class SystemBuilder<
 		definition: {
 			with: ReadonlyArray<WithComponents>;
 			without?: ReadonlyArray<WithoutComponents>;
-			changed?: ReadonlyArray<WithComponents>;
+			changed?: ReadonlyArray<WithComponents & keyof Cfg['trackedChanges']>;
 			optional?: ReadonlyArray<OptionalComponents>;
 			parentHas?: ReadonlyArray<keyof Cfg['components']>;
 			mutates?: ReadonlyArray<MutatesComponents>;
@@ -355,7 +355,7 @@ export class SystemBuilder<
 			with: ReadonlyArray<W>;
 			without?: ReadonlyArray<WO>;
 			optional?: ReadonlyArray<O>;
-			changed?: ReadonlyArray<W>;
+			changed?: ReadonlyArray<W & keyof Cfg['trackedChanges']>;
 			parentHas?: ReadonlyArray<keyof Cfg['components']>;
 			mutates?: ReadonlyArray<M>;
 		},

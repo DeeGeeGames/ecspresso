@@ -271,7 +271,7 @@ export function burstParticles(
 	const emitter = ecs.getComponent(entityId, 'particleEmitter');
 	if (!emitter) return false;
 	emitter.pendingBurst += count ?? emitter.config.burstCount;
-	ecs.markChanged(entityId, 'particleEmitter');
+	ecs.markChangedIfTracked(entityId, 'particleEmitter');
 	return true;
 }
 

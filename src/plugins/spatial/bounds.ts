@@ -316,7 +316,7 @@ export function createBoundsPlugin<ResourceTypes extends BoundsResourceTypes = B
 						if (deltaX !== 0 || deltaY !== 0) {
 							localTransform.x += deltaX;
 							localTransform.y += deltaY;
-							ecs.markChanged(entity.id, 'localTransform');
+							ecs.markChangedIfTracked(entity.id, 'localTransform');
 						}
 					}
 				});
@@ -363,7 +363,7 @@ export function createBoundsPlugin<ResourceTypes extends BoundsResourceTypes = B
 						if (deltaX !== 0 || deltaY !== 0) {
 							localTransform.x += deltaX;
 							localTransform.y += deltaY;
-							ecs.markChanged(entity.id, 'localTransform');
+							ecs.markChangedIfTracked(entity.id, 'localTransform');
 						}
 					}
 				});

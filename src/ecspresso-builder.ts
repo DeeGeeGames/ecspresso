@@ -3,7 +3,7 @@ import AssetManager, { AssetConfiguratorImpl, createAssetConfigurator } from "./
 import ScreenManager, { ScreenConfiguratorImpl, createScreenConfigurator } from "./screen-manager";
 import type { ResourceFactoryWithDeps, ResourceDirectValue } from "./resource-manager";
 import { definePlugin, type Plugin } from "./plugin";
-import type { WorldConfig, EmptyConfig, MergeConfigs, TypesAreCompatible, WithComponents, WithEvents, WithResources } from "./type-utils";
+import type { WorldConfig, EmptyConfig, MergeConfigs, TypesAreCompatible, WithComponents, WithEvents, WithResources, WithTrackedChanges } from "./type-utils";
 import type { AssetConfigurator, AssetsResource } from "./asset-types";
 import type { ScreenDefinition, ScreenConfigurator, ScreenResource } from "./screen-types";
 
@@ -20,6 +20,7 @@ type FinalizeBuiltinResources<Cfg extends WorldConfig, AG extends string> = {
 		& ([keyof Cfg['screens']] extends [never] ? {} : { $screen: ScreenResource<Cfg['screens']> });
 	readonly assets: Cfg['assets'];
 	readonly screens: Cfg['screens'];
+	readonly trackedChanges: Cfg['trackedChanges'];
 };
 
 /**
@@ -47,6 +48,8 @@ export class ECSpressoBuilder<
 	private pendingPlugins: Plugin<any, any, any, any, any, any>[] = [];
 	/** Fixed timestep interval (null means use default 1/60) */
 	private _fixedDt: number | null = null;
+	/** `null` means "no `.setTrackedChanges(...)` call" → runtime keeps default track-all behavior. */
+	private _trackedChanges: string[] | null = null;
 
 	constructor() {}
 
@@ -63,15 +66,9 @@ export class ECSpressoBuilder<
 		BAG extends string = never,
 		BRQ extends string = never,
 	>(
-		this: ECSpressoBuilder<{ readonly components: {}; readonly events: {}; readonly resources: {}; readonly assets: Cfg['assets']; readonly screens: Cfg['screens'] }, Labels, Groups, AssetGroupNames, ReactiveQueryNames>,
+		this: ECSpressoBuilder<{ readonly components: {}; readonly events: {}; readonly resources: {}; readonly assets: Cfg['assets']; readonly screens: Cfg['screens']; readonly trackedChanges: {} }, Labels, Groups, AssetGroupNames, ReactiveQueryNames>,
 		plugin: Plugin<PCfg, PReq, BL, BG, BAG, BRQ>
-	): ECSpressoBuilder<{
-		readonly components: PCfg['components'];
-		readonly events: PCfg['events'];
-		readonly resources: PCfg['resources'];
-		readonly assets: Cfg['assets'] & PCfg['assets'];
-		readonly screens: Cfg['screens'] & PCfg['screens'];
-	}, Labels | BL, Groups | BG, AssetGroupNames | BAG, ReactiveQueryNames | BRQ>;
+	): ECSpressoBuilder<MergeConfigs<Cfg, PCfg>, Labels | BL, Groups | BG, AssetGroupNames | BAG, ReactiveQueryNames | BRQ>;
 
 	/**
 		* Add a subsequent plugin with type checking.
@@ -145,6 +142,23 @@ export class ECSpressoBuilder<
 		: never;
 	withResourceTypes<T extends Record<string, any>>(): ECSpressoBuilder<WithResources<Cfg, T>, Labels, Groups, AssetGroupNames, ReactiveQueryNames> {
 		return this as unknown as ECSpressoBuilder<WithResources<Cfg, T>, Labels, Groups, AssetGroupNames, ReactiveQueryNames>;
+	}
+
+	/**
+	 * Declare the subset of components whose changes are tracked. Components
+	 * outside this set get no-op behavior from `markChangedIfTracked` and a
+	 * compile error from `markChanged` / `changed:` query filters.
+	 *
+	 * Calling this REPLACES the tracked set (defaults to all components when
+	 * not called). Use `setTrackedChanges()` with no args to track nothing.
+	 *
+	 * @param names Component names to track.
+	 */
+	setTrackedChanges<K extends keyof Cfg['components'] & string>(
+		...names: K[]
+	): ECSpressoBuilder<WithTrackedChanges<Cfg, K>, Labels, Groups, AssetGroupNames, ReactiveQueryNames> {
+		this._trackedChanges = names.slice();
+		return this as unknown as ECSpressoBuilder<WithTrackedChanges<Cfg, K>, Labels, Groups, AssetGroupNames, ReactiveQueryNames>;
 	}
 
 	/**
@@ -224,6 +238,7 @@ export class ECSpressoBuilder<
 		readonly resources: Cfg['resources'] & { $assets: AssetsResource<Cfg['assets'] & NewA, string> };
 		readonly assets: Cfg['assets'] & NewA;
 		readonly screens: Cfg['screens'];
+		readonly trackedChanges: Cfg['trackedChanges'];
 	}, Labels, Groups, AssetGroupNames | NewG, ReactiveQueryNames> {
 		const assetConfig = createAssetConfigurator<{}, never>();
 		configurator(assetConfig);
@@ -234,6 +249,7 @@ export class ECSpressoBuilder<
 			readonly resources: Cfg['resources'] & { $assets: AssetsResource<Cfg['assets'] & NewA, string> };
 			readonly assets: Cfg['assets'] & NewA;
 			readonly screens: Cfg['screens'];
+			readonly trackedChanges: Cfg['trackedChanges'];
 		}, Labels, Groups, AssetGroupNames | NewG, ReactiveQueryNames>;
 	}
 
@@ -249,12 +265,14 @@ export class ECSpressoBuilder<
 			readonly resources: Cfg['resources'];
 			readonly assets: Cfg['assets'];
 			readonly screens: Record<string, ScreenDefinition>;
+			readonly trackedChanges: Cfg['trackedChanges'];
 		}>>) => ScreenConfigurator<NewS, ECSpresso<{
 			readonly components: Cfg['components'];
 			readonly events: Cfg['events'];
 			readonly resources: Cfg['resources'];
 			readonly assets: Cfg['assets'];
 			readonly screens: Record<string, ScreenDefinition>;
+			readonly trackedChanges: Cfg['trackedChanges'];
 		}>>
 	): ECSpressoBuilder<{
 		readonly components: Cfg['components'];
@@ -262,6 +280,7 @@ export class ECSpressoBuilder<
 		readonly resources: Cfg['resources'] & { $screen: ScreenResource<Cfg['screens'] & NewS> };
 		readonly assets: Cfg['assets'];
 		readonly screens: Cfg['screens'] & NewS;
+		readonly trackedChanges: Cfg['trackedChanges'];
 	}, Labels, Groups, AssetGroupNames, ReactiveQueryNames> {
 		const screenConfig = createScreenConfigurator<{}, ECSpresso<{
 			readonly components: Cfg['components'];
@@ -269,6 +288,7 @@ export class ECSpressoBuilder<
 			readonly resources: Cfg['resources'];
 			readonly assets: Cfg['assets'];
 			readonly screens: Record<string, ScreenDefinition>;
+			readonly trackedChanges: Cfg['trackedChanges'];
 		}>>();
 		configurator(screenConfig);
 		this.screenConfigurator = screenConfig as unknown as ScreenConfiguratorImpl<Cfg['screens']>;
@@ -278,6 +298,7 @@ export class ECSpressoBuilder<
 			readonly resources: Cfg['resources'] & { $screen: ScreenResource<Cfg['screens'] & NewS> };
 			readonly assets: Cfg['assets'];
 			readonly screens: Cfg['screens'] & NewS;
+			readonly trackedChanges: Cfg['trackedChanges'];
 		}, Labels, Groups, AssetGroupNames, ReactiveQueryNames>;
 	}
 
@@ -328,6 +349,12 @@ export class ECSpressoBuilder<
 		[ReactiveQueryNames] extends [never] ? string : ReactiveQueryNames
 	> {
 		const ecspresso = new ECSpresso() as ECSpresso<Cfg>;
+
+		// Apply explicit tracked-changes set before plugins install, so plugin
+		// systems that declare `changed:` filters subscribe consistently.
+		if (this._trackedChanges !== null) {
+			ecspresso._setTrackedChanges(this._trackedChanges as Array<keyof Cfg['components']>);
+		}
 
 		// Install all pending plugins. Compatibility was already enforced at
 		// withPlugin() time, so we skip the public installPlugin overload's

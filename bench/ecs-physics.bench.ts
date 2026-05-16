@@ -85,6 +85,10 @@ async function buildWorld(args: Args) {
 		.withPlugin(createSpatialIndexPlugin({ cellSize: 32 }))
 		.withPlugin(createDiagnosticsPlugin())
 		.withComponentTypes<{ radius: number }>()
+		// Opt into explicit-only change tracking. The bench has no reactive
+		// consumers, so plugin polite-marks (velocity/localTransform/worldTransform)
+		// become no-ops.
+		.setTrackedChanges()
 		.build();
 
 	if (!args.spatial) {

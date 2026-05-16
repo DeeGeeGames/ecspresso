@@ -36,11 +36,18 @@ export interface WorldConfig {
 	readonly resources: Record<string, any>;
 	readonly assets: Record<string, unknown>;
 	readonly screens: Record<string, ScreenDefinition<any, any>>;
+	/**
+	 * Subset of `components` whose changes are tracked. Defaults to all components.
+	 * Narrow via `.setTrackedChanges('name1', 'name2')` on the builder to opt into
+	 * skip-when-not-tracked behavior for `markChangedIfTracked` calls.
+	 */
+	readonly trackedChanges: Record<string, true>;
 }
 
 /**
  * Construct a WorldConfig from individual type dimensions.
- * All parameters default to empty records.
+ * All parameters default to empty records. `trackedChanges` defaults to C
+ * (all components tracked) for backwards compatibility.
  */
 export type WorldConfigFrom<
 	C extends Record<string, any> = {},
@@ -48,12 +55,14 @@ export type WorldConfigFrom<
 	R extends Record<string, any> = {},
 	A extends Record<string, unknown> = {},
 	S extends Record<string, ScreenDefinition<any, any>> = {},
+	T extends Record<string, true> = { [K in keyof C]: true },
 > = {
 	readonly components: C;
 	readonly events: E;
 	readonly resources: R;
 	readonly assets: A;
 	readonly screens: S;
+	readonly trackedChanges: T;
 };
 
 /**
@@ -70,6 +79,9 @@ export type MergeConfigs<A extends WorldConfig, B extends WorldConfig> = {
 	readonly resources: A['resources'] & B['resources'];
 	readonly assets: A['assets'] & B['assets'];
 	readonly screens: A['screens'] & B['screens'];
+	// Tracked-changes set widens to the union of components contributed by both
+	// configs. The app's `.setTrackedChanges(...)` call narrows this back down.
+	readonly trackedChanges: { [K in keyof (A['components'] & B['components'])]: true };
 };
 
 // ==================== Per-slot replacement helpers ====================
@@ -80,6 +92,11 @@ export type WithComponents<Cfg extends WorldConfig, T> = {
 	readonly resources: Cfg['resources'];
 	readonly assets: Cfg['assets'];
 	readonly screens: Cfg['screens'];
+	// Widens the default tracked set so newly-added components are tracked by
+	// default. Call `.setTrackedChanges(...)` AFTER all component declarations
+	// to narrow; calling it earlier and then adding more components will widen
+	// the tracked set back to all components.
+	readonly trackedChanges: { [K in keyof (Cfg['components'] & T)]: true };
 };
 
 export type WithEvents<Cfg extends WorldConfig, T> = {
@@ -88,6 +105,7 @@ export type WithEvents<Cfg extends WorldConfig, T> = {
 	readonly resources: Cfg['resources'];
 	readonly assets: Cfg['assets'];
 	readonly screens: Cfg['screens'];
+	readonly trackedChanges: Cfg['trackedChanges'];
 };
 
 export type WithResources<Cfg extends WorldConfig, T> = {
@@ -96,6 +114,7 @@ export type WithResources<Cfg extends WorldConfig, T> = {
 	readonly resources: Cfg['resources'] & T;
 	readonly assets: Cfg['assets'];
 	readonly screens: Cfg['screens'];
+	readonly trackedChanges: Cfg['trackedChanges'];
 };
 
 export type WithAssets<Cfg extends WorldConfig, T> = {
@@ -104,6 +123,7 @@ export type WithAssets<Cfg extends WorldConfig, T> = {
 	readonly resources: Cfg['resources'];
 	readonly assets: Cfg['assets'] & T;
 	readonly screens: Cfg['screens'];
+	readonly trackedChanges: Cfg['trackedChanges'];
 };
 
 export type WithScreens<Cfg extends WorldConfig, T> = {
@@ -112,6 +132,20 @@ export type WithScreens<Cfg extends WorldConfig, T> = {
 	readonly resources: Cfg['resources'];
 	readonly assets: Cfg['assets'];
 	readonly screens: Cfg['screens'] & T;
+	readonly trackedChanges: Cfg['trackedChanges'];
+};
+
+/**
+ * Replace the tracked-changes set with the given component-name union.
+ * Used by `.setTrackedChanges(...)` on the builder.
+ */
+export type WithTrackedChanges<Cfg extends WorldConfig, K extends keyof Cfg['components']> = {
+	readonly components: Cfg['components'];
+	readonly events: Cfg['events'];
+	readonly resources: Cfg['resources'];
+	readonly assets: Cfg['assets'];
+	readonly screens: Cfg['screens'];
+	readonly trackedChanges: { [N in K]: true };
 };
 
 // ==================== Config Compatibility ====================

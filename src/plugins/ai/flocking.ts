@@ -272,7 +272,7 @@ export function createFlockingPlugin<G extends string = 'ai'>(
 							const speed = Math.sqrt(speedSq);
 							velocity.x = (velocity.x / speed) * maxSpeed;
 							velocity.y = (velocity.y / speed) * maxSpeed;
-							ecs.markChanged(entity.id, 'velocity');
+							ecs.markChangedIfTracked(entity.id, 'velocity');
 						}
 
 						// Orient rotation to match velocity heading
@@ -280,7 +280,7 @@ export function createFlockingPlugin<G extends string = 'ai'>(
 							const heading = Math.atan2(velocity.y, velocity.x);
 							if (heading !== localTransform.rotation) {
 								localTransform.rotation = heading;
-								ecs.markChanged(entity.id, 'localTransform');
+								ecs.markChangedIfTracked(entity.id, 'localTransform');
 							}
 						}
 					}

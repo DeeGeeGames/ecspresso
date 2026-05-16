@@ -98,6 +98,13 @@ class EntityManager<ComponentTypes> {
 	private _idxCache1Name: keyof ComponentTypes | undefined;
 	private _idxCache1Idx: number = -1;
 	/**
+	 * Subscription bitmap for change tracking. `null` means track all (the
+	 * default); a Uint8Array means explicit-only, with 1 at indices that opted
+	 * in via `setTrackedChanges`. Indices outside the array's bounds are
+	 * treated as 0 (not tracked).
+	 */
+	private _subscribedComponentIdx: Uint8Array | null = null;
+	/**
 	 * Monotonic sequence counter for change detection.
 	 * Each markChanged call increments this and stamps the new value.
 	 */
@@ -602,6 +609,8 @@ class EntityManager<ComponentTypes> {
 	 * Use after resolving names to indices once via getOrAssignComponentIdx.
 	 */
 	markChangedByIdx(entityId: number, componentIdx: number): void {
+		const bitmap = this._subscribedComponentIdx;
+		if (bitmap !== null && (componentIdx >= bitmap.length || bitmap[componentIdx] === 0)) return;
 		const seq = ++this._changeSeq;
 		let arr = this.changeSeqs[entityId];
 		if (arr === undefined) {
@@ -636,6 +645,26 @@ class EntityManager<ComponentTypes> {
 		this._idxCache0Name = componentName;
 		this._idxCache0Idx = idx;
 		return idx;
+	}
+
+	/**
+	 * @internal Switch to explicit-only change tracking. After this call,
+	 * markChangedByIdx is a no-op for any component idx not in `names`.
+	 */
+	setTrackedChanges(names: ReadonlyArray<keyof ComponentTypes>): void {
+		let bitmap = new Uint8Array(Math.max(names.length + 4, 8));
+		for (let i = 0; i < names.length; i++) {
+			const name = names[i];
+			if (name === undefined) continue;
+			const idx = this.getOrAssignComponentIdx(name);
+			if (idx >= bitmap.length) {
+				const grown = new Uint8Array(Math.max(idx + 1, bitmap.length * 2));
+				grown.set(bitmap);
+				bitmap = grown;
+			}
+			bitmap[idx] = 1;
+		}
+		this._subscribedComponentIdx = bitmap;
 	}
 
 	/**

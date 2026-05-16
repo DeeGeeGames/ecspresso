@@ -163,7 +163,7 @@ export function createSteeringPlugin<G extends string = 'steering'>(
 						if (distSq <= arrivalThresholdSq) {
 							localTransform.x = moveTarget.x;
 							localTransform.y = moveTarget.y;
-							ecs.markChanged(entity.id, 'localTransform');
+							ecs.markChangedIfTracked(entity.id, 'localTransform');
 							ecs.commands.removeComponent(entity.id, 'moveTarget');
 							ecs.eventBus.publish('arriveAtTarget', { entityId: entity.id });
 							continue;
@@ -173,7 +173,7 @@ export function createSteeringPlugin<G extends string = 'steering'>(
 						const step = Math.min(moveSpeed * dt, dist);
 						localTransform.x += (dx / dist) * step;
 						localTransform.y += (dy / dist) * step;
-						ecs.markChanged(entity.id, 'localTransform');
+						ecs.markChangedIfTracked(entity.id, 'localTransform');
 					}
 				});
 		});

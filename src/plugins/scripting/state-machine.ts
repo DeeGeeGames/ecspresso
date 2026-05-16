@@ -210,7 +210,7 @@ function performTransition(
 
 	targetConfig.onEnter?.({ ecs, entityId });
 
-	ecs.markChanged(entityId, 'stateMachine');
+	ecs.markChangedIfTracked(entityId, 'stateMachine');
 	ecs.eventBus.publish('stateTransition', {
 		entityId,
 		from: sm.previous,

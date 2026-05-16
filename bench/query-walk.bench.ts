@@ -18,6 +18,7 @@
  */
 
 import ECSpresso from '../src';
+import type { WorldConfigFrom } from '../src/type-utils';
 import { createDiagnosticsPlugin } from '../src/plugins/debug/diagnostics';
 
 interface Args {
@@ -61,13 +62,7 @@ function mulberry32(seed: number): () => number {
 }
 
 async function buildWorld(args: Args) {
-	const ecs = ECSpresso.create<{
-		components: Components;
-		events: {};
-		resources: {};
-		assets: {};
-		screens: {};
-	}>()
+	const ecs = ECSpresso.create<WorldConfigFrom<Components>>()
 		.withPlugin(createDiagnosticsPlugin())
 		.build();
 

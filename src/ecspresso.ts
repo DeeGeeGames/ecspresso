@@ -1554,14 +1554,33 @@ export default class ECSpresso<
 	}
 
 	/**
-	 * Mark a component as changed on an entity.
-	 * Each call increments a global monotonic sequence; systems with changed
-	 * queries will see the mark exactly once (on their next execution).
+	 * Mark a component as changed on an entity. Restricted at the type level to
+	 * components in the world's tracked-changes set (defaults to all components;
+	 * narrowed via `.setTrackedChanges(...)` on the builder). For polite,
+	 * runtime-conditional marking from plugin code, use `markChangedIfTracked`.
+	 *
+	 * Each call increments a global monotonic sequence; systems with `changed:`
+	 * queries see the mark exactly once on their next execution.
 	 * @param entityId The entity ID
 	 * @param componentName The component that was changed
 	 */
-	markChanged<K extends keyof Cfg['components']>(entityId: number, componentName: K): void {
+	markChanged<K extends keyof Cfg['trackedChanges'] & keyof Cfg['components']>(entityId: number, componentName: K): void {
 		this._entityManager.markChanged(entityId, componentName);
+	}
+
+	/**
+	 * Polite mark for plugin/library code. Accepts any component name; the
+	 * runtime records the mark iff the component is in the world's tracked set,
+	 * otherwise the call is a no-op. Use this for "inform any potential
+	 * subscriber" semantics where the caller doesn't require subscription.
+	 */
+	markChangedIfTracked<K extends keyof Cfg['components']>(entityId: number, componentName: K): void {
+		this._entityManager.markChanged(entityId, componentName);
+	}
+
+	/** @internal Builder bridge for `.setTrackedChanges(...)`. */
+	_setTrackedChanges(names: ReadonlyArray<keyof Cfg['components']>): void {
+		this._entityManager.setTrackedChanges(names);
 	}
 
 	/**

@@ -278,7 +278,7 @@ function propagateTransforms(
 		for (const entity of orphanBuffer) {
 			const { localTransform, worldTransform } = entity.components;
 			if (copyTransform(localTransform, worldTransform)) {
-				ecs.markChanged(entity.id, 'worldTransform');
+				ecs.markChangedIfTracked(entity.id, 'worldTransform');
 			}
 		}
 		return;
@@ -302,7 +302,7 @@ function propagateTransforms(
 			? combineTransforms(parentWorld, localTransform, worldTransform)
 			: copyTransform(localTransform, worldTransform);
 
-		if (changed) ecs.markChanged(entityId, 'worldTransform');
+		if (changed) ecs.markChangedIfTracked(entityId, 'worldTransform');
 	});
 
 	em.getEntitiesWithQueryInto(orphanBuffer, ['localTransform', 'worldTransform']);
@@ -310,7 +310,7 @@ function propagateTransforms(
 		if (hierarchyVisited.has(entity.id)) continue;
 		const { localTransform, worldTransform } = entity.components;
 		if (copyTransform(localTransform, worldTransform)) {
-			ecs.markChanged(entity.id, 'worldTransform');
+			ecs.markChangedIfTracked(entity.id, 'worldTransform');
 		}
 	}
 }

@@ -1,6 +1,7 @@
 import { expect, describe, test } from 'bun:test';
 import EntityManager from './entity-manager';
 import ECSpresso from './ecspresso';
+import type { WorldConfigFrom } from './type-utils';
 
 interface TestComponents {
 	position: { x: number; y: number };
@@ -119,7 +120,7 @@ describe('QueryCache', () => {
 	});
 
 	test('changed filter still narrows over a cache hit', () => {
-		const ecs = new ECSpresso<{ components: TestComponents; events: {}; resources: {}; assets: {}; screens: {} }>();
+		const ecs = new ECSpresso<WorldConfigFrom<TestComponents>>();
 		const a = ecs.spawn({ position: { x: 0, y: 0 }, velocity: { x: 1, y: 1 } });
 		const b = ecs.spawn({ position: { x: 0, y: 0 }, velocity: { x: 2, y: 2 } });
 
@@ -143,7 +144,7 @@ describe('QueryCache', () => {
 	});
 
 	test('cache survives command-buffer playback between phases', () => {
-		const ecs = new ECSpresso<{ components: TestComponents; events: {}; resources: {}; assets: {}; screens: {} }>();
+		const ecs = new ECSpresso<WorldConfigFrom<TestComponents>>();
 		ecs.spawn({ position: { x: 0, y: 0 } });
 		ecs.spawn({ position: { x: 0, y: 0 } });
 
@@ -170,7 +171,7 @@ describe('QueryCache', () => {
 	});
 
 	test('reactive queries continue to work alongside the cache', () => {
-		const ecs = new ECSpresso<{ components: TestComponents; events: {}; resources: {}; assets: {}; screens: {} }>();
+		const ecs = new ECSpresso<WorldConfigFrom<TestComponents>>();
 		const enters: number[] = [];
 		const exits: number[] = [];
 		ecs.addReactiveQuery('alive', {

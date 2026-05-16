@@ -208,7 +208,7 @@ export function createProjectilePlugin<G extends string = 'combat'>(
 							localTransform.y += (dy / dist) * step;
 							localTransform.rotation = Math.atan2(dy, dx);
 						}
-						ecs.markChanged(entity.id, 'localTransform');
+						ecs.markChangedIfTracked(entity.id, 'localTransform');
 					}
 				});
 

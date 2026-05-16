@@ -203,7 +203,7 @@ const _physicsCollisionEvent: Physics3DCollisionEvent = {
 interface PhysicsEcs3DLike {
 	getComponent(id: number, name: 'localTransform3D'): { x: number; y: number; z: number } | undefined;
 	eventBus: { publish(event: 'physics3DCollision', data: Physics3DCollisionEvent): void };
-	markChanged(entityId: number, componentName: 'localTransform3D' | 'velocity3D'): void;
+	markChangedIfTracked(entityId: number, componentName: 'localTransform3D' | 'velocity3D'): void;
 }
 
 /**
@@ -243,7 +243,7 @@ function resolvePhysicsContact3D(
 			a.x = ltA.x;
 			a.y = ltA.y;
 			a.z = ltA.z;
-			ecs.markChanged(a.entityId, 'localTransform3D');
+			ecs.markChangedIfTracked(a.entityId, 'localTransform3D');
 		}
 
 		if (invMassB > 0) {
@@ -256,7 +256,7 @@ function resolvePhysicsContact3D(
 			b.x = ltB.x;
 			b.y = ltB.y;
 			b.z = ltB.z;
-			ecs.markChanged(b.entityId, 'localTransform3D');
+			ecs.markChangedIfTracked(b.entityId, 'localTransform3D');
 		}
 
 		// Velocity response (impulse-based)
@@ -303,8 +303,8 @@ function resolvePhysicsContact3D(
 			}
 		}
 
-		ecs.markChanged(a.entityId, 'velocity3D');
-		ecs.markChanged(b.entityId, 'velocity3D');
+		ecs.markChangedIfTracked(a.entityId, 'velocity3D');
+		ecs.markChangedIfTracked(b.entityId, 'velocity3D');
 	}
 
 	_physicsCollisionEvent.entityA = a.entityId;
@@ -437,7 +437,7 @@ export function createPhysics3DPlugin<L extends string = never, G extends string
 						force3D.y = 0;
 						force3D.z = 0;
 
-						ecs.markChanged(entity.id, 'localTransform3D');
+						ecs.markChangedIfTracked(entity.id, 'localTransform3D');
 					}
 				});
 
