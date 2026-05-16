@@ -309,7 +309,7 @@ interface System<
 	 */
 	_autoMarkPairs?: ReadonlyArray<{
 		queryName: string;
-		mutates: ReadonlyArray<keyof Cfg['components']>;
+		mutatesIdx: ReadonlyArray<number>;
 		kind: 'list' | 'singleton';
 	}> | null;
 }

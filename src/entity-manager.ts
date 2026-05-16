@@ -2,15 +2,18 @@ import type { Entity, FilteredEntity, RemoveEntityOptions, HierarchyEntry, Hiera
 import HierarchyManager from "./hierarchy-manager";
 import QueryCache from "./query-cache";
 
-/** Returns true if any component in `changed` was modified after `threshold`. */
-function hasChangedComponent(
-	entitySeqs: Map<string | number | symbol, number> | undefined,
-	changed: ReadonlyArray<string | number | symbol>,
+/** Returns true if any component index in `changedIdx` was modified after `threshold`. */
+function hasChangedComponentFlat(
+	arr: Uint32Array | undefined,
+	changedIdx: ReadonlyArray<number> | undefined,
 	threshold: number,
 ): boolean {
-	if (!entitySeqs) return false;
-	for (const key of changed) {
-		if ((entitySeqs.get(key) ?? -1) > threshold) return true;
+	if (!arr || !changedIdx) return false;
+	for (let i = 0; i < changedIdx.length; i++) {
+		const idx = changedIdx[i];
+		if (idx === undefined || idx >= arr.length) continue;
+		const v = arr[idx];
+		if (v !== undefined && v > threshold) return true;
 	}
 	return false;
 }
@@ -82,9 +85,18 @@ class EntityManager<ComponentTypes> {
 	private disposeCallbacks: Map<keyof ComponentTypes, (ctx: { value: unknown; entityId: number }) => void> = new Map();
 	/**
 	 * Per-entity per-component change sequence tracking.
-	 * Maps entityId -> (componentName -> sequence number when last changed)
+	 * Flat storage: changeSeqs[entityId][componentIdx] = seq number when last changed.
+	 * Component names are mapped to dense indices via componentNameToIdx.
+	 * Uint32Array zero-init means "never changed" (seq numbers start at 1).
 	 */
-	private changeSeqs: Map<number, Map<keyof ComponentTypes, number>> = new Map();
+	private changeSeqs: (Uint32Array | undefined)[] = [];
+	private componentNameToIdx: Map<keyof ComponentTypes, number> = new Map();
+	// 2-slot LRU for repeated same-name lookups, biggest win for plugin code
+	// that calls markChanged with the same handful of literal strings in tight loops.
+	private _idxCache0Name: keyof ComponentTypes | undefined;
+	private _idxCache0Idx: number = -1;
+	private _idxCache1Name: keyof ComponentTypes | undefined;
+	private _idxCache1Idx: number = -1;
 	/**
 	 * Monotonic sequence counter for change detection.
 	 * Each markChanged call increments this and stamps the new value.
@@ -341,6 +353,14 @@ class EntityManager<ComponentTypes> {
 		output.length = 0;
 
 		const hasChangedFilter = changed !== undefined && changed.length > 0 && changeThreshold !== undefined;
+		let changedIdx: number[] | undefined;
+		if (hasChangedFilter) {
+			changedIdx = [];
+			for (const name of changed) {
+				const idx = this.componentNameToIdx.get(name);
+				if (idx !== undefined) changedIdx.push(idx);
+			}
+		}
 
 		// Runtime query filtering guarantees WithComponents/WithoutComponents constraints,
 		// but TypeScript can't narrow Entity<CT> to FilteredEntity from imperative logic.
@@ -357,7 +377,7 @@ class EntityManager<ComponentTypes> {
 				return output;
 			}
 			for (const entity of this.entities.values()) {
-				if (!hasChangedComponent(this.changeSeqs.get(entity.id), changed, changeThreshold)) continue;
+				if (!hasChangedComponentFlat(this.changeSeqs[entity.id], changedIdx, changeThreshold ?? 0)) continue;
 				output.push(entity as unknown as ResultEntry);
 			}
 			return output;
@@ -373,7 +393,7 @@ class EntityManager<ComponentTypes> {
 
 		if (hasChangedFilter) {
 			for (const entity of members.values()) {
-				if (!hasChangedComponent(this.changeSeqs.get(entity.id), changed, changeThreshold)) continue;
+				if (!hasChangedComponentFlat(this.changeSeqs[entity.id], changedIdx, changeThreshold ?? 0)) continue;
 				output.push(entity as unknown as ResultEntry);
 			}
 			return output;
@@ -462,7 +482,7 @@ class EntityManager<ComponentTypes> {
 		}
 
 		// Clean up change sequences
-		this.changeSeqs.delete(entity.id);
+		this.changeSeqs[entity.id] = undefined;
 
 		// Remove the entity itself
 		return this.entities.delete(entity.id);
@@ -574,13 +594,48 @@ class EntityManager<ComponentTypes> {
 	 * @param componentName The component that changed
 	 */
 	markChanged<K extends keyof ComponentTypes>(entityId: number, componentName: K): void {
+		this.markChangedByIdx(entityId, this.getOrAssignComponentIdx(componentName));
+	}
+
+	/**
+	 * Fast-path companion to markChanged that skips the component-name lookup.
+	 * Use after resolving names to indices once via getOrAssignComponentIdx.
+	 */
+	markChangedByIdx(entityId: number, componentIdx: number): void {
 		const seq = ++this._changeSeq;
-		let entitySeqs = this.changeSeqs.get(entityId);
-		if (!entitySeqs) {
-			entitySeqs = new Map();
-			this.changeSeqs.set(entityId, entitySeqs);
+		let arr = this.changeSeqs[entityId];
+		if (arr === undefined) {
+			arr = new Uint32Array(Math.max(componentIdx + 1, 8));
+			this.changeSeqs[entityId] = arr;
+		} else if (componentIdx >= arr.length) {
+			const grown = new Uint32Array(Math.max(componentIdx + 1, arr.length * 2));
+			grown.set(arr);
+			arr = grown;
+			this.changeSeqs[entityId] = arr;
 		}
-		entitySeqs.set(componentName, seq);
+		arr[componentIdx] = seq;
+	}
+
+	getOrAssignComponentIdx<K extends keyof ComponentTypes>(componentName: K): number {
+		if (componentName === this._idxCache0Name) return this._idxCache0Idx;
+		if (componentName === this._idxCache1Name) {
+			const idx = this._idxCache1Idx;
+			this._idxCache1Name = this._idxCache0Name;
+			this._idxCache1Idx = this._idxCache0Idx;
+			this._idxCache0Name = componentName;
+			this._idxCache0Idx = idx;
+			return idx;
+		}
+		let idx = this.componentNameToIdx.get(componentName);
+		if (idx === undefined) {
+			idx = this.componentNameToIdx.size;
+			this.componentNameToIdx.set(componentName, idx);
+		}
+		this._idxCache1Name = this._idxCache0Name;
+		this._idxCache1Idx = this._idxCache0Idx;
+		this._idxCache0Name = componentName;
+		this._idxCache0Idx = idx;
+		return idx;
 	}
 
 	/**
@@ -590,7 +645,13 @@ class EntityManager<ComponentTypes> {
 	 * @returns The sequence number when last changed, or -1 if never changed
 	 */
 	getChangeSeq<K extends keyof ComponentTypes>(entityId: number, componentName: K): number {
-		return this.changeSeqs.get(entityId)?.get(componentName) ?? -1;
+		const idx = this.componentNameToIdx.get(componentName);
+		if (idx === undefined) return -1;
+		const arr = this.changeSeqs[entityId];
+		if (!arr || idx >= arr.length) return -1;
+		const v = arr[idx];
+		if (v === undefined || v === 0) return -1;
+		return v;
 	}
 
 	// ==================== Hierarchy Methods ====================

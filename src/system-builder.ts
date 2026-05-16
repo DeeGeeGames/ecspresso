@@ -402,28 +402,40 @@ export class SystemBuilder<
 		const mutates = definition.mutates && definition.mutates.length > 0
 			? definition.mutates as ReadonlyArray<keyof Cfg['components']>
 			: undefined;
+		let mutatesIdx: number[] | null = null;
 
 		const iterate = (ctx: unknown) => {
 			const frameCtx = ctx as {
 				queries: Record<string, ReadonlyArray<{ id: number }>>;
 				dt: number;
-				ecs: { markChanged: (id: number, name: keyof Cfg['components']) => void };
+				ecs: {
+					markChangedByIdx: (id: number, idx: number) => void;
+					getOrAssignComponentIdx: (name: keyof Cfg['components']) => number;
+				};
 				resources?: unknown;
 			};
 			const entities = frameCtx.queries[PROCESS_EACH_QUERY];
 			if (!entities) return;
+			if (mutates !== undefined && mutatesIdx === null) {
+				mutatesIdx = [];
+				for (let i = 0; i < mutates.length; i++) {
+					const name = mutates[i];
+					if (name !== undefined) mutatesIdx.push(frameCtx.ecs.getOrAssignComponentIdx(name));
+				}
+			}
 			perEntityCtx.dt = frameCtx.dt;
 			perEntityCtx.ecs = frameCtx.ecs;
 			perEntityCtx.resources = frameCtx.resources;
+			const idxs = mutatesIdx;
 			for (let i = 0; i < entities.length; i++) {
 				const entity = entities[i];
 				if (!entity) continue;
 				perEntityCtx.entity = entity;
 				const result = (process as (c: unknown) => boolean | void)(perEntityCtx);
-				if (mutates === undefined || result === false) continue;
-				for (let j = 0; j < mutates.length; j++) {
-					const name = mutates[j];
-					if (name !== undefined) frameCtx.ecs.markChanged(entity.id, name);
+				if (idxs === null || result === false) continue;
+				for (let j = 0; j < idxs.length; j++) {
+					const idx = idxs[j];
+					if (idx !== undefined) frameCtx.ecs.markChangedByIdx(entity.id, idx);
 				}
 			}
 		};

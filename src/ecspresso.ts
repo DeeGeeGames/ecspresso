@@ -548,8 +548,8 @@ export default class ECSpresso<
 				for (let p = 0; p < autoMarkPairs.length; p++) {
 					const pair = autoMarkPairs[p];
 					if (!pair) continue;
-					const mutates = pair.mutates;
-					const mutatesLen = mutates.length;
+					const mutatesIdx = pair.mutatesIdx;
+					const mutatesLen = mutatesIdx.length;
 					if (pair.kind === 'list') {
 						const results = queryResults[pair.queryName] as Array<FilteredEntity<Cfg['components']>> | undefined;
 						if (!results) continue;
@@ -557,16 +557,16 @@ export default class ECSpresso<
 							const entity = results[i];
 							if (!entity) continue;
 							for (let j = 0; j < mutatesLen; j++) {
-								const name = mutates[j];
-								if (name !== undefined) em.markChanged(entity.id, name);
+								const idx = mutatesIdx[j];
+								if (idx !== undefined) em.markChangedByIdx(entity.id, idx);
 							}
 						}
 					} else {
 						const entity = queryResults[pair.queryName] as FilteredEntity<Cfg['components']> | undefined;
 						if (!entity) continue;
 						for (let j = 0; j < mutatesLen; j++) {
-							const name = mutates[j];
-							if (name !== undefined) em.markChanged(entity.id, name);
+							const idx = mutatesIdx[j];
+							if (idx !== undefined) em.markChangedByIdx(entity.id, idx);
 						}
 					}
 				}
@@ -831,9 +831,17 @@ export default class ECSpresso<
 		// from zero cost for systems that don't use the feature.
 		const autoMarkPairs: Array<{
 			queryName: string;
-			mutates: ReadonlyArray<keyof Cfg['components']>;
+			mutatesIdx: ReadonlyArray<number>;
 			kind: 'list' | 'singleton';
 		}> = [];
+		const resolveIdx = (mutates: ReadonlyArray<keyof Cfg['components']>) => {
+			const out: number[] = [];
+			for (let i = 0; i < mutates.length; i++) {
+				const name = mutates[i];
+				if (name !== undefined) out.push(this._entityManager.getOrAssignComponentIdx(name));
+			}
+			return out;
+		};
 		if (system.entityQueries) {
 			for (const queryName in system.entityQueries) {
 				// setProcessEach handles its own per-entity marking inline to
@@ -842,7 +850,7 @@ export default class ECSpresso<
 				const query = system.entityQueries[queryName];
 				const mutates = (query as { mutates?: ReadonlyArray<keyof Cfg['components']> } | undefined)?.mutates;
 				if (mutates && mutates.length > 0) {
-					autoMarkPairs.push({ queryName, mutates, kind: 'list' });
+					autoMarkPairs.push({ queryName, mutatesIdx: resolveIdx(mutates), kind: 'list' });
 				}
 			}
 		}
@@ -851,7 +859,7 @@ export default class ECSpresso<
 				const query = system.entitySingletons[queryName];
 				const mutates = (query as { mutates?: ReadonlyArray<keyof Cfg['components']> } | undefined)?.mutates;
 				if (mutates && mutates.length > 0) {
-					autoMarkPairs.push({ queryName, mutates, kind: 'singleton' });
+					autoMarkPairs.push({ queryName, mutatesIdx: resolveIdx(mutates), kind: 'singleton' });
 				}
 			}
 		}
@@ -1554,6 +1562,18 @@ export default class ECSpresso<
 	 */
 	markChanged<K extends keyof Cfg['components']>(entityId: number, componentName: K): void {
 		this._entityManager.markChanged(entityId, componentName);
+	}
+
+	/**
+	 * Fast-path companion to markChanged: skips the component-name → index
+	 * lookup. Use after resolving names once via getOrAssignComponentIdx.
+	 */
+	markChangedByIdx(entityId: number, componentIdx: number): void {
+		this._entityManager.markChangedByIdx(entityId, componentIdx);
+	}
+
+	getOrAssignComponentIdx<K extends keyof Cfg['components']>(componentName: K): number {
+		return this._entityManager.getOrAssignComponentIdx(componentName);
 	}
 
 	// ==================== Component Dispose ====================
