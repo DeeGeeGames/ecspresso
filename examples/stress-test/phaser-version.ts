@@ -10,6 +10,7 @@ import {
 	COLORS,
 	createCollisionToggle,
 	createEntityCountInput,
+	createFpsOverlay,
 } from './shared';
 
 type SceneState = {
@@ -211,31 +212,12 @@ export function startPhaser(options: StartOptions): () => void {
 		onChange: options.onCountChange,
 	});
 
-	const overlay = document.createElement('div');
-	overlay.style.cssText = 'position:fixed;top:12px;right:12px;z-index:999999;padding:6px 10px;font:12px/1.4 monospace;background:rgba(0,0,0,0.6);color:#0f0;border:1px solid #333;border-radius:4px;pointer-events:none;min-width:140px;white-space:pre';
-	document.body.appendChild(overlay);
-
-	let lastTime = performance.now();
-	let frames = 0;
-	let rafId = 0;
-	const rafLoop = () => {
-		frames++;
-		const now = performance.now();
-		if (now - lastTime >= 500) {
-			const fps = Math.round((frames * 1000) / (now - lastTime));
-			frames = 0;
-			lastTime = now;
-			const scene = getScene();
-			const count = scene ? scene.ballCount() : 0;
-			overlay.textContent = `Phaser ${Phaser.VERSION}\nFPS: ${fps}\nBalls: ${count}`;
-		}
-		rafId = requestAnimationFrame(rafLoop);
-	};
-	rafId = requestAnimationFrame(rafLoop);
+	const cleanupOverlay = createFpsOverlay(
+		(fps) => `Phaser ${Phaser.VERSION}\nFPS: ${fps}\nBalls: ${getScene()?.ballCount() ?? 0}`,
+	);
 
 	return function destroy() {
-		cancelAnimationFrame(rafId);
-		overlay.remove();
+		cleanupOverlay();
 		cleanupCountInput();
 		cleanupToggle();
 		game.destroy(true);

@@ -85,7 +85,10 @@ const server = serve({
 		const file = Bun.file(filePath);
 
 		if (await file.exists()) {
-			return new Response(file);
+			const headers: Record<string, string> = {};
+			if (filePath.endsWith('.wasm')) headers['Content-Type'] = 'application/wasm';
+			else if (filePath.endsWith('.js')) headers['Content-Type'] = 'text/javascript';
+			return new Response(file, { headers });
 		}
 
 		return new Response('Not Found', { status: 404 });

@@ -1,22 +1,27 @@
 import { startECSpresso } from './ecspresso-version';
 import { startPhaser } from './phaser-version';
+import { startBevy } from './bevy-version';
 
-type Engine = 'ecspresso' | 'phaser';
+type Engine = 'ecspresso' | 'phaser' | 'bevy';
 
 const toolbar = document.createElement('div');
 toolbar.style.cssText = 'position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:999999;display:flex;gap:6px;padding:6px;font:13px/1 monospace;background:rgba(20,20,30,0.85);border:1px solid #555;border-radius:6px';
 
 const ecsBtn = document.createElement('button');
 const phaserBtn = document.createElement('button');
+const bevyBtn = document.createElement('button');
 
 const baseBtnStyle = 'padding:6px 14px;font:13px/1 monospace;border:1px solid #555;border-radius:4px;cursor:pointer';
 ecsBtn.style.cssText = baseBtnStyle;
 phaserBtn.style.cssText = baseBtnStyle;
+bevyBtn.style.cssText = baseBtnStyle;
 ecsBtn.textContent = 'ECSpresso';
 phaserBtn.textContent = 'Phaser';
+bevyBtn.textContent = 'Bevy';
 
 toolbar.appendChild(ecsBtn);
 toolbar.appendChild(phaserBtn);
+toolbar.appendChild(bevyBtn);
 document.body.appendChild(toolbar);
 
 let current: Engine | null = null;
@@ -33,6 +38,13 @@ const paintButtons = () => {
 	};
 	setActive(ecsBtn, current === 'ecspresso');
 	setActive(phaserBtn, current === 'phaser');
+	setActive(bevyBtn, current === 'bevy');
+};
+
+const starters: Record<Engine, (opts: { initialCount: number; onCountChange: (n: number) => void }) => Promise<() => void> | (() => void)> = {
+	ecspresso: startECSpresso,
+	phaser: startPhaser,
+	bevy: startBevy,
 };
 
 async function switchTo(engine: Engine) {
@@ -45,7 +57,7 @@ async function switchTo(engine: Engine) {
 	current = engine;
 	paintButtons();
 	const opts = { initialCount: entityCount, onCountChange };
-	const started = engine === 'ecspresso' ? await startECSpresso(opts) : startPhaser(opts);
+	const started = await starters[engine](opts);
 	if (gen !== generation) {
 		started();
 		return;
@@ -55,5 +67,6 @@ async function switchTo(engine: Engine) {
 
 ecsBtn.addEventListener('click', () => { switchTo('ecspresso'); });
 phaserBtn.addEventListener('click', () => { switchTo('phaser'); });
+bevyBtn.addEventListener('click', () => { switchTo('bevy'); });
 
 await switchTo('ecspresso');

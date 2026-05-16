@@ -68,6 +68,33 @@ export function createEntityCountInput(control: EntityCountControl): () => void 
 	};
 }
 
+export function createFpsOverlay(formatLines: (fps: number) => string): () => void {
+	const el = document.createElement('div');
+	el.style.cssText = 'position:fixed;top:12px;right:12px;z-index:999999;padding:6px 10px;font:12px/1.4 monospace;background:rgba(0,0,0,0.6);color:#0f0;border:1px solid #333;border-radius:4px;pointer-events:none;min-width:140px;white-space:pre';
+	document.body.appendChild(el);
+
+	let lastTime = performance.now();
+	let frames = 0;
+	let rafId = 0;
+	const loop = () => {
+		frames++;
+		const now = performance.now();
+		if (now - lastTime >= 500) {
+			const fps = Math.round((frames * 1000) / (now - lastTime));
+			frames = 0;
+			lastTime = now;
+			el.textContent = formatLines(fps);
+		}
+		rafId = requestAnimationFrame(loop);
+	};
+	rafId = requestAnimationFrame(loop);
+
+	return () => {
+		cancelAnimationFrame(rafId);
+		el.remove();
+	};
+}
+
 export function createCollisionToggle(setEnabled: (enabled: boolean) => void): () => void {
 	let enabled = true;
 	const btn = document.createElement('button');

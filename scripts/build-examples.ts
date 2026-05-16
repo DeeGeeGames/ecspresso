@@ -111,6 +111,16 @@ const results = await Promise.all(
 			await Bun.write(destPath, Bun.file(join(exampleSrcDir, file)));
 		}
 
+		// Copy any prebuilt wasm-bindgen artifacts (bevy/pkg/*.{wasm,js})
+		const pkgFiles = Array.from(
+			new Glob('**/pkg/*.{wasm,js}').scanSync(exampleSrcDir),
+		);
+		for (const file of pkgFiles) {
+			const destPath = join(exampleOutDir, file);
+			await mkdir(dirname(destPath), { recursive: true });
+			await Bun.write(destPath, Bun.file(join(exampleSrcDir, file)));
+		}
+
 		const totalSize = result.outputs.reduce((sum, o) => sum + o.size, 0);
 		return { route: example.route, success: true, size: totalSize };
 	}),
