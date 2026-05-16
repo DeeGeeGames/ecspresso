@@ -22,6 +22,8 @@ document.body.appendChild(toolbar);
 let current: Engine | null = null;
 let teardown: (() => void) | null = null;
 let generation = 0;
+let entityCount = 50;
+const onCountChange = (n: number) => { entityCount = n; };
 
 const paintButtons = () => {
 	const setActive = (btn: HTMLButtonElement, active: boolean) => {
@@ -42,7 +44,8 @@ async function switchTo(engine: Engine) {
 	}
 	current = engine;
 	paintButtons();
-	const started = engine === 'ecspresso' ? await startECSpresso() : startPhaser();
+	const opts = { initialCount: entityCount, onCountChange };
+	const started = engine === 'ecspresso' ? await startECSpresso(opts) : startPhaser(opts);
 	if (gen !== generation) {
 		started();
 		return;

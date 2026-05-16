@@ -9,6 +9,7 @@ import {
 	SPAWN_RATE,
 	COLORS,
 	createCollisionToggle,
+	createEntityCountInput,
 } from './shared';
 
 type SceneState = {
@@ -31,6 +32,7 @@ type SceneState = {
 class StressScene extends Phaser.Scene {
 	state: SceneState | null = null;
 	worldPoint = new Phaser.Math.Vector2();
+	initialCount = 50;
 
 	constructor() {
 		super('stress');
@@ -108,10 +110,10 @@ class StressScene extends Phaser.Scene {
 			cam.setZoom(next);
 		});
 
-		for (let i = 0; i < 50; i++) {
+		for (let i = 0; i < this.initialCount; i++) {
 			this.spawnBall(
 				BALL_RADIUS + Math.random() * (WORLD_W - BALL_RADIUS * 2),
-				BALL_RADIUS + Math.random() * (WORLD_H / 2),
+				BALL_RADIUS + Math.random() * (WORLD_H - BALL_RADIUS * 2),
 			);
 		}
 	}
@@ -160,9 +162,22 @@ class StressScene extends Phaser.Scene {
 	ballCount(): number {
 		return this.state ? this.state.balls.getLength() : 0;
 	}
+
+	removeBalls(count: number) {
+		if (!this.state) return;
+		const balls = this.state.balls;
+		balls.getChildren().slice(-count).forEach(b => balls.remove(b, true, true));
+	}
 }
 
-export function startPhaser(): () => void {
+export type StartOptions = {
+	initialCount: number;
+	onCountChange: (count: number) => void;
+};
+
+export function startPhaser(options: StartOptions): () => void {
+	const scene = new StressScene();
+	scene.initialCount = options.initialCount;
 	const game = new Phaser.Game({
 		type: Phaser.AUTO,
 		width: SCREEN_W,
@@ -176,7 +191,7 @@ export function startPhaser(): () => void {
 			default: 'arcade',
 			arcade: { gravity: { x: 0, y: 0 } },
 		},
-		scene: StressScene,
+		scene,
 		banner: false,
 	});
 
@@ -187,6 +202,13 @@ export function startPhaser(): () => void {
 
 	const cleanupToggle = createCollisionToggle((enabled) => {
 		getScene()?.setCollisionEnabled(enabled);
+	});
+
+	const cleanupCountInput = createEntityCountInput({
+		getCount: () => getScene()?.ballCount() ?? 0,
+		spawnAt: (x, y) => { getScene()?.spawnBall(x, y); },
+		removeMany: (count) => { getScene()?.removeBalls(count); },
+		onChange: options.onCountChange,
 	});
 
 	const overlay = document.createElement('div');
@@ -214,6 +236,7 @@ export function startPhaser(): () => void {
 	return function destroy() {
 		cancelAnimationFrame(rafId);
 		overlay.remove();
+		cleanupCountInput();
 		cleanupToggle();
 		game.destroy(true);
 	};

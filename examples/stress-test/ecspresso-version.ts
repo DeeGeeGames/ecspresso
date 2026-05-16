@@ -31,9 +31,15 @@ import {
 	SPAWN_RATE,
 	COLORS,
 	createCollisionToggle,
+	createEntityCountInput,
 } from './shared';
 
-export async function startECSpresso(): Promise<() => void> {
+export type StartOptions = {
+	initialCount: number;
+	onCountChange: (count: number) => void;
+};
+
+export async function startECSpresso(options: StartOptions): Promise<() => void> {
 	const layers = defineCollisionLayers({ ball: ['ball'] });
 
 	const ecs = ECSpresso.create()
@@ -137,10 +143,10 @@ export async function startECSpresso(): Promise<() => void> {
 		});
 	}
 
-	for (let i = 0; i < 50; i++) {
+	for (let i = 0; i < options.initialCount; i++) {
 		spawnBall(
 			BALL_RADIUS + Math.random() * (WORLD_W - BALL_RADIUS * 2),
-			BALL_RADIUS + Math.random() * (WORLD_H / 2),
+			BALL_RADIUS + Math.random() * (WORLD_H - BALL_RADIUS * 2),
 		);
 	}
 
@@ -171,6 +177,16 @@ export async function startECSpresso(): Promise<() => void> {
 		}
 	});
 
+	const cleanupCountInput = createEntityCountInput({
+		getCount: () => ecs.getEntitiesWithQuery(['radius']).length,
+		spawnAt: spawnBall,
+		removeMany: (count) => {
+			const balls = ecs.getEntitiesWithQuery(['radius']);
+			balls.slice(-count).forEach(b => ecs.removeEntity(b.id));
+		},
+		onChange: options.onCountChange,
+	});
+
 	const cleanupOverlay = createDiagnosticsOverlay(ecs, {
 		position: 'top-right',
 		showSystemTimings: true,
@@ -183,6 +199,7 @@ export async function startECSpresso(): Promise<() => void> {
 		canvas.removeEventListener('pointerup', onPointerUp);
 		canvas.removeEventListener('pointerleave', onPointerUp);
 		cleanupOverlay();
+		cleanupCountInput();
 		cleanupToggle();
 		ecs.dispose();
 		ballTextures.forEach(t => t.destroy(true));
