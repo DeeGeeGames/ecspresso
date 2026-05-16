@@ -84,10 +84,13 @@ class EventBus<EventTypes> {
 	 * so handlers added mid-publish are not called in the same publish cycle.
 	 */
 	publish<E extends keyof EventTypes>(
-		...[eventType, data]: EventTypes[E] extends void | undefined
-			? [eventType: E, data?: EventTypes[E]]
-			: [eventType: E, data: EventTypes[E]]
-	): void {
+		eventType: EventTypes[E] extends void | undefined ? E : never,
+	): void;
+	publish<E extends keyof EventTypes>(
+		eventType: E,
+		data: EventTypes[E],
+	): void;
+	publish<E extends keyof EventTypes>(eventType: E, data?: EventTypes[E]): void {
 		const handlers = this.handlers.get(eventType);
 		if (!handlers || handlers.length === 0) return;
 
