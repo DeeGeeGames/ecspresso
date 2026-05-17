@@ -90,6 +90,10 @@ interface QueryConfig<
 	 * entity, catching accidental writes at compile time.
 	 */
 	mutates?: ReadonlyArray<MutatesComponents>;
+	/** @internal Pre-resolved component indices for `changed:`, populated at system registration. */
+	_changedIdx?: ReadonlyArray<number>;
+	/** @internal Pre-resolved component indices for `mutates:`, populated at system registration. */
+	_mutatesIdx?: ReadonlyArray<number>;
 }
 
 /**
@@ -155,6 +159,10 @@ export type QueryDefinition<
 	 * are narrowed to `Readonly<T>` on the iteration entity type.
 	 */
 	mutates?: ReadonlyArray<MutatesComponents>;
+	/** @internal Pre-resolved component indices for `changed:`, populated at system registration. */
+	_changedIdx?: ReadonlyArray<number>;
+	/** @internal Pre-resolved component indices for `mutates:`, populated at system registration. */
+	_mutatesIdx?: ReadonlyArray<number>;
 };
 
 /**
@@ -337,7 +345,6 @@ export type BaseWorld<C extends Record<string, any> = {}> = Pick<ECSpresso<_Base
 	| 'removeEntity'
 	| 'spawn'
 	| 'markChanged'
-	| 'markChangedIfTracked'
 	| 'getResource'
 	| 'hasResource'
 > & {

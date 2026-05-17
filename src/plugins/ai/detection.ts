@@ -252,7 +252,7 @@ export function createDetectionPlugin<G extends string = 'ai'>(
 						const existing = ecs.getComponent(entity.id, 'detectedEntities');
 						if (existing) {
 							(existing as { entities: readonly DetectedEntry[] }).entities = capped;
-							ecs.markChangedIfTracked(entity.id, 'detectedEntities');
+							ecs.markChanged(entity.id, 'detectedEntities');
 						} else {
 							ecs.addComponent(entity.id, 'detectedEntities', { entities: capped });
 						}

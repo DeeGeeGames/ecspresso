@@ -223,7 +223,7 @@ const _physicsCollisionEvent: Physics2DCollisionEvent = {
 interface PhysicsEcsLike {
 	getComponent(id: number, name: 'localTransform'): { x: number; y: number } | undefined;
 	eventBus: { publish(event: 'physicsCollision', data: Physics2DCollisionEvent): void };
-	markChangedIfTracked(entityId: number, componentName: 'localTransform' | 'velocity'): void;
+	markChanged(entityId: number, componentName: 'localTransform' | 'velocity'): void;
 }
 
 /**
@@ -256,7 +256,7 @@ function resolvePhysicsContact(
 			// Sync cached position so subsequent pairs in this frame use corrected values
 			a.x = ltA.x;
 			a.y = ltA.y;
-			ecs.markChangedIfTracked(a.entityId, 'localTransform');
+			ecs.markChanged(a.entityId, 'localTransform');
 		}
 
 		if (invMassB > 0) {
@@ -267,7 +267,7 @@ function resolvePhysicsContact(
 			ltB.y += corrB * contact.normalY;
 			b.x = ltB.x;
 			b.y = ltB.y;
-			ecs.markChangedIfTracked(b.entityId, 'localTransform');
+			ecs.markChanged(b.entityId, 'localTransform');
 		}
 
 		// Velocity response (impulse-based)
@@ -303,8 +303,8 @@ function resolvePhysicsContact(
 			}
 		}
 
-		ecs.markChangedIfTracked(a.entityId, 'velocity');
-		ecs.markChangedIfTracked(b.entityId, 'velocity');
+		ecs.markChanged(a.entityId, 'velocity');
+		ecs.markChanged(b.entityId, 'velocity');
 	}
 
 	_physicsCollisionEvent.entityA = a.entityId;
@@ -429,7 +429,7 @@ export function createPhysics2DPlugin<L extends string = never, G extends string
 						force.x = 0;
 						force.y = 0;
 
-						ecs.markChangedIfTracked(entity.id, 'localTransform');
+						ecs.markChanged(entity.id, 'localTransform');
 					}
 				});
 

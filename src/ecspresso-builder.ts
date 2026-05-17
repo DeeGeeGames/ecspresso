@@ -3,7 +3,7 @@ import AssetManager, { AssetConfiguratorImpl, createAssetConfigurator } from "./
 import ScreenManager, { ScreenConfiguratorImpl, createScreenConfigurator } from "./screen-manager";
 import type { ResourceFactoryWithDeps, ResourceDirectValue } from "./resource-manager";
 import { definePlugin, type Plugin } from "./plugin";
-import type { WorldConfig, EmptyConfig, MergeConfigs, TypesAreCompatible, WithComponents, WithEvents, WithResources, WithTrackedChanges } from "./type-utils";
+import type { WorldConfig, EmptyConfig, MergeConfigs, TypesAreCompatible, WithComponents, WithEvents, WithResources } from "./type-utils";
 import type { AssetConfigurator, AssetsResource } from "./asset-types";
 import type { ScreenDefinition, ScreenConfigurator, ScreenResource } from "./screen-types";
 
@@ -20,7 +20,6 @@ type FinalizeBuiltinResources<Cfg extends WorldConfig, AG extends string> = {
 		& ([keyof Cfg['screens']] extends [never] ? {} : { $screen: ScreenResource<Cfg['screens']> });
 	readonly assets: Cfg['assets'];
 	readonly screens: Cfg['screens'];
-	readonly trackedChanges: Cfg['trackedChanges'];
 };
 
 /**
@@ -48,8 +47,8 @@ export class ECSpressoBuilder<
 	private pendingPlugins: Plugin<any, any, any, any, any, any>[] = [];
 	/** Fixed timestep interval (null means use default 1/60) */
 	private _fixedDt: number | null = null;
-	/** `null` means "no `.setTrackedChanges(...)` call" → runtime keeps default track-all behavior. */
-	private _trackedChanges: string[] | null = null;
+	/** True when `.disableChangeTracking()` was called; flips the runtime into "track nothing" at build. */
+	private _disableChangeTracking: boolean = false;
 
 	constructor() {}
 
@@ -66,7 +65,7 @@ export class ECSpressoBuilder<
 		BAG extends string = never,
 		BRQ extends string = never,
 	>(
-		this: ECSpressoBuilder<{ readonly components: {}; readonly events: {}; readonly resources: {}; readonly assets: Cfg['assets']; readonly screens: Cfg['screens']; readonly trackedChanges: {} }, Labels, Groups, AssetGroupNames, ReactiveQueryNames>,
+		this: ECSpressoBuilder<{ readonly components: {}; readonly events: {}; readonly resources: {}; readonly assets: Cfg['assets']; readonly screens: Cfg['screens'] }, Labels, Groups, AssetGroupNames, ReactiveQueryNames>,
 		plugin: Plugin<PCfg, PReq, BL, BG, BAG, BRQ>
 	): ECSpressoBuilder<MergeConfigs<Cfg, PCfg>, Labels | BL, Groups | BG, AssetGroupNames | BAG, ReactiveQueryNames | BRQ>;
 
@@ -145,20 +144,19 @@ export class ECSpressoBuilder<
 	}
 
 	/**
-	 * Declare the subset of components whose changes are tracked. Components
-	 * outside this set get no-op behavior from `markChangedIfTracked` and a
-	 * compile error from `markChanged` / `changed:` query filters.
+	 * Opt out of change tracking entirely. After this call every `markChanged`
+	 * (and `commands.markChanged`) is a runtime no-op, and `changed:` filters
+	 * yield nothing. Useful for worlds with no reactive consumers (e.g. the
+	 * physics bench) to skip the per-mark sequence stamp and array allocation.
 	 *
-	 * Calling this REPLACES the tracked set (defaults to all components when
-	 * not called). Use `setTrackedChanges()` with no args to track nothing.
-	 *
-	 * @param names Component names to track.
+	 * By default, change tracking is auto-derived: any system that declares a
+	 * `changed:` filter auto-subscribes those components, and all other marks
+	 * become no-ops. If no system declares `changed:`, every mark is recorded
+	 * (track-all default). Call this to force the no-op-everything mode.
 	 */
-	setTrackedChanges<K extends keyof Cfg['components'] & string>(
-		...names: K[]
-	): ECSpressoBuilder<WithTrackedChanges<Cfg, K>, Labels, Groups, AssetGroupNames, ReactiveQueryNames> {
-		this._trackedChanges = names.slice();
-		return this as unknown as ECSpressoBuilder<WithTrackedChanges<Cfg, K>, Labels, Groups, AssetGroupNames, ReactiveQueryNames>;
+	disableChangeTracking(): this {
+		this._disableChangeTracking = true;
+		return this;
 	}
 
 	/**
@@ -238,7 +236,6 @@ export class ECSpressoBuilder<
 		readonly resources: Cfg['resources'] & { $assets: AssetsResource<Cfg['assets'] & NewA, string> };
 		readonly assets: Cfg['assets'] & NewA;
 		readonly screens: Cfg['screens'];
-		readonly trackedChanges: Cfg['trackedChanges'];
 	}, Labels, Groups, AssetGroupNames | NewG, ReactiveQueryNames> {
 		const assetConfig = createAssetConfigurator<{}, never>();
 		configurator(assetConfig);
@@ -249,7 +246,6 @@ export class ECSpressoBuilder<
 			readonly resources: Cfg['resources'] & { $assets: AssetsResource<Cfg['assets'] & NewA, string> };
 			readonly assets: Cfg['assets'] & NewA;
 			readonly screens: Cfg['screens'];
-			readonly trackedChanges: Cfg['trackedChanges'];
 		}, Labels, Groups, AssetGroupNames | NewG, ReactiveQueryNames>;
 	}
 
@@ -265,14 +261,12 @@ export class ECSpressoBuilder<
 			readonly resources: Cfg['resources'];
 			readonly assets: Cfg['assets'];
 			readonly screens: Record<string, ScreenDefinition>;
-			readonly trackedChanges: Cfg['trackedChanges'];
 		}>>) => ScreenConfigurator<NewS, ECSpresso<{
 			readonly components: Cfg['components'];
 			readonly events: Cfg['events'];
 			readonly resources: Cfg['resources'];
 			readonly assets: Cfg['assets'];
 			readonly screens: Record<string, ScreenDefinition>;
-			readonly trackedChanges: Cfg['trackedChanges'];
 		}>>
 	): ECSpressoBuilder<{
 		readonly components: Cfg['components'];
@@ -280,7 +274,6 @@ export class ECSpressoBuilder<
 		readonly resources: Cfg['resources'] & { $screen: ScreenResource<Cfg['screens'] & NewS> };
 		readonly assets: Cfg['assets'];
 		readonly screens: Cfg['screens'] & NewS;
-		readonly trackedChanges: Cfg['trackedChanges'];
 	}, Labels, Groups, AssetGroupNames, ReactiveQueryNames> {
 		const screenConfig = createScreenConfigurator<{}, ECSpresso<{
 			readonly components: Cfg['components'];
@@ -288,7 +281,6 @@ export class ECSpressoBuilder<
 			readonly resources: Cfg['resources'];
 			readonly assets: Cfg['assets'];
 			readonly screens: Record<string, ScreenDefinition>;
-			readonly trackedChanges: Cfg['trackedChanges'];
 		}>>();
 		configurator(screenConfig);
 		this.screenConfigurator = screenConfig as unknown as ScreenConfiguratorImpl<Cfg['screens']>;
@@ -298,7 +290,6 @@ export class ECSpressoBuilder<
 			readonly resources: Cfg['resources'] & { $screen: ScreenResource<Cfg['screens'] & NewS> };
 			readonly assets: Cfg['assets'];
 			readonly screens: Cfg['screens'] & NewS;
-			readonly trackedChanges: Cfg['trackedChanges'];
 		}, Labels, Groups, AssetGroupNames, ReactiveQueryNames>;
 	}
 
@@ -350,10 +341,12 @@ export class ECSpressoBuilder<
 	> {
 		const ecspresso = new ECSpresso() as ECSpresso<Cfg>;
 
-		// Apply explicit tracked-changes set before plugins install, so plugin
-		// systems that declare `changed:` filters subscribe consistently.
-		if (this._trackedChanges !== null) {
-			ecspresso._setTrackedChanges(this._trackedChanges as Array<keyof Cfg['components']>);
+		// Opt-out flips the default from track-all (null bitmap) to track-none
+		// (empty bitmap) before plugins install. Plugin `changed:` filters that
+		// auto-subscribe still register on top, so legitimate consumers keep
+		// working while unsubscribed marks no-op.
+		if (this._disableChangeTracking) {
+			ecspresso.entityManager.disableChangeTracking();
 		}
 
 		// Install all pending plugins. Compatibility was already enforced at

@@ -229,7 +229,7 @@ export class SystemBuilder<
 		definition: {
 			with: ReadonlyArray<WithComponents>;
 			without?: ReadonlyArray<WithoutComponents>;
-			changed?: ReadonlyArray<WithComponents & keyof Cfg['trackedChanges']>;
+			changed?: ReadonlyArray<WithComponents>;
 			optional?: ReadonlyArray<OptionalComponents>;
 			parentHas?: ReadonlyArray<keyof Cfg['components']>;
 			mutates?: ReadonlyArray<MutatesComponents>;
@@ -272,7 +272,7 @@ export class SystemBuilder<
 		definition: {
 			with: ReadonlyArray<WithComponents>;
 			without?: ReadonlyArray<WithoutComponents>;
-			changed?: ReadonlyArray<WithComponents & keyof Cfg['trackedChanges']>;
+			changed?: ReadonlyArray<WithComponents>;
 			optional?: ReadonlyArray<OptionalComponents>;
 			parentHas?: ReadonlyArray<keyof Cfg['components']>;
 			mutates?: ReadonlyArray<MutatesComponents>;
@@ -355,7 +355,7 @@ export class SystemBuilder<
 			with: ReadonlyArray<W>;
 			without?: ReadonlyArray<WO>;
 			optional?: ReadonlyArray<O>;
-			changed?: ReadonlyArray<W & keyof Cfg['trackedChanges']>;
+			changed?: ReadonlyArray<W>;
 			parentHas?: ReadonlyArray<keyof Cfg['components']>;
 			mutates?: ReadonlyArray<M>;
 		},
@@ -399,43 +399,30 @@ export class SystemBuilder<
 			resources: undefined as unknown,
 		};
 
-		const mutates = definition.mutates && definition.mutates.length > 0
-			? definition.mutates as ReadonlyArray<keyof Cfg['components']>
-			: undefined;
-		let mutatesIdx: number[] | null = null;
-
 		const iterate = (ctx: unknown) => {
 			const frameCtx = ctx as {
 				queries: Record<string, ReadonlyArray<{ id: number }>>;
 				dt: number;
-				ecs: {
-					markChangedByIdx: (id: number, idx: number) => void;
-					getOrAssignComponentIdx: (name: keyof Cfg['components']) => number;
-				};
+				ecs: { entityManager: { markChangedByIdx: (id: number, idx: number) => void } };
 				resources?: unknown;
 			};
 			const entities = frameCtx.queries[PROCESS_EACH_QUERY];
 			if (!entities) return;
-			if (mutates !== undefined && mutatesIdx === null) {
-				mutatesIdx = [];
-				for (let i = 0; i < mutates.length; i++) {
-					const name = mutates[i];
-					if (name !== undefined) mutatesIdx.push(frameCtx.ecs.getOrAssignComponentIdx(name));
-				}
-			}
+			// _mutatesIdx is pre-resolved at system registration in ecspresso._registerSystem.
+			const idxs = (definition as { _mutatesIdx?: ReadonlyArray<number> })._mutatesIdx;
 			perEntityCtx.dt = frameCtx.dt;
 			perEntityCtx.ecs = frameCtx.ecs;
 			perEntityCtx.resources = frameCtx.resources;
-			const idxs = mutatesIdx;
+			const em = frameCtx.ecs.entityManager;
 			for (let i = 0; i < entities.length; i++) {
 				const entity = entities[i];
 				if (!entity) continue;
 				perEntityCtx.entity = entity;
 				const result = (process as (c: unknown) => boolean | void)(perEntityCtx);
-				if (idxs === null || result === false) continue;
+				if (idxs === undefined || result === false) continue;
 				for (let j = 0; j < idxs.length; j++) {
 					const idx = idxs[j];
-					if (idx !== undefined) frameCtx.ecs.markChangedByIdx(entity.id, idx);
+					if (idx !== undefined) em.markChangedByIdx(entity.id, idx);
 				}
 			}
 		};

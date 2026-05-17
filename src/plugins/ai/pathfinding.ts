@@ -487,7 +487,7 @@ export function createPathfindingPlugin<G extends string = 'ai'>(
 						if (existingPath) {
 							existingPath.waypoints = waypoints;
 							existingPath.currentIndex = 0;
-							ecs.markChangedIfTracked(entity.id, 'path');
+							ecs.markChanged(entity.id, 'path');
 						} else {
 							ecs.addComponent(entity.id, 'path', { waypoints, currentIndex: 0 });
 						}
@@ -498,7 +498,7 @@ export function createPathfindingPlugin<G extends string = 'ai'>(
 						if (existingMT) {
 							existingMT.x = first.x;
 							existingMT.y = first.y;
-							ecs.markChangedIfTracked(entity.id, 'moveTarget');
+							ecs.markChanged(entity.id, 'moveTarget');
 						} else {
 							ecs.addComponent(entity.id, 'moveTarget', { x: first.x, y: first.y });
 						}
@@ -518,7 +518,7 @@ export function createPathfindingPlugin<G extends string = 'ai'>(
 							return;
 						}
 						path.currentIndex = next;
-						ecs.markChangedIfTracked(data.entityId, 'path');
+						ecs.markChanged(data.entityId, 'path');
 						const wp = path.waypoints[next];
 						if (!wp) return;
 						// Why: use command buffer so the add is queued AFTER steering's

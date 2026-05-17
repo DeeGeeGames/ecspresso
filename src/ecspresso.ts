@@ -5,7 +5,7 @@ import AssetManager from "./asset-manager";
 import ScreenManager from "./screen-manager";
 import ReactiveQueryManager, { type ReactiveQueryDefinition } from "./reactive-query-manager";
 import CommandBuffer from "./command-buffer";
-import type { System, SystemPhase, FilteredEntity, Entity, RemoveEntityOptions, HierarchyEntry, HierarchyIteratorOptions } from "./types";
+import type { System, SystemPhase, FilteredEntity, Entity, QueryDefinition, RemoveEntityOptions, HierarchyEntry, HierarchyIteratorOptions } from "./types";
 import { definePlugin, type Plugin, type SystemDefaults } from "./plugin";
 import { SystemBuilder, PROCESS_EACH_QUERY } from "./system-builder";
 import { checkRequiredCycle } from "./utils/check-required-cycle";
@@ -455,6 +455,7 @@ export default class ECSpresso<
 							query.changed,
 							query.changed ? this._changeThreshold : undefined,
 							query.parentHas,
+							query._changedIdx,
 						);
 
 						if (output.length) {
@@ -479,6 +480,7 @@ export default class ECSpresso<
 							query.changed,
 							query.changed ? this._changeThreshold : undefined,
 							query.parentHas,
+							query._changedIdx,
 						);
 
 						queryResults[singletonName] = scratch[0];
@@ -550,6 +552,9 @@ export default class ECSpresso<
 					if (!pair) continue;
 					const mutatesIdx = pair.mutatesIdx;
 					const mutatesLen = mutatesIdx.length;
+					// Skip the entity walk entirely if none of the mutated components
+					// is subscribed — every markChangedByIdx call would no-op anyway.
+					if (!em.hasAnySubscribed(mutatesIdx)) continue;
 					if (pair.kind === 'list') {
 						const results = queryResults[pair.queryName] as Array<FilteredEntity<Cfg['components']>> | undefined;
 						if (!results) continue;
@@ -826,41 +831,54 @@ export default class ECSpresso<
 			this._rebuildPhaseSystems();
 		}
 
-		// Precompute auto-mark pairs for `mutates`-declaring queries so the
-		// post-process walk in _executePhase is a single pointer check away
-		// from zero cost for systems that don't use the feature.
+		// Precompute auto-mark pairs and pre-resolved index arrays for queries
+		// declaring `mutates:` / `changed:`. Hot-path lookups (auto-mark walk,
+		// query-with-changed filter) become array indexes instead of per-frame
+		// name resolution. Also auto-subscribes `changed:` names to skip marks
+		// for components no system consumes.
 		const autoMarkPairs: Array<{
 			queryName: string;
 			mutatesIdx: ReadonlyArray<number>;
 			kind: 'list' | 'singleton';
 		}> = [];
-		const resolveIdx = (mutates: ReadonlyArray<keyof Cfg['components']>) => {
-			const out: number[] = [];
-			for (let i = 0; i < mutates.length; i++) {
-				const name = mutates[i];
-				if (name !== undefined) out.push(this._entityManager.getOrAssignComponentIdx(name));
+		const em = this._entityManager;
+		const prepareQuery = (queryName: string, query: QueryDefinition<Cfg['components']>, kind: 'list' | 'singleton') => {
+			const changed = query.changed;
+			if (changed && changed.length > 0) {
+				const changedIdx: number[] = [];
+				for (let i = 0; i < changed.length; i++) {
+					const name = changed[i];
+					if (name === undefined) continue;
+					em.subscribeChanged(name);
+					changedIdx.push(em.getOrAssignComponentIdx(name));
+				}
+				query._changedIdx = changedIdx;
 			}
-			return out;
+			const mutates = query.mutates;
+			if (mutates && mutates.length > 0) {
+				const mutatesIdx: number[] = [];
+				for (let i = 0; i < mutates.length; i++) {
+					const name = mutates[i];
+					if (name !== undefined) mutatesIdx.push(em.getOrAssignComponentIdx(name));
+				}
+				query._mutatesIdx = mutatesIdx;
+				// setProcessEach handles its own per-entity marking inline to
+				// preserve return-value precision; skip it for autoMarkPairs.
+				if (queryName !== PROCESS_EACH_QUERY) {
+					autoMarkPairs.push({ queryName, mutatesIdx, kind });
+				}
+			}
 		};
 		if (system.entityQueries) {
 			for (const queryName in system.entityQueries) {
-				// setProcessEach handles its own per-entity marking inline to
-				// preserve return-value precision; skip its query here.
-				if (queryName === PROCESS_EACH_QUERY) continue;
 				const query = system.entityQueries[queryName];
-				const mutates = (query as { mutates?: ReadonlyArray<keyof Cfg['components']> } | undefined)?.mutates;
-				if (mutates && mutates.length > 0) {
-					autoMarkPairs.push({ queryName, mutatesIdx: resolveIdx(mutates), kind: 'list' });
-				}
+				if (query) prepareQuery(queryName, query as QueryDefinition<Cfg['components']>, 'list');
 			}
 		}
 		if (system.entitySingletons) {
 			for (const queryName in system.entitySingletons) {
 				const query = system.entitySingletons[queryName];
-				const mutates = (query as { mutates?: ReadonlyArray<keyof Cfg['components']> } | undefined)?.mutates;
-				if (mutates && mutates.length > 0) {
-					autoMarkPairs.push({ queryName, mutatesIdx: resolveIdx(mutates), kind: 'singleton' });
-				}
+				if (query) prepareQuery(queryName, query as QueryDefinition<Cfg['components']>, 'singleton');
 			}
 		}
 		system._autoMarkPairs = autoMarkPairs.length > 0 ? autoMarkPairs : null;
@@ -1554,45 +1572,13 @@ export default class ECSpresso<
 	}
 
 	/**
-	 * Mark a component as changed on an entity. Restricted at the type level to
-	 * components in the world's tracked-changes set (defaults to all components;
-	 * narrowed via `.setTrackedChanges(...)` on the builder). For polite,
-	 * runtime-conditional marking from plugin code, use `markChangedIfTracked`.
-	 *
-	 * Each call increments a global monotonic sequence; systems with `changed:`
-	 * queries see the mark exactly once on their next execution.
-	 * @param entityId The entity ID
-	 * @param componentName The component that was changed
+	 * Mark a component as changed on an entity. Recorded iff the component is
+	 * subscribed (auto-subscribed by any system's `changed:` filter, or implicit
+	 * track-all when no subscription exists). Each recorded call increments a
+	 * monotonic sequence; `changed:` queries see the mark once on their next run.
 	 */
-	markChanged<K extends keyof Cfg['trackedChanges'] & keyof Cfg['components']>(entityId: number, componentName: K): void {
+	markChanged<K extends keyof Cfg['components']>(entityId: number, componentName: K): void {
 		this._entityManager.markChanged(entityId, componentName);
-	}
-
-	/**
-	 * Polite mark for plugin/library code. Accepts any component name; the
-	 * runtime records the mark iff the component is in the world's tracked set,
-	 * otherwise the call is a no-op. Use this for "inform any potential
-	 * subscriber" semantics where the caller doesn't require subscription.
-	 */
-	markChangedIfTracked<K extends keyof Cfg['components']>(entityId: number, componentName: K): void {
-		this._entityManager.markChanged(entityId, componentName);
-	}
-
-	/** @internal Builder bridge for `.setTrackedChanges(...)`. */
-	_setTrackedChanges(names: ReadonlyArray<keyof Cfg['components']>): void {
-		this._entityManager.setTrackedChanges(names);
-	}
-
-	/**
-	 * Fast-path companion to markChanged: skips the component-name → index
-	 * lookup. Use after resolving names once via getOrAssignComponentIdx.
-	 */
-	markChangedByIdx(entityId: number, componentIdx: number): void {
-		this._entityManager.markChangedByIdx(entityId, componentIdx);
-	}
-
-	getOrAssignComponentIdx<K extends keyof Cfg['components']>(componentName: K): number {
-		return this._entityManager.getOrAssignComponentIdx(componentName);
 	}
 
 	// ==================== Component Dispose ====================

@@ -160,20 +160,10 @@ export default class CommandBuffer<
 		});
 	}
 
-	/**
-	 * Queue a markChanged command. Typed to the world's tracked-changes set;
-	 * for polite plugin marks, use `markChangedIfTracked`.
-	 */
-	markChanged<K extends keyof Cfg['trackedChanges'] & keyof Cfg['components']>(entityId: number, componentName: K): void {
+	/** Queue a markChanged command for playback. */
+	markChanged<K extends keyof Cfg['components']>(entityId: number, componentName: K): void {
 		this.commands.push((ecs) => {
 			ecs.markChanged(entityId, componentName);
-		});
-	}
-
-	/** Polite-mark companion: records iff the component is in the world's tracked set. */
-	markChangedIfTracked<K extends keyof Cfg['components']>(entityId: number, componentName: K): void {
-		this.commands.push((ecs) => {
-			ecs.markChangedIfTracked(entityId, componentName);
 		});
 	}
 

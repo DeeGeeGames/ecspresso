@@ -144,7 +144,7 @@ export function createHealthPlugin<G extends string = 'combat'>(
 						if (health.current <= 0) return;
 
 						health.current = Math.max(0, health.current - data.amount);
-						ecs.markChangedIfTracked(data.entityId, 'health');
+						ecs.markChanged(data.entityId, 'health');
 
 						if (health.current <= 0) {
 							ecs.eventBus.publish('entityDied', {

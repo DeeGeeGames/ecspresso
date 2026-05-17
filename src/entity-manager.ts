@@ -91,8 +91,7 @@ class EntityManager<ComponentTypes> {
 	 */
 	private changeSeqs: (Uint32Array | undefined)[] = [];
 	private componentNameToIdx: Map<keyof ComponentTypes, number> = new Map();
-	// 2-slot LRU for repeated same-name lookups, biggest win for plugin code
-	// that calls markChanged with the same handful of literal strings in tight loops.
+	// 2-slot LRU for repeated same-name lookups in markChanged-heavy paths.
 	private _idxCache0Name: keyof ComponentTypes | undefined;
 	private _idxCache0Idx: number = -1;
 	private _idxCache1Name: keyof ComponentTypes | undefined;
@@ -100,7 +99,7 @@ class EntityManager<ComponentTypes> {
 	/**
 	 * Subscription bitmap for change tracking. `null` means track all (the
 	 * default); a Uint8Array means explicit-only, with 1 at indices that opted
-	 * in via `setTrackedChanges`. Indices outside the array's bounds are
+	 * in via `subscribeChanged`. Indices outside the array's bounds are
 	 * treated as 0 (not tracked).
 	 */
 	private _subscribedComponentIdx: Uint8Array | null = null;
@@ -338,13 +337,18 @@ class EntityManager<ComponentTypes> {
 		changed?: ReadonlyArray<keyof ComponentTypes>,
 		changeThreshold?: number,
 		parentHas?: ReadonlyArray<keyof ComponentTypes>,
+		changedIdx?: ReadonlyArray<number>,
 	): Array<FilteredEntity<ComponentTypes, WithComponents extends never ? never : WithComponents, WithoutComponents extends never ? never : WithoutComponents>> {
-		return this.getEntitiesWithQueryInto([], required, excluded, changed, changeThreshold, parentHas);
+		return this.getEntitiesWithQueryInto([], required, excluded, changed, changeThreshold, parentHas, changedIdx);
 	}
 
 	/**
 	 * Fill an existing array with entities matching the query, clearing it first.
 	 * Returns the same array reference for convenience.
+	 *
+	 * `changedIdx`, when supplied, skips the per-call name→idx resolution loop.
+	 * The framework pre-resolves it once at system registration; ad-hoc callers
+	 * may omit it and pay the per-call lookup cost.
 	 */
 	getEntitiesWithQueryInto<
 		WithComponents extends keyof ComponentTypes = never,
@@ -356,18 +360,23 @@ class EntityManager<ComponentTypes> {
 		changed?: ReadonlyArray<keyof ComponentTypes>,
 		changeThreshold?: number,
 		parentHas?: ReadonlyArray<keyof ComponentTypes>,
+		changedIdx?: ReadonlyArray<number>,
 	): Array<FilteredEntity<ComponentTypes, WithComponents extends never ? never : WithComponents, WithoutComponents extends never ? never : WithoutComponents>> {
 		output.length = 0;
 
 		const hasChangedFilter = changed !== undefined && changed.length > 0 && changeThreshold !== undefined;
-		let changedIdx: number[] | undefined;
-		if (hasChangedFilter) {
-			changedIdx = [];
+		let resolvedIdx = changedIdx;
+		if (hasChangedFilter && resolvedIdx === undefined) {
+			const local: number[] = [];
 			for (const name of changed) {
 				const idx = this.componentNameToIdx.get(name);
-				if (idx !== undefined) changedIdx.push(idx);
+				if (idx !== undefined) local.push(idx);
 			}
+			resolvedIdx = local;
 		}
+		// Empty changedIdx after resolution = no subscribed component in the filter;
+		// the query can match nothing.
+		if (hasChangedFilter && resolvedIdx!.length === 0) return output;
 
 		// Runtime query filtering guarantees WithComponents/WithoutComponents constraints,
 		// but TypeScript can't narrow Entity<CT> to FilteredEntity from imperative logic.
@@ -384,7 +393,7 @@ class EntityManager<ComponentTypes> {
 				return output;
 			}
 			for (const entity of this.entities.values()) {
-				if (!hasChangedComponentFlat(this.changeSeqs[entity.id], changedIdx, changeThreshold ?? 0)) continue;
+				if (!hasChangedComponentFlat(this.changeSeqs[entity.id], resolvedIdx, changeThreshold ?? 0)) continue;
 				output.push(entity as unknown as ResultEntry);
 			}
 			return output;
@@ -400,7 +409,7 @@ class EntityManager<ComponentTypes> {
 
 		if (hasChangedFilter) {
 			for (const entity of members.values()) {
-				if (!hasChangedComponentFlat(this.changeSeqs[entity.id], changedIdx, changeThreshold ?? 0)) continue;
+				if (!hasChangedComponentFlat(this.changeSeqs[entity.id], resolvedIdx, changeThreshold ?? 0)) continue;
 				output.push(entity as unknown as ResultEntry);
 			}
 			return output;
@@ -648,23 +657,49 @@ class EntityManager<ComponentTypes> {
 	}
 
 	/**
-	 * @internal Switch to explicit-only change tracking. After this call,
-	 * markChangedByIdx is a no-op for any component idx not in `names`.
+	 * @internal Subscribe a component to change tracking. First call transitions
+	 * from default track-all (null bitmap) to explicit-only mode; subsequent calls
+	 * extend the subscription set. Called by ECSpresso._registerSystem for each
+	 * component named in a query's `changed:` filter.
 	 */
-	setTrackedChanges(names: ReadonlyArray<keyof ComponentTypes>): void {
-		let bitmap = new Uint8Array(Math.max(names.length + 4, 8));
-		for (let i = 0; i < names.length; i++) {
-			const name = names[i];
-			if (name === undefined) continue;
-			const idx = this.getOrAssignComponentIdx(name);
-			if (idx >= bitmap.length) {
-				const grown = new Uint8Array(Math.max(idx + 1, bitmap.length * 2));
-				grown.set(bitmap);
-				bitmap = grown;
-			}
-			bitmap[idx] = 1;
+	subscribeChanged<K extends keyof ComponentTypes>(componentName: K): void {
+		const idx = this.getOrAssignComponentIdx(componentName);
+		let bitmap = this._subscribedComponentIdx;
+		if (bitmap === null) {
+			bitmap = new Uint8Array(Math.max(idx + 1, 8));
+			this._subscribedComponentIdx = bitmap;
+		} else if (idx >= bitmap.length) {
+			const grown = new Uint8Array(Math.max(idx + 1, bitmap.length * 2));
+			grown.set(bitmap);
+			bitmap = grown;
+			this._subscribedComponentIdx = bitmap;
 		}
-		this._subscribedComponentIdx = bitmap;
+		bitmap[idx] = 1;
+	}
+
+	/**
+	 * @internal Opt out of change tracking entirely. Installs an empty bitmap,
+	 * making every markChanged call a no-op until subscribeChanged is called.
+	 * Used by `.disableChangeTracking()` on the builder for worlds with no
+	 * reactive consumers.
+	 */
+	disableChangeTracking(): void {
+		this._subscribedComponentIdx = new Uint8Array(0);
+	}
+
+	/**
+	 * @internal True if at least one of `idxs` is currently subscribed for
+	 * change tracking (or the bitmap is null = track-all). Used by the
+	 * auto-mark walk to skip entity iteration when every mark would be a no-op.
+	 */
+	hasAnySubscribed(idxs: ReadonlyArray<number>): boolean {
+		const bitmap = this._subscribedComponentIdx;
+		if (bitmap === null) return true;
+		for (let i = 0; i < idxs.length; i++) {
+			const idx = idxs[i];
+			if (idx !== undefined && idx < bitmap.length && bitmap[idx] !== 0) return true;
+		}
+		return false;
 	}
 
 	/**
@@ -678,9 +713,8 @@ class EntityManager<ComponentTypes> {
 		if (idx === undefined) return -1;
 		const arr = this.changeSeqs[entityId];
 		if (!arr || idx >= arr.length) return -1;
-		const v = arr[idx];
-		if (v === undefined || v === 0) return -1;
-		return v;
+		const v = arr[idx] ?? 0;
+		return v === 0 ? -1 : v;
 	}
 
 	// ==================== Hierarchy Methods ====================

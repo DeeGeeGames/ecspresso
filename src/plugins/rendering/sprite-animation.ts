@@ -230,7 +230,7 @@ export function playAnimation(
 		anim.speed = options.speed;
 	}
 
-	ecs.markChangedIfTracked(entityId, 'spriteAnimation');
+	ecs.markChanged(entityId, 'spriteAnimation');
 	return true;
 }
 
@@ -430,7 +430,7 @@ export function createSpriteAnimationPlugin<
 						}
 
 						if (anim.currentFrame !== previousFrame) {
-							ecs.markChangedIfTracked(entity.id, 'spriteAnimation');
+							ecs.markChanged(entity.id, 'spriteAnimation');
 						}
 					}
 				});

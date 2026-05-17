@@ -85,10 +85,10 @@ async function buildWorld(args: Args) {
 		.withPlugin(createSpatialIndexPlugin({ cellSize: 32 }))
 		.withPlugin(createDiagnosticsPlugin())
 		.withComponentTypes<{ radius: number }>()
-		// Opt into explicit-only change tracking. The bench has no reactive
-		// consumers, so plugin polite-marks (velocity/localTransform/worldTransform)
-		// become no-ops.
-		.setTrackedChanges()
+		// Opt out of change tracking entirely. The bench has no reactive
+		// consumers (no `changed:` filters anywhere), so every markChanged
+		// from physics/transform plugins becomes a no-op.
+		.disableChangeTracking()
 		.build();
 
 	if (!args.spatial) {

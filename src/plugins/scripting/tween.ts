@@ -353,7 +353,7 @@ function applyStep(
 	progress: number,
 	entityComponents: Record<string, unknown>,
 	entityId: number,
-	ecs: { markChangedIfTracked: (entityId: number, componentName: any) => void },
+	ecs: { markChanged: (entityId: number, componentName: any) => void },
 ): void {
 	const easedT = step.easing(progress);
 
@@ -364,7 +364,7 @@ function applyStep(
 		const value = from + (target.to - from) * easedT;
 		const written = writeField(comp as Record<string, unknown>, target.path, value);
 		if (written) {
-			ecs.markChangedIfTracked(entityId, target.component);
+			ecs.markChanged(entityId, target.component);
 		}
 	}
 }
@@ -376,14 +376,14 @@ function snapStepToEnd(
 	step: TweenStep,
 	entityComponents: Record<string, unknown>,
 	entityId: number,
-	ecs: { markChangedIfTracked: (entityId: number, componentName: any) => void },
+	ecs: { markChanged: (entityId: number, componentName: any) => void },
 ): void {
 	for (const target of step.targets) {
 		const comp = entityComponents[target.component];
 		if (!comp || typeof comp !== 'object') continue;
 		const written = writeField(comp as Record<string, unknown>, target.path, target.to);
 		if (written) {
-			ecs.markChangedIfTracked(entityId, target.component);
+			ecs.markChanged(entityId, target.component);
 		}
 	}
 }
@@ -403,7 +403,7 @@ function reverseAllTargets(tween: Tween): void {
 
 // ==================== Tween Processing Helpers ====================
 
-type TweenEcs = { markChangedIfTracked: (entityId: number, componentName: any) => void; commands: { removeComponent: (entityId: number, componentName: any) => void } };
+type TweenEcs = { markChanged: (entityId: number, componentName: any) => void; commands: { removeComponent: (entityId: number, componentName: any) => void } };
 
 function completeTween(
 	tween: Tween,
