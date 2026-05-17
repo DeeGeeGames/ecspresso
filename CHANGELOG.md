@@ -4,11 +4,7 @@ All notable changes to ECSpresso are documented here. Format loosely follows [Ke
 
 ## 0.17.0
 
-### Breaking changes
-
-- **`WorldConfig.trackedChanges` slot removed.** The typed change-tracking opt-in from 0.16.x (`setTrackedChanges`, `markChangedIfTracked`, the sixth WorldConfig type slot) is gone. Subscriptions are now auto-derived from `changed:` query filters at system-registration time, so most code needs no migration — but anything that explicitly referenced `WithTrackedChanges`, the `trackedChanges` config key, or `markChangedIfTracked` must be updated.
-- **`markChangedIfTracked` → `markChanged`.** A single `markChanged(id, name)` exists on `ECSpresso` and `CommandBuffer`. Plugins that called the parallel polite-mark API revert to `markChanged`. Components with no `changed:` consumers become no-ops automatically.
-- **`markChangedByIdx` / `getOrAssignComponentIdx` / `_disableChangeTracking` no longer public.** These were internal-feeling escape hatches added in 0.16.x and have been removed from the `ECSpresso` surface.
+No breaking changes from 0.16.3.
 
 ### Added
 
