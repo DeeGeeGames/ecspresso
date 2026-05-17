@@ -134,40 +134,46 @@ export function createSpatialIndexPlugin<G extends string = 'spatialIndex'>(
 					.setPriority(priority)
 					.inPhase(phase as SystemPhase)
 					.inGroup(systemGroup)
-					.addQuery('transforms', {
-						with: [transformComponent],
+					.addQuery('aabbOnly', {
+						with: [transformComponent, 'aabbCollider'],
+						without: ['circleCollider'],
 					})
-					.setProcess(({ queries, ecs }) => {
+					.addQuery('circleOnly', {
+						with: [transformComponent, 'circleCollider'],
+						without: ['aabbCollider'],
+					})
+					.addQuery('both', {
+						with: [transformComponent, 'aabbCollider', 'circleCollider'],
+					})
+					.setProcess(({ queries }) => {
 						clearGrid(grid);
 
-						for (const entity of queries.transforms) {
+						for (const entity of queries.aabbOnly) {
 							const transform = entity.components[transformComponent];
-							const aabb = ecs.getComponent(entity.id, 'aabbCollider');
-							const circle = ecs.getComponent(entity.id, 'circleCollider');
+							const { aabbCollider } = entity.components;
+							const x = transform.x + (aabbCollider.offsetX ?? 0);
+							const y = transform.y + (aabbCollider.offsetY ?? 0);
+							insertEntity(grid, entity.id, x, y, aabbCollider.width / 2, aabbCollider.height / 2);
+						}
 
-							// Only insert entities that have a collider
-							if (!aabb && !circle) continue;
+						for (const entity of queries.circleOnly) {
+							const transform = entity.components[transformComponent];
+							const { circleCollider } = entity.components;
+							const x = transform.x + (circleCollider.offsetX ?? 0);
+							const y = transform.y + (circleCollider.offsetY ?? 0);
+							insertEntity(grid, entity.id, x, y, circleCollider.radius, circleCollider.radius);
+						}
 
-							let x = transform.x;
-							let y = transform.y;
-							let halfW = 0;
-							let halfH = 0;
-
-							if (aabb) {
-								x += aabb.offsetX ?? 0;
-								y += aabb.offsetY ?? 0;
-								halfW = aabb.width / 2;
-								halfH = aabb.height / 2;
-							}
-
-							if (circle) {
-								x += circle.offsetX ?? 0;
-								y += circle.offsetY ?? 0;
-								// Circle: use radius as half-extent in both dimensions
-								halfW = Math.max(halfW, circle.radius);
-								halfH = Math.max(halfH, circle.radius);
-							}
-
+						// Conservative broadphase: stack both offsets and take the
+						// larger half-extent in each axis. Preserves the previous
+						// "both colliders" behavior exactly.
+						for (const entity of queries.both) {
+							const transform = entity.components[transformComponent];
+							const { aabbCollider, circleCollider } = entity.components;
+							const x = transform.x + (aabbCollider.offsetX ?? 0) + (circleCollider.offsetX ?? 0);
+							const y = transform.y + (aabbCollider.offsetY ?? 0) + (circleCollider.offsetY ?? 0);
+							const halfW = Math.max(aabbCollider.width / 2, circleCollider.radius);
+							const halfH = Math.max(aabbCollider.height / 2, circleCollider.radius);
 							insertEntity(grid, entity.id, x, y, halfW, halfH);
 						}
 					});

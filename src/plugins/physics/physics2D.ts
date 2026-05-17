@@ -453,54 +453,81 @@ export function createPhysics2DPlugin<L extends string = never, G extends string
 			let cachedSI: SpatialIndex | undefined;
 			let siResolved = false;
 
+			const ensureSlot = (idx: number, entityId: number, layer: L, collidesWith: readonly L[], rigidBody: RigidBody, velocity: Vector2D): Physics2DColliderInfo<L> => {
+				let slot = colliderPool[idx];
+				if (!slot) {
+					slot = {
+						entityId,
+						x: 0,
+						y: 0,
+						layer,
+						collidesWith,
+						layerBit: 0,
+						collidesWithMask: 0,
+						shape: AABB_SHAPE,
+						halfWidth: 0,
+						halfHeight: 0,
+						radius: 0,
+						rigidBody,
+						velocity,
+					};
+					colliderPool[idx] = slot;
+				} else {
+					slot.rigidBody = rigidBody;
+					slot.velocity = velocity;
+				}
+				return slot;
+			};
+
 			collisionSystem
-				.addQuery('collidables', {
-					with: ['localTransform', 'rigidBody', 'velocity', 'collisionLayer'],
+				.addQuery('aabbOnly', {
+					with: ['localTransform', 'rigidBody', 'velocity', 'collisionLayer', 'aabbCollider'],
+					without: ['circleCollider'],
+				})
+				.addQuery('circleOnly', {
+					with: ['localTransform', 'rigidBody', 'velocity', 'collisionLayer', 'circleCollider'],
+					without: ['aabbCollider'],
+				})
+				.addQuery('both', {
+					with: ['localTransform', 'rigidBody', 'velocity', 'collisionLayer', 'aabbCollider', 'circleCollider'],
 				})
 				.setProcess(({ queries, ecs }) => {
 					let count = 0;
 
-					// TODO(perf): collider shape is discovered via two ecs.getComponent
-					// calls per entity per frame because the query can't express
-					// "aabbCollider OR circleCollider". Splitting into two queries
-					// (aabb-bearing, circle-bearing) would eliminate these lookups at
-					// the cost of two pool-fill passes. Keep in sync with physics3D.
-					for (const entity of queries.collidables) {
-						const { localTransform, rigidBody, velocity, collisionLayer } = entity.components;
-						const aabb = ecs.getComponent(entity.id, 'aabbCollider');
-						const circle = aabb ? undefined : ecs.getComponent(entity.id, 'circleCollider');
-						if (!aabb && !circle) continue;
-
-						let slot = colliderPool[count];
-						if (!slot) {
-							slot = {
-								entityId: entity.id,
-								x: localTransform.x,
-								y: localTransform.y,
-								layer: collisionLayer.layer,
-								collidesWith: collisionLayer.collidesWith,
-								layerBit: 0,
-								collidesWithMask: 0,
-								shape: AABB_SHAPE,
-								halfWidth: 0,
-								halfHeight: 0,
-								radius: 0,
-								rigidBody,
-								velocity,
-							};
-							colliderPool[count] = slot;
-						} else {
-							slot.rigidBody = rigidBody;
-							slot.velocity = velocity;
-						}
-
+					for (const entity of queries.aabbOnly) {
+						const { localTransform, rigidBody, velocity, collisionLayer, aabbCollider } = entity.components;
+						const slot = ensureSlot(count, entity.id, collisionLayer.layer, collisionLayer.collidesWith, rigidBody, velocity);
 						if (!fillBaseColliderInfo(
 							slot,
 							entity.id, localTransform.x, localTransform.y,
 							collisionLayer.layer, collisionLayer.collidesWith,
-							aabb, circle,
+							aabbCollider, undefined,
 						)) continue;
+						count++;
+					}
 
+					for (const entity of queries.circleOnly) {
+						const { localTransform, rigidBody, velocity, collisionLayer, circleCollider } = entity.components;
+						const slot = ensureSlot(count, entity.id, collisionLayer.layer, collisionLayer.collidesWith, rigidBody, velocity);
+						if (!fillBaseColliderInfo(
+							slot,
+							entity.id, localTransform.x, localTransform.y,
+							collisionLayer.layer, collisionLayer.collidesWith,
+							undefined, circleCollider,
+						)) continue;
+						count++;
+					}
+
+					// fillBaseColliderInfo picks aabb when both present — preserves prior precedence.
+					for (const entity of queries.both) {
+						const { localTransform, rigidBody, velocity, collisionLayer, aabbCollider, circleCollider } = entity.components;
+						const slot = ensureSlot(count, entity.id, collisionLayer.layer, collisionLayer.collidesWith, rigidBody, velocity);
+						if (!fillBaseColliderInfo(
+							slot,
+							entity.id, localTransform.x, localTransform.y,
+							collisionLayer.layer, collisionLayer.collidesWith,
+							aabbCollider, circleCollider,
+						)) continue;
 						count++;
 					}
 

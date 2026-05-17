@@ -163,40 +163,43 @@ export function createSpatialIndex3DPlugin<G extends string = 'spatialIndex3D'>(
 					.setPriority(priority)
 					.inPhase(phase as SystemPhase)
 					.inGroup(systemGroup)
-					.addQuery('transforms', {
-						with: [transformComponent],
+					.addQuery('aabbWith', {
+						with: [transformComponent, 'aabb3DCollider'],
+					})
+					.addQuery('sphereOnly', {
+						with: [transformComponent, 'sphereCollider'],
+						without: ['aabb3DCollider'],
 					})
 					.runWhenEmpty()
-					.setProcess(({ queries, ecs }) => {
+					.setProcess(({ queries }) => {
 						clearGrid3D(grid);
 
-						for (const entity of queries.transforms) {
+						// AABB-precedence: aabbWith covers both aabb-only AND
+						// entities carrying both colliders. Sphere-only is its own
+						// query. Matches collision3D / physics3D semantic.
+						for (const entity of queries.aabbWith) {
 							const transform = entity.components[transformComponent];
-							const aabb = ecs.getComponent(entity.id, 'aabb3DCollider');
-							// AABB wins when both are present, matching collision3D / physics3D.
-							const sphere = aabb ? undefined : ecs.getComponent(entity.id, 'sphereCollider');
+							const { aabb3DCollider } = entity.components;
+							insertEntity3D(
+								grid, entity.id,
+								transform.x + (aabb3DCollider.offsetX ?? 0),
+								transform.y + (aabb3DCollider.offsetY ?? 0),
+								transform.z + (aabb3DCollider.offsetZ ?? 0),
+								aabb3DCollider.width / 2, aabb3DCollider.height / 2, aabb3DCollider.depth / 2,
+							);
+						}
 
-							if (aabb) {
-								insertEntity3D(
-									grid, entity.id,
-									transform.x + (aabb.offsetX ?? 0),
-									transform.y + (aabb.offsetY ?? 0),
-									transform.z + (aabb.offsetZ ?? 0),
-									aabb.width / 2, aabb.height / 2, aabb.depth / 2,
-								);
-								continue;
-							}
-
-							if (sphere) {
-								const r = sphere.radius;
-								insertEntity3D(
-									grid, entity.id,
-									transform.x + (sphere.offsetX ?? 0),
-									transform.y + (sphere.offsetY ?? 0),
-									transform.z + (sphere.offsetZ ?? 0),
-									r, r, r,
-								);
-							}
+						for (const entity of queries.sphereOnly) {
+							const transform = entity.components[transformComponent];
+							const { sphereCollider } = entity.components;
+							const r = sphereCollider.radius;
+							insertEntity3D(
+								grid, entity.id,
+								transform.x + (sphereCollider.offsetX ?? 0),
+								transform.y + (sphereCollider.offsetY ?? 0),
+								transform.z + (sphereCollider.offsetZ ?? 0),
+								r, r, r,
+							);
 						}
 					});
 			}

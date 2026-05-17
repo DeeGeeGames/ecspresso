@@ -462,57 +462,83 @@ export function createPhysics3DPlugin<L extends string = never, G extends string
 			let cachedSI: SpatialIndex3D | undefined;
 			let siResolved = false;
 
+			const ensureSlot = (idx: number, entityId: number, layer: L, collidesWith: readonly L[], rigidBody: RigidBody, velocity: Vector3D): Physics3DColliderInfo<L> => {
+				let slot = colliderPool[idx];
+				if (!slot) {
+					slot = {
+						entityId,
+						x: 0,
+						y: 0,
+						z: 0,
+						layer,
+						collidesWith,
+						layerBit: 0,
+						collidesWithMask: 0,
+						shape: AABB3D_SHAPE,
+						halfWidth: 0,
+						halfHeight: 0,
+						halfDepth: 0,
+						radius: 0,
+						rigidBody,
+						velocity,
+					};
+					colliderPool[idx] = slot;
+				} else {
+					slot.rigidBody = rigidBody;
+					slot.velocity = velocity;
+				}
+				return slot;
+			};
+
 			collisionSystem
-				.addQuery('collidables', {
-					with: ['localTransform3D', 'rigidBody3D', 'velocity3D', 'collisionLayer'],
+				.addQuery('aabbOnly', {
+					with: ['localTransform3D', 'rigidBody3D', 'velocity3D', 'collisionLayer', 'aabb3DCollider'],
+					without: ['sphereCollider'],
+				})
+				.addQuery('sphereOnly', {
+					with: ['localTransform3D', 'rigidBody3D', 'velocity3D', 'collisionLayer', 'sphereCollider'],
+					without: ['aabb3DCollider'],
+				})
+				.addQuery('both', {
+					with: ['localTransform3D', 'rigidBody3D', 'velocity3D', 'collisionLayer', 'aabb3DCollider', 'sphereCollider'],
 				})
 				.setProcess(({ queries, ecs }) => {
 					let count = 0;
 
-					// TODO(perf): collider shape is discovered via two ecs.getComponent
-					// calls per entity per frame because the query can't express
-					// "aabb3DCollider OR sphereCollider". Splitting into two queries
-					// (aabb-bearing, sphere-bearing) would eliminate these lookups at
-					// the cost of two pool-fill passes. Revisit once the query API
-					// gains `anyOf`-style predicates.
-					for (const entity of queries.collidables) {
-						const { localTransform3D, rigidBody3D, velocity3D, collisionLayer } = entity.components;
-						const aabb = ecs.getComponent(entity.id, 'aabb3DCollider');
-						const sphere = aabb ? undefined : ecs.getComponent(entity.id, 'sphereCollider');
-						if (!aabb && !sphere) continue;
-
-						let slot = colliderPool[count];
-						if (!slot) {
-							slot = {
-								entityId: entity.id,
-								x: localTransform3D.x,
-								y: localTransform3D.y,
-								z: localTransform3D.z,
-								layer: collisionLayer.layer,
-								collidesWith: collisionLayer.collidesWith,
-								layerBit: 0,
-								collidesWithMask: 0,
-								shape: AABB3D_SHAPE,
-								halfWidth: 0,
-								halfHeight: 0,
-								halfDepth: 0,
-								radius: 0,
-								rigidBody: rigidBody3D,
-								velocity: velocity3D,
-							};
-							colliderPool[count] = slot;
-						} else {
-							slot.rigidBody = rigidBody3D;
-							slot.velocity = velocity3D;
-						}
-
+					for (const entity of queries.aabbOnly) {
+						const { localTransform3D, rigidBody3D, velocity3D, collisionLayer, aabb3DCollider } = entity.components;
+						const slot = ensureSlot(count, entity.id, collisionLayer.layer, collisionLayer.collidesWith, rigidBody3D, velocity3D);
 						if (!fillBaseColliderInfo3D(
 							slot,
 							entity.id, localTransform3D.x, localTransform3D.y, localTransform3D.z,
 							collisionLayer.layer, collisionLayer.collidesWith,
-							aabb, sphere,
+							aabb3DCollider, undefined,
 						)) continue;
+						count++;
+					}
 
+					for (const entity of queries.sphereOnly) {
+						const { localTransform3D, rigidBody3D, velocity3D, collisionLayer, sphereCollider } = entity.components;
+						const slot = ensureSlot(count, entity.id, collisionLayer.layer, collisionLayer.collidesWith, rigidBody3D, velocity3D);
+						if (!fillBaseColliderInfo3D(
+							slot,
+							entity.id, localTransform3D.x, localTransform3D.y, localTransform3D.z,
+							collisionLayer.layer, collisionLayer.collidesWith,
+							undefined, sphereCollider,
+						)) continue;
+						count++;
+					}
+
+					// fillBaseColliderInfo3D picks aabb when both present — preserves prior precedence.
+					for (const entity of queries.both) {
+						const { localTransform3D, rigidBody3D, velocity3D, collisionLayer, aabb3DCollider, sphereCollider } = entity.components;
+						const slot = ensureSlot(count, entity.id, collisionLayer.layer, collisionLayer.collidesWith, rigidBody3D, velocity3D);
+						if (!fillBaseColliderInfo3D(
+							slot,
+							entity.id, localTransform3D.x, localTransform3D.y, localTransform3D.z,
+							collisionLayer.layer, collisionLayer.collidesWith,
+							aabb3DCollider, sphereCollider,
+						)) continue;
 						count++;
 					}
 

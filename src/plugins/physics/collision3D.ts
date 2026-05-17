@@ -191,55 +191,82 @@ export function createCollision3DPlugin<L extends string, G extends string = 'ph
 			let cachedSI: SpatialIndex3D | undefined;
 			let siResolved = false;
 
+			const ensureSlot = (idx: number, entityId: number, layer: L, collidesWith: readonly L[]): BaseColliderInfo3D<L> => {
+				let slot = colliderPool[idx];
+				if (!slot) {
+					slot = {
+						entityId,
+						x: 0,
+						y: 0,
+						z: 0,
+						layer,
+						collidesWith,
+						layerBit: 0,
+						collidesWithMask: 0,
+						shape: AABB3D_SHAPE,
+						halfWidth: 0,
+						halfHeight: 0,
+						halfDepth: 0,
+						radius: 0,
+					};
+					colliderPool[idx] = slot;
+				}
+				return slot;
+			};
+
 			world
 				.addSystem('collision3D-detection')
 				.setPriority(priority)
 				.inPhase(phase)
 				.inGroup(systemGroup)
-				.addQuery('collidables', {
-					with: ['worldTransform3D', 'collisionLayer'],
+				.addQuery('aabbOnly', {
+					with: ['worldTransform3D', 'collisionLayer', 'aabb3DCollider'],
+					without: ['sphereCollider'],
+				})
+				.addQuery('sphereOnly', {
+					with: ['worldTransform3D', 'collisionLayer', 'sphereCollider'],
+					without: ['aabb3DCollider'],
+				})
+				.addQuery('both', {
+					with: ['worldTransform3D', 'collisionLayer', 'aabb3DCollider', 'sphereCollider'],
 				})
 				.setProcess(({ queries, ecs }) => {
 					let count = 0;
 
-					// TODO(perf): collider shape is discovered via two ecs.getComponent
-					// calls per entity per frame because the query can't express
-					// "aabb3DCollider OR sphereCollider". Splitting into two queries
-					// (aabb-bearing, sphere-bearing) would eliminate these lookups at
-					// the cost of two pool-fill passes. Keep in sync with physics3D.
-					for (const entity of queries.collidables) {
-						const { worldTransform3D, collisionLayer } = entity.components;
-						const aabb = ecs.getComponent(entity.id, 'aabb3DCollider');
-						const sphere = aabb ? undefined : ecs.getComponent(entity.id, 'sphereCollider');
-						if (!aabb && !sphere) continue;
-
-						let slot = colliderPool[count];
-						if (!slot) {
-							slot = {
-								entityId: entity.id,
-								x: worldTransform3D.x,
-								y: worldTransform3D.y,
-								z: worldTransform3D.z,
-								layer: collisionLayer.layer,
-								collidesWith: collisionLayer.collidesWith,
-								layerBit: 0,
-								collidesWithMask: 0,
-								shape: AABB3D_SHAPE,
-								halfWidth: 0,
-								halfHeight: 0,
-								halfDepth: 0,
-								radius: 0,
-							};
-							colliderPool[count] = slot;
-						}
-
+					for (const entity of queries.aabbOnly) {
+						const { worldTransform3D, collisionLayer, aabb3DCollider } = entity.components;
+						const slot = ensureSlot(count, entity.id, collisionLayer.layer, collisionLayer.collidesWith);
 						if (!fillBaseColliderInfo3D(
 							slot,
 							entity.id, worldTransform3D.x, worldTransform3D.y, worldTransform3D.z,
 							collisionLayer.layer, collisionLayer.collidesWith,
-							aabb, sphere,
+							aabb3DCollider, undefined,
 						)) continue;
+						count++;
+					}
 
+					for (const entity of queries.sphereOnly) {
+						const { worldTransform3D, collisionLayer, sphereCollider } = entity.components;
+						const slot = ensureSlot(count, entity.id, collisionLayer.layer, collisionLayer.collidesWith);
+						if (!fillBaseColliderInfo3D(
+							slot,
+							entity.id, worldTransform3D.x, worldTransform3D.y, worldTransform3D.z,
+							collisionLayer.layer, collisionLayer.collidesWith,
+							undefined, sphereCollider,
+						)) continue;
+						count++;
+					}
+
+					// fillBaseColliderInfo3D picks aabb when both present — preserves prior precedence.
+					for (const entity of queries.both) {
+						const { worldTransform3D, collisionLayer, aabb3DCollider, sphereCollider } = entity.components;
+						const slot = ensureSlot(count, entity.id, collisionLayer.layer, collisionLayer.collidesWith);
+						if (!fillBaseColliderInfo3D(
+							slot,
+							entity.id, worldTransform3D.x, worldTransform3D.y, worldTransform3D.z,
+							collisionLayer.layer, collisionLayer.collidesWith,
+							aabb3DCollider, sphereCollider,
+						)) continue;
 						count++;
 					}
 
