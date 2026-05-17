@@ -74,7 +74,25 @@ export interface SpatialIndexPluginOptions<G extends string = 'spatialIndex'> {
 	systemGroup?: G;
 	/** Priority for rebuild systems (default: 2000, before collision) */
 	priority?: number;
-	/** Phases to register rebuild systems in (default: ['fixedUpdate', 'postUpdate']) */
+	/**
+	 * Phases to register rebuild systems in (default: ['fixedUpdate', 'postUpdate']).
+	 *
+	 * When both phases are registered, the `postUpdate` rebuild is
+	 * automatically skipped on cycles where:
+	 *   1. The `fixedUpdate` rebuild already ran this cycle, AND
+	 *   2. No entity hierarchy exists.
+	 *
+	 * In flat-hierarchy scenes `transform-propagation` copies
+	 * `localTransform → worldTransform` unchanged, so the postUpdate
+	 * grid would duplicate the fixedUpdate one. The skip is automatic
+	 * and re-engages once any parent relationship is set, or whenever
+	 * `fixedUpdate` doesn't run that cycle (sub-fixed-DT frames).
+	 *
+	 * Edge case: if you write to `worldTransform` directly between
+	 * phases without using `transform-propagation` or entity hierarchy,
+	 * the auto-skip will leave your writes unindexed. Set
+	 * `phases: ['postUpdate']` explicitly to bypass the auto-skip.
+	 */
 	phases?: ReadonlyArray<SpatialIndexPhase>;
 }
 
@@ -125,9 +143,17 @@ export function createSpatialIndexPlugin<G extends string = 'spatialIndex'>(
 		.install((world) => {
 			world.addResource('spatialIndex', resource);
 
+			// Flag flipped true by the fixedUpdate rebuild; checked + reset by the
+			// postUpdate rebuild to detect whether fixedUpdate ran this cycle.
+			// Lets postUpdate auto-skip when its grid would duplicate fixedUpdate's
+			// in flat-hierarchy scenes — without breaking sub-fixed-DT frames
+			// where only postUpdate runs.
+			let fixedRebuildRanThisCycle = false;
+
 			// Register a rebuild system for each requested phase
 			for (const phase of phases) {
 				const transformComponent = phase === 'fixedUpdate' ? 'localTransform' : 'worldTransform';
+				const isPostUpdate = phase === 'postUpdate';
 
 				world
 					.addSystem(`spatial-index-rebuild-${phase}`)
@@ -145,7 +171,16 @@ export function createSpatialIndexPlugin<G extends string = 'spatialIndex'>(
 					.addQuery('both', {
 						with: [transformComponent, 'aabbCollider', 'circleCollider'],
 					})
-					.setProcess(({ queries }) => {
+					.setProcess(({ queries, ecs }) => {
+						if (isPostUpdate) {
+							const ranFixed = fixedRebuildRanThisCycle;
+							fixedRebuildRanThisCycle = false;
+							// Skip only when fixedUpdate populated the grid this
+							// cycle AND no hierarchy exists (so worldTransform
+							// equals localTransform — identical grid data).
+							if (ranFixed && !ecs.entityManager.hasHierarchy) return;
+						}
+
 						clearGrid(grid);
 
 						for (const entity of queries.aabbOnly) {
@@ -176,6 +211,8 @@ export function createSpatialIndexPlugin<G extends string = 'spatialIndex'>(
 							const halfH = Math.max(aabbCollider.height / 2, circleCollider.radius);
 							insertEntity(grid, entity.id, x, y, halfW, halfH);
 						}
+
+						if (!isPostUpdate) fixedRebuildRanThisCycle = true;
 					});
 			}
 		});

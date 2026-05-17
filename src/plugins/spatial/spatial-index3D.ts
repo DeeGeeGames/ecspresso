@@ -103,7 +103,25 @@ export interface SpatialIndex3DPluginOptions<G extends string = 'spatialIndex3D'
 	systemGroup?: G;
 	/** Priority for rebuild systems (default: 2000, before collision) */
 	priority?: number;
-	/** Phases to register rebuild systems in (default: ['fixedUpdate', 'postUpdate']) */
+	/**
+	 * Phases to register rebuild systems in (default: ['fixedUpdate', 'postUpdate']).
+	 *
+	 * When both phases are registered, the `postUpdate` rebuild is
+	 * automatically skipped on cycles where:
+	 *   1. The `fixedUpdate` rebuild already ran this cycle, AND
+	 *   2. No entity hierarchy exists.
+	 *
+	 * In flat-hierarchy scenes `transform3d-propagation` copies
+	 * `localTransform3D → worldTransform3D` unchanged, so the postUpdate
+	 * grid would duplicate the fixedUpdate one. The skip is automatic
+	 * and re-engages once any parent relationship is set, or whenever
+	 * `fixedUpdate` doesn't run that cycle (sub-fixed-DT frames).
+	 *
+	 * Edge case: if you write to `worldTransform3D` directly between
+	 * phases without using `transform3d-propagation` or entity hierarchy,
+	 * the auto-skip will leave your writes unindexed. Set
+	 * `phases: ['postUpdate']` explicitly to bypass the auto-skip.
+	 */
 	phases?: ReadonlyArray<SpatialIndex3DPhase>;
 }
 
@@ -154,9 +172,17 @@ export function createSpatialIndex3DPlugin<G extends string = 'spatialIndex3D'>(
 		.install((world) => {
 			world.addResource('spatialIndex3D', resource);
 
+			// Flag flipped true by the fixedUpdate rebuild; checked + reset by the
+			// postUpdate rebuild to detect whether fixedUpdate ran this cycle.
+			// Lets postUpdate auto-skip when its grid would duplicate fixedUpdate's
+			// in flat-hierarchy scenes — without breaking sub-fixed-DT frames
+			// where only postUpdate runs.
+			let fixedRebuildRanThisCycle = false;
+
 			// Register a rebuild system for each requested phase
 			for (const phase of phases) {
 				const transformComponent = phase === 'fixedUpdate' ? 'localTransform3D' : 'worldTransform3D';
+				const isPostUpdate = phase === 'postUpdate';
 
 				world
 					.addSystem(`spatial-index3D-rebuild-${phase}`)
@@ -171,7 +197,16 @@ export function createSpatialIndex3DPlugin<G extends string = 'spatialIndex3D'>(
 						without: ['aabb3DCollider'],
 					})
 					.runWhenEmpty()
-					.setProcess(({ queries }) => {
+					.setProcess(({ queries, ecs }) => {
+						if (isPostUpdate) {
+							const ranFixed = fixedRebuildRanThisCycle;
+							fixedRebuildRanThisCycle = false;
+							// Skip only when fixedUpdate populated the grid this
+							// cycle AND no hierarchy exists (so worldTransform3D
+							// equals localTransform3D — identical grid data).
+							if (ranFixed && !ecs.entityManager.hasHierarchy) return;
+						}
+
 						clearGrid3D(grid);
 
 						// AABB-precedence: aabbWith covers both aabb-only AND
@@ -201,6 +236,8 @@ export function createSpatialIndex3DPlugin<G extends string = 'spatialIndex3D'>(
 								r, r, r,
 							);
 						}
+
+						if (!isPostUpdate) fixedRebuildRanThisCycle = true;
 					});
 			}
 		});
