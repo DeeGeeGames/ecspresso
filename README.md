@@ -4,6 +4,8 @@
 
 A type-safe, modular, and extensible Entity Component System (ECS) framework for TypeScript and JavaScript.
 
+See [CHANGELOG.md](./CHANGELOG.md) for recent changes, including breaking changes.
+
 ## Features
 
 - **Type-Safe**: Full TypeScript support with component, event, and resource type inference

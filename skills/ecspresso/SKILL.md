@@ -11,6 +11,8 @@ For full API details, see [api-reference.md](api-reference.md).
 For plugin definition and built-in plugin catalog, see [plugins.md](plugins.md).
 For deeper reference on any topic, see the `docs/` directory in the ECSpresso package.
 
+**Before assuming current behavior, check `CHANGELOG.md` at the repo root (also shipped in the npm tarball) for recent breaking changes and additions.** Read it when a user mentions upgrading versions, when API behavior seems inconsistent with this skill, or when working against an unfamiliar version.
+
 ## Mental Model
 
 - **Entities** are numeric IDs with attached components.

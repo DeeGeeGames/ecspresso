@@ -210,7 +210,8 @@
 		}
 	},
 	"files": [
-		"dist"
+		"dist",
+		"CHANGELOG.md"
 	],
 	"scripts": {
 		"build:clean": "rm -rf dist",
@@ -224,7 +225,7 @@
 		"bench:ecs3D": "bun bench/ecs-physics3D.bench.ts",
 		"bench:narrowphase": "bun bench/narrowphase.bench.ts",
 		"bench:ecs": "bun bench/ecs-physics.bench.ts",
-		"docs": "typedoc && bun scripts/build-examples.ts && bun scripts/build-docs-index.ts",
+		"docs": "typedoc && bun scripts/build-examples.ts && bun scripts/build-changelog.ts && bun scripts/build-docs-index.ts",
 		"docs:serve": "bun run docs && bunx serve docs",
 		"postversion": "bun scripts/sync-plugin-version.ts && git add .claude-plugin/plugin.json",
 		"prepublishOnly": "bun run check && bun run build"
