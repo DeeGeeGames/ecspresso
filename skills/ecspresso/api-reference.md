@@ -46,6 +46,8 @@ Use `changed` in query definitions to only process entities whose specified comp
 
 Each mark is processed exactly once per system, then expires. Marks from earlier phases are visible to later phases within the same frame.
 
+**Subscription model.** `markChanged` is only recorded when something subscribes to the component. Any system that declares `changed: ['foo']` auto-subscribes `foo` at registration. With no `changed:` filter anywhere, the default is track-all (every mark recorded — keeps direct `getEntitiesWithQuery(..., changed: [...])` calls from tests/user code working). With at least one `changed:` filter, only the subscribed union is tracked; everything else is a no-op. Worlds with zero `changed:` consumers can call `.disableChangeTracking()` on the builder for full opt-out.
+
 #### Declarative marking via `mutates`
 
 Declare which components the system writes on the query itself. After `process()` returns, every iterated entity gets `markChanged(id, comp)` called automatically for each listed component, so you don't need `ecs.markChanged(...)` in the loop body. Components in `with` but absent from `mutates` are also narrowed to `Readonly<T>` in the iteration entity, catching accidental writes at compile time.

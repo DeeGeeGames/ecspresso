@@ -1,6 +1,25 @@
 # Change Detection
 
-ECSpresso tracks component changes using a per-system monotonic sequence. Each `markChanged` call increments a global counter and stamps the component with a unique sequence number. Each system tracks the highest sequence it has seen; on its next execution, it only processes marks with a sequence greater than its last-seen value. This means each mark is processed exactly once per system, and marks expire after a single update cycle.
+ECSpresso tracks component changes using a per-system monotonic sequence. Each *recorded* `markChanged` call increments a global counter and stamps the component with a unique sequence number. Each system tracks the highest sequence it has seen; on its next execution, it only processes marks with a sequence greater than its last-seen value. This means each mark is processed exactly once per system, and marks expire after a single update cycle.
+
+## Subscription Model (Auto-Derived)
+
+`markChanged` is only recorded for components that something subscribes to. Subscriptions are derived automatically: any system whose query declares `changed: ['foo', 'bar']` auto-subscribes `foo` and `bar` at registration time. Marks for components nothing consumes become no-ops, avoiding the per-call sequence stamp and array allocation.
+
+Two defaults:
+- **No `changed:` filter declared anywhere** → track all (every mark recorded). Safe default for tests and apps that use direct `getEntitiesWithQuery(..., changed: [...])` calls without going through a system.
+- **At least one `changed:` filter declared** → track only the union of subscribed components. Plugin marks for unrelated components (e.g. `velocity` when no system has `changed: ['velocity']`) become no-ops.
+
+For worlds with zero `changed:` consumers (benches, headless simulations), opt out of tracking entirely on the builder:
+
+```typescript
+const ecs = ECSpresso.create()
+  .withComponentTypes<MyComponents>()
+  .disableChangeTracking()
+  .build();
+```
+
+This installs an empty subscription bitmap. Plugin systems that declare `changed:` still auto-subscribe on top, so legitimate consumers keep working.
 
 ## Marking Changes
 
