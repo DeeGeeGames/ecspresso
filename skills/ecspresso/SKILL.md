@@ -1,17 +1,59 @@
 ---
 name: ecspresso
-description: Guide for using the ECSpresso ECS library in TypeScript projects
+description: Build or change TypeScript applications that consume the ECSpresso ECS library. Use for application systems, queries, resources, events, screens, and built-in plugins; do not use for maintaining the ECSpresso library repository itself.
 ---
 
 # ECSpresso — ECS Library Skill
 
-ECSpresso is a type-safe Entity-Component-System library for TypeScript. This skill provides the essential patterns and signatures needed to write correct ECSpresso code.
+ECSpresso is a type-safe Entity-Component-System library for TypeScript. This
+skill covers application development against its published API. When changing
+ECSpresso itself, use the repository's `ecspresso-maintainer` skill instead.
 
-For full API details, see [api-reference.md](api-reference.md).
-For plugin definition and built-in plugin catalog, see [plugins.md](plugins.md).
-For deeper reference on any topic, see the `docs/` directory in the ECSpresso package.
+- For entity, resource, event, hierarchy, asset, and screen APIs, read
+  [api-reference.md](api-reference.md).
+- For plugin definition and exact built-in import paths, read
+  [plugins.md](plugins.md).
+- For `changed`, `mutates`, and marking semantics, read
+  [change-tracking.md](change-tracking.md).
+- For screens, pause, scoping, and plugin cleanup, read
+  [lifecycle.md](lifecycle.md).
+- For behavioral validation, read [testing.md](testing.md).
 
-**Before assuming current behavior, check `CHANGELOG.md` at the repo root (also shipped in the npm tarball) for recent breaking changes and additions.** Read it when a user mentions upgrading versions, when API behavior seems inconsistent with this skill, or when working against an unfamiliar version.
+Before assuming current behavior, identify the installed ECSpresso version and
+read its `CHANGELOG.md` when upgrading, encountering an API mismatch, or working
+against an unfamiliar version. The npm package does not include the repository's
+`docs/` directory.
+
+## Working on an existing feature
+
+Use systems as the initial inspection boundary without assuming all behavior
+belongs inside a system callback:
+
+1. Translate the requested behavior into relevant components, resources,
+   events, screens, groups, assets, and presentation adapters.
+2. Locate systems that query or write those values. Include defaults inherited
+   from `definePlugin().setSystemDefaults(...)` and `world.systemScope(...)`.
+3. Inspect immediate producers and consumers, including pure helpers, event
+   publishers and handlers, command-buffer operations, and renderer adapters.
+4. Extend the system that owns the responsibility. Add a system only when the
+   behavior has a distinct phase, lifecycle, gate, or testable responsibility.
+5. Update queries, mutation declarations, resources, phase, priority, screens,
+   groups, assets, and event handlers alongside the implementation.
+6. Validate the behavior and directly affected interactions. Expand farther
+   only when observed dependencies warrant it.
+
+Do not widen `mutates` merely to silence a type error. First determine whether
+the write belongs in that system.
+
+### Task routing
+
+| Task | Inspect first |
+|---|---|
+| Change movement, steering, collision, or transforms | Owning system plus immediate physics/spatial producers and consumers; then [plugins.md](plugins.md) |
+| Change query or component mutation behavior | Query declarations and downstream `changed` consumers; then [change-tracking.md](change-tracking.md) |
+| Fix pause, overlays, or screen-owned entities | [lifecycle.md](lifecycle.md) |
+| Change a built-in plugin integration or import | [plugins.md](plugins.md) |
+| Add regression coverage | [testing.md](testing.md) |
 
 ## Mental Model
 
@@ -120,7 +162,10 @@ type GameSystems = SystemRegistrarOf<typeof ecs>;
 
 function registerMovement(systems: GameSystems): void {
   systems.addSystem('movement')
-    .addQuery('moving', { with: ['position', 'velocity'] })
+    .addQuery('moving', {
+      with: ['position', 'velocity'],
+      mutates: ['position'],
+    })
     .setProcess(({ queries, dt }) => { /* ... */ });
 }
 
@@ -144,7 +189,10 @@ full-world dependencies.
 
 ```typescript
 ecs.addSystem('movement')
-  .addQuery('moving', { with: ['position', 'velocity'] })
+  .addQuery('moving', {
+    with: ['position', 'velocity'],
+    mutates: ['position'],
+  })
   .setProcess(({ queries, dt, ecs }) => {
     for (const entity of queries.moving) {
       entity.components.position.x += entity.components.velocity.x * dt;
@@ -191,22 +239,29 @@ For single-query, per-entity iteration — the most common case — use `setProc
 
 ```typescript
 ecs.addSystem('movement')
-  .setProcessEach({ with: ['position', 'velocity'] }, ({ entity, dt }) => {
-    entity.components.position.x += entity.components.velocity.x * dt;
-    entity.components.position.y += entity.components.velocity.y * dt;
-  });
+  .setProcessEach(
+    { with: ['position', 'velocity'], mutates: ['position'] },
+    ({ entity, dt }) => {
+      entity.components.position.x += entity.components.velocity.x * dt;
+      entity.components.position.y += entity.components.velocity.y * dt;
+    },
+  );
 
 ecs.addSystem('bounce')
   .withResources(['bounds'])
   .setProcessEach(
-    { with: ['position', 'velocity', 'radius'] },
+    { with: ['position', 'velocity', 'radius'], mutates: ['velocity'] },
     ({ entity, dt, resources: { bounds } }) => { /* ... */ },
   );
 ```
 
 `setProcessEach` accepts the full query shape (`with`, `without`, `optional`, `changed`, `parentHas`, `mutates`). It's valid only on a builder with no prior `addQuery` / `setProcess` / `setProcessEach` call — TypeScript blocks the misuse and a runtime guard backs it up. For multi-query systems, keep using `addQuery` + `setProcess`.
 
-When the query declares `mutates`, the callback may `return false` to skip the auto-mark for a specific entity (useful when the iteration body decides mid-flight that nothing changed). Returning `true`, `undefined`, or any other value stamps all components listed in `mutates`. Example:
+When the query declares `mutates`, the callback may `return false` to skip the
+auto-mark for a specific entity. It does not undo mutations already performed;
+return `false` only when no declared component changed. Returning `true`,
+`undefined`, or any other value stamps all components listed in `mutates`.
+Example:
 
 ```typescript
 ecs.addSystem('propagate-transforms')
@@ -234,12 +289,40 @@ ecs.addSystem('propagate-transforms')
 
 Entities in query results have their `with` components guaranteed on `entity.components`. Other components on the entity are `Partial`.
 
+### Reading system declarations
+
+| Declaration | Reasoning use |
+|---|---|
+| `with`, `optional`, `changed` | Component values the query may consume |
+| `without`, `parentHas` | Membership and hierarchy dependencies |
+| `mutates` | Writes to required components and automatic change publication |
+| Phase and priority | When other systems can observe effects |
+| `.withResources(...)` | Shared-state access; it does not distinguish reads from writes |
+| Event handlers and publication | Synchronous behavior propagation outside query flow |
+| Screens, groups, and assets | Conditions under which processing runs |
+
+These declarations narrow inspection but are not a complete dependency graph.
+Without `mutates`, required components remain writable. Readonly narrowing is
+shallow; optional and otherwise visible components may still be accessed; and
+the callback's `ecs` can reach beyond declared queries and resources. Inspect
+the callback and its immediate helpers as well as its declarations.
+
+Within a phase, higher-priority systems run first. Component mutations and
+synchronous event handlers can affect later systems immediately. Structural
+commands play back FIFO between phases, so their effects become visible after
+that boundary. Screens, groups, and required assets can prevent a correctly
+ordered system from running at all.
+
 #### `mutates` — auto-mark + readonly narrowing
 
 `mutates` declares which components the system writes to. It does two things:
 
 1. **Runtime**: after `process()` returns, every iterated entity gets `markChanged(id, comp)` called automatically for each listed component. Eliminates repeated `ecs.markChanged(entity.id, 'localTransform')` boilerplate.
 2. **Types**: components in `with` but absent from `mutates` are narrowed to `Readonly<T>` on the iteration entity. Accidentally mutating an undeclared component is a compile error.
+
+Use `mutates: []` on read-only queries when making the contract explicit. This
+readonly protection applies only to the top level of required `with`
+components; it is not deep immutability or a complete write inventory.
 
 ```typescript
 ecs.addSystem('movement')
@@ -264,8 +347,11 @@ Over-marking semantics: all iterated entities get stamped regardless of whether 
 
 ```typescript
 ecs.addSystem('hud')
-  .addSingleton('flagship', { with: ['commandVessel', 'kinematic'] })
-  .addQuery('ships', { with: ['ship'] })
+  .addSingleton('flagship', {
+    with: ['commandVessel', 'kinematic'],
+    mutates: [],
+  })
+  .addQuery('ships', { with: ['ship'], mutates: [] })
   .setProcess(({ queries }) => {
     if (!queries.flagship) return;            // FilteredEntity | undefined
     const { kinematic } = queries.flagship.components;
@@ -279,8 +365,8 @@ When multiple entities match, the first is returned (no error). Use the instance
 
 ```typescript
 ecs.addSystem('label')
-  .addQuery('name', { with: [...] })         // add named query (array result)
-  .addSingleton('name', { with: [...] })     // add singleton query (entity | undefined)
+  .addQuery('name', { with: [...], mutates: [] })     // named read-only query (array result)
+  .addSingleton('name', { with: [...], mutates: [] }) // named read-only singleton
   .withResources(['key1', 'key2'])           // declare resource dependencies
   .inPhase('fixedUpdate')                    // default: 'update'
   .setPriority(100)                          // higher runs first within phase
@@ -297,7 +383,7 @@ ecs.addSystem('label')
   })
   .setProcess(({ queries, dt, ecs }) => { ... })
   // --- OR, for single-query systems, replace addQuery + setProcess with: ---
-  .setProcessEach({ with: [...] }, ({ entity, dt, ecs }) => { ... });
+  .setProcessEach({ with: [...], mutates: [] }, ({ entity, dt, ecs }) => { ... });
 ```
 
 ### Callback Convention
@@ -331,118 +417,18 @@ function loop(time: number) {
 requestAnimationFrame(loop);
 ```
 
-## Lifecycle Hooks
-
-### Screens
-
-```typescript
-ecs.onScreenEnter('playing', ({ config, ecs }) => { ... });  // multi-handler; fires on setScreen + pushScreen
-ecs.onScreenExit('playing', ({ ecs }) => { ... });           // fires on setScreen-away + popScreen
-const off = ecs.onScreenEnter('title', () => { ... });
-off();  // returned disposer unregisters the handler
-```
-
-Prefer these over `eventBus.subscribe('screenEnter', ...)` + a manual `if (screen !== 'x') return` filter.
-
-Use ECSpresso screens as the authoritative navigation state. Menu steps,
-settings pages, pause overlays, and game-over views should be declared screens
-when they affect active systems, input routing, or back navigation. A renderer
-or DOM layer may keep view objects, but it should render from screen
-enter/resume hooks rather than maintain a second independent screen router.
-
-For a larger UI, use a renderer adapter. It may cache DOM/canvas objects and own
-presentation-only state such as focus targets, prompt variants, animations,
-and retained overlay views. It may remember the last presented view when that
-value is used only for presentation behavior. It must not own an independent
-navigation stack, decide which application screen is active, or bypass
-`setScreen`, `pushScreen`, and `popScreen`. Split screen-specific templates or
-view specifications by feature and compose them in a small adapter/runtime.
-See `docs/screens.md`.
-
-### Pause and Overlay Semantics
-
-Pushing an overlay changes the current screen, so systems gated with
-`.inScreens(['playing'])` stop automatically. It does **not** pause unrelated
-systems or globally installed plugin systems. Timers, tweens, coroutines,
-physics, and similar plugins continue unless their systems are also gated or
-their system groups are disabled.
-
-For a real pause screen:
-
-1. Register application gameplay systems through
-   `game.systemScope({ inScreens: ['playing'] })`, or gate them individually.
-2. Identify shared clock/simulation plugin groups that must freeze.
-3. Disable those groups when pause or another inactive screen enters, then
-   enable them when playing enters or resumes.
-4. Leave input and pause-menu navigation running so the overlay remains usable.
-
-```typescript
-const GAMEPLAY_CLOCK_GROUPS = ['timers', 'tweens', 'coroutines'] as const;
-
-function pauseGameplay(ecs: typeof game): void {
-  GAMEPLAY_CLOCK_GROUPS.forEach(group => ecs.disableSystemGroup(group));
-}
-
-function resumeGameplay(ecs: typeof game): void {
-  GAMEPLAY_CLOCK_GROUPS.forEach(group => ecs.enableSystemGroup(group));
-}
-
-game.onScreenEnter('pause', ({ ecs }) => pauseGameplay(ecs));
-game.onScreenEnter('playing', ({ ecs }) => resumeGameplay(ecs));
-game.onScreenResume('playing', ({ ecs }) => resumeGameplay(ecs));
-```
-
-Screen stacks preserve underlying screen state; they do not imply a global
-simulation clock pause.
-
-### Screen-Scoped Entities
-
-```typescript
-ecs.spawn({ enemy: { hp: 10 } }, { scope: 'playing' });
-// ↑ removed automatically when 'playing' exits
-```
-
-Also available on `spawnChild`, `commands.spawn`, `commands.spawnChild`. Replaces hand-maintained teardown lists.
-
-**Auto-scoping inside gated systems.** When a system declared with `.inScreens([X])` (or `[X, Y, ...]`) calls `ecs.spawn` / `ecs.spawnChild` / `ecs.commands.spawn` / `ecs.commands.spawnChild` from inside its `process` tick *without* an explicit `scope`, the spawned entity is auto-scoped to the currently-active screen. This makes the right thing the default at every spawn site inside a screen-gated system, and you no longer need to repeat `{ scope: 'playing' }` at every call.
-
-```typescript
-world.addSystem('wave-spawner')
-  .inScreens(['playing'])
-  .setProcess(({ ecs }) => {
-    ecs.spawn({ enemy: { hp: 10 } });           // auto-scoped to 'playing'
-    ecs.commands.spawn({ projectile: {...} });   // also auto-scoped (captured at queue time)
-  });
-```
-
-Explicit values still win over the hint:
-
-- `{ scope: 'title' }` — scoped to a different screen.
-- `{ scope: null }` — opt out of auto-scoping (entity outlives the screen).
-
-Auto-scoping does **not** apply to: spawns issued from `onInitialize` / `onDetach` / event handlers fired outside a system tick / direct calls from main code, or from systems that use only `excludeScreens` (no positive screen intent).
-
-### Plugin Cleanup
-
-`install` receives `(world, onCleanup)`. Register disposers; they run when the plugin is uninstalled.
-
-```typescript
-definePlugin('legend').install((world, onCleanup) => {
-  onCleanup(world.onScreenEnter('title', () => { ... }));
-  const onKey = (e: KeyboardEvent) => { ... };
-  window.addEventListener('keydown', onKey);
-  onCleanup(() => window.removeEventListener('keydown', onKey));
-});
-
-ecs.uninstallPlugin('legend');  // reverse-order cleanup
-ecs.dispose();                   // uninstalls all plugins
-```
+For screens, pause behavior, screen-scoped entities, and plugin cleanup, read
+[lifecycle.md](lifecycle.md).
 
 ## Common Mistakes
 
 1. **Old positional callback style.** Always use `({ queries, dt, ecs })`, not `(queries, dt, ecs)`.
 
-2. **Mutating entities during iteration without command buffer.** Use `ecs.commands.spawn()` / `ecs.commands.removeEntity()` inside `setProcess`, not `ecs.spawn()` / `ecs.removeEntity()` directly.
+2. **Using immediate structural changes accidentally.** Prefer
+   `ecs.commands.spawn()` / `ecs.commands.removeEntity()` during processing so
+   changes play back FIFO at the next phase boundary. Direct structural methods
+   are supported, but use them only when immediate visibility to later systems
+   is intentional and the current iteration cannot be invalidated.
 
 3. **Forgetting `markChanged` after in-place mutation.** If you mutate a component's properties directly, call `ecs.markChanged(entityId, 'componentName')` so downstream `changed` queries detect it — or declare `mutates: [...]` on the query to auto-stamp every iterated entity.
 
@@ -464,20 +450,8 @@ ecs.dispose();                   // uninstalls all plugins
 9. **Maintaining a second UI screen router.** Keep ECSpresso screens
    authoritative and make DOM/canvas views respond to screen lifecycle hooks.
 
-## Further Reference
+## Reference boundary
 
-- `docs/getting-started.md` — Quick start and installation
-- `docs/core-concepts.md` — Entities, components, systems, resources
-- `docs/systems.md` — Phases, priorities, groups, lifecycle hooks
-- `docs/queries.md` — Query type utilities, reactive queries
-- `docs/plugins.md` — Plugin definition, defaults, requirements, and cleanup
-- `docs/built-in-plugins.md` — Input, timers, physics, collision, rendering, etc.
-- `docs/events.md` — Event system and built-in events
-- `docs/command-buffer.md` — Deferred structural changes
-- `docs/change-detection.md` — Change tracking and sequence system
-- `docs/hierarchy.md` — Parent-child relationships and traversal
-- `docs/assets.md` — Asset loading, groups, progress tracking
-- `docs/screens.md` — Screen/state management with transitions
-- `docs/type-safety.md` — Type system details and error messages
-- `docs/performance.md` — Performance tips
-- `examples/` — Working examples from simple movement to full games
+Use only the bundled references linked near the beginning of this skill for
+version-specific work. Repository documentation and examples may describe a
+newer version than the application has installed.

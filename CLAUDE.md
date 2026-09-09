@@ -2,6 +2,10 @@
 
 A type-safe ECS (Entity-Component-System) library for TypeScript. Uses Bun as runtime/test runner. Emphasizes strong typing, modular plugins, and fluent builder API.
 
+Read `AGENTS.md` and `docs/maintainer-workflow.md` before changing this
+repository. They are the canonical cross-agent instructions; this file retains
+the architecture map and ECSpresso-specific background below.
+
 ## Source Structure
 
 ```

@@ -32,7 +32,10 @@ const physicsPlugin = definePlugin('physics')
     onCleanup(world.onScreenExit('playing', ({ ecs }) => { /* ... */ }));
 
     world.addSystem('applyVelocity')
-      .addQuery('moving', { with: ['position', 'velocity'] })
+      .addQuery('moving', {
+        with: ['position', 'velocity'],
+        mutates: ['position'],
+      })
       .setProcess(({ queries, dt }) => {
         for (const entity of queries.moving) {
           entity.components.position.x += entity.components.velocity.x * dt;
@@ -62,7 +65,7 @@ const combat = definePlugin('combat')
   .install((world) => {
     // Both systems inherit inScreens: ['playing'] and phase: 'update'
     world.addSystem('projectile-integrate').setPriority(300)
-      .addQuery('projectiles', { with: ['projectile'] })
+      .addQuery('projectiles', { with: ['projectile'], mutates: [] })
       .setProcess(() => { /* ... */ });
 
     // Per-system calls override the default for that system only
@@ -133,7 +136,10 @@ type GameSystems = SystemRegistrarOf<typeof game>;
 
 function registerMovement(systems: GameSystems): void {
   systems.addSystem('movement')
-    .addQuery('moving', { with: ['position', 'velocity'] })
+    .addQuery('moving', {
+      with: ['position', 'velocity'],
+      mutates: ['position'],
+    })
     .setProcess(({ queries, dt }) => { /* ... */ });
 }
 
@@ -189,30 +195,35 @@ Behavior:
 
 ## Built-in Plugins
 
-All are created via factory functions (e.g., `createInputPlugin(options)`). Each accepts a `phase` option to override the default.
+All are created via factory functions (for example,
+`createInputPlugin(options)`). Most system-based plugins accept a `phase`
+option for their primary system; inspect the installed version's option type
+when a plugin registers multiple systems or is event-driven.
 
 | Plugin | Import Path | Default Phase | Description |
 |--------|-------------|---------------|-------------|
-| Input | `ecspresso/plugins/input` | `preUpdate` | Frame-accurate keyboard/pointer/gamepad input with action mapping; unified actions + per-player maps for local co-op |
-| Timers | `ecspresso/plugins/timers` | `preUpdate` | ECS-native timers as pure data. One entity carries a named slot map (`timers: { launch: Timer, hangarCycle: Timer, ... }`) so multiple independent phase clocks can coexist. Caller owns despawn — react to `slot.justFinished` or use `onComplete`; the plugin never touches entity lifecycle. Slot names can be typed by passing a string-union generic: `createTimerPlugin<'launch' \| 'hangarCycle'>()` narrows the component to `Partial<Record<Slots, Timer>>`, rejects typo slots at spawn sites, and narrows `slot` in `onComplete`. Defaults to `string` (any slot name) when omitted. Plugins compose: each feature plugin can re-export its slot union and the app assembles them as `createTimerPlugin<FighterSlots \| CarrierSlots>()` |
-| Coroutine | `ecspresso/plugins/coroutine` | `update` | Generator-based coroutines for sequenced logic |
-| State Machine | `ecspresso/plugins/state-machine` | `update` | Per-entity finite state machines |
-| Tween | `ecspresso/plugins/tween` | `update` | Declarative property animation with easing, sequences, loops |
-| Physics2D | `ecspresso/plugins/physics2D` | `fixedUpdate` | ECS-native 2D arcade physics |
-| Transform | `ecspresso/plugins/transform` | `postUpdate` | Hierarchical 2D transform propagation (local/world) |
+| Input | `ecspresso/plugins/input/input` | `preUpdate` | Frame-accurate keyboard/pointer/gamepad input with action mapping; unified actions + per-player maps for local co-op |
+| Selection | `ecspresso/plugins/input/selection` | `preUpdate + render` | Pointer-driven click and box selection with renderer-aware visual feedback |
+| Timers | `ecspresso/plugins/scripting/timers` | `preUpdate` | ECS-native timers as pure data. One entity carries a named slot map (`timers: { launch: Timer, hangarCycle: Timer, ... }`) so multiple independent phase clocks can coexist. Caller owns despawn — react to `slot.justFinished` or use `onComplete`; the plugin never touches entity lifecycle. Slot names can be typed by passing a string-union generic: `createTimerPlugin<'launch' \| 'hangarCycle'>()` narrows the component to `Partial<Record<Slots, Timer>>`, rejects typo slots at spawn sites, and narrows `slot` in `onComplete`. Defaults to `string` (any slot name) when omitted. Plugins compose: each feature plugin can re-export its slot union and the app assembles them as `createTimerPlugin<FighterSlots \| CarrierSlots>()` |
+| Coroutine | `ecspresso/plugins/scripting/coroutine` | `update` | Generator-based coroutines for sequenced logic |
+| State Machine | `ecspresso/plugins/scripting/state-machine` | `update` | Per-entity finite state machines |
+| Tween | `ecspresso/plugins/scripting/tween` | `update` | Declarative property animation with easing, sequences, loops |
+| Physics2D | `ecspresso/plugins/physics/physics2D` | `fixedUpdate` | ECS-native 2D arcade physics |
+| Steering | `ecspresso/plugins/physics/steering` | `update` | Move-to-target behavior with arrival detection |
+| Transform | `ecspresso/plugins/spatial/transform` | `postUpdate` | Hierarchical 2D transform propagation (local/world) |
 | Transform 3D | `ecspresso/plugins/spatial/transform3D` | `postUpdate` | Hierarchical 3D transform propagation with quaternion composition |
-| Bounds | `ecspresso/plugins/bounds` | `postUpdate` | Screen bounds enforcement (destroy, clamp, wrap) |
-| Collision | `ecspresso/plugins/collision` | `postUpdate` | Layer-based AABB/circle collision detection with events |
+| Bounds | `ecspresso/plugins/spatial/bounds` | `postUpdate` | Screen bounds enforcement (destroy, clamp, wrap) |
+| Collision | `ecspresso/plugins/physics/collision` | `postUpdate` | Layer-based AABB/circle collision detection with events |
 | Collision 3D | `ecspresso/plugins/physics/collision3D` | `postUpdate` | Layer-based AABB3D/sphere collision detection with events |
-| Spatial Index | `ecspresso/plugins/spatial-index` | `fixedUpdate + postUpdate` | Spatial hashing for efficient proximity queries |
+| Spatial Index | `ecspresso/plugins/spatial/spatial-index` | `fixedUpdate + postUpdate` | Spatial hashing for efficient proximity queries |
 | Spatial Index 3D | `ecspresso/plugins/spatial/spatial-index3D` | `fixedUpdate + postUpdate` | 3D spatial hashing for efficient proximity queries and broadphase acceleration |
-| Camera | `ecspresso/plugins/camera` | `postUpdate` | Camera follow, shake, and bounds |
+| Camera | `ecspresso/plugins/spatial/camera` | `postUpdate` | Camera follow, shake, and bounds |
 | Camera 3D | `ecspresso/plugins/spatial/camera3D` | `postUpdate` | Orbit/follow/shake controls for a Three.js PerspectiveCamera or OrthographicCamera (`projection: 'perspective' \| 'orthographic'`; state is a discriminated union with `fov`/`setFov` vs `zoom`/`setZoom`; orthographic `minZoom`/`maxZoom` clamp wheel and `setZoom`; `wheelMode`: `'auto'`, `'distance'`, `'zoom'`, `'disabled'`) |
 | Physics 3D | `ecspresso/plugins/physics/physics3D` | `fixedUpdate` | Gravity, forces, drag, Euler integration, impulse-based collision response |
-| Particles | `ecspresso/plugins/particles` | `update + render` | Pooled particle system with PixiJS ParticleContainer |
+| Particles | `ecspresso/plugins/rendering/particles` | `update + render` | Pooled particle system with PixiJS ParticleContainer |
 | Sprite Animation | `ecspresso/plugins/rendering/sprite-animation` | `update` | Frame-based sprite animation. Clip + animation set helpers (`defineSpriteAnimation`, `defineSpriteAnimations`) accept any pre-built texture array. **Spritesheet helpers** for PixiJS atlases: `spritesheetLoader<S>(url)` returns an `AssetConfigurator`-compatible loader that resolves to a parsed `Spritesheet<S>` (performs a runtime shape check — non-atlas URLs error at load time, not deep in clipFromSheet); `clipFromSheet(sheet, name, options?)` and `animationSetFromSheet(id, sheet, options?)` build clips/sets directly from the loaded sheet (animation-name union is inferred when the sheet is typed as `Spritesheet<MyAtlasData>`; both throw on empty-frame animations). `clipFromGrid({ source, frameWidth, frameHeight, columns, rows?, count?, indices?, spacing?, margin?, ... })` slices a grid-arranged image without atlas JSON — **async** because pixi.js is imported lazily (keeps the static module graph pixi-free for consumers who only use the sheet helpers); validates inputs (exactly one of `rows`/`count`/`indices` required, indices bounds-checked against `gridTotal` when `rows` is given). **Typed-sheet caveat:** to get literal animation-name inference, declare a concrete `interface MyData extends SpritesheetData { animations: { idle: string[]; walk: string[] } }` and pass it as the `<S>` parameter to `spritesheetLoader` / `Spritesheet<MyData>`. Intersecting inline (`SpritesheetData & { animations: {...} }`) re-widens keys back to `string` because `SpritesheetData.animations` is `Dict<string[]>` — its string index signature dominates the intersection. |
 | Tilemap | `ecspresso/plugins/rendering/tilemap` | `render` | Tile-based world data with Tiled JSON loading, runtime construction, query API (`isSolid`/`isOpaque`/`isWalkable`/`buildNavGrid`), and opt-in collision strip generation |
-| Audio | `ecspresso/plugins/audio` | `update` | Howler.js audio integration |
+| Audio | `ecspresso/plugins/audio/audio` | `update` | Howler.js audio integration |
 | Detection | `ecspresso/plugins/ai/detection` | `update` | Proximity detection with spatial-index, sorted by distance |
 | Flocking | `ecspresso/plugins/ai/flocking` | `update` | Boid flocking — separation, alignment, cohesion via force-based steering |
 | Behavior Tree | `ecspresso/plugins/ai/behavior-tree` | `update` | Composable priority-driven AI via behavior trees with hybrid traversal. Top-level helpers are blackboard-only; use `ecs.getHelpers(createBehaviorTreeHelpers)` after `.build()` when leaves need app-specific ECS component/resource/event types |
@@ -221,9 +232,11 @@ All are created via factory functions (e.g., `createInputPlugin(options)`). Each
 | Projectile | `ecspresso/plugins/combat/projectile` | `update` | Homing + linear projectile movement, collision integration |
 | Iso Projection | `ecspresso/plugins/isometric/projection` | `render` | Cartesian→isometric coordinate projection, iso camera sync |
 | Iso Depth Sort | `ecspresso/plugins/isometric/depth-sort` | `render` | Isometric z-ordering by world position |
-| Diagnostics | `ecspresso/plugins/diagnostics` | `render` | Performance monitoring and debug overlay |
-| 2D Renderer | `ecspresso/plugins/renderers/renderer2D` | `render` | Automated PixiJS scene graph wiring |
+| Diagnostics | `ecspresso/plugins/debug/diagnostics` | `render` | Performance monitoring and debug overlay |
+| 2D Renderer | `ecspresso/plugins/rendering/renderer2D` | `render` | Automated PixiJS scene graph wiring |
 | 3D Renderer | `ecspresso/plugins/rendering/renderer3D` | `render` | Automated Three.js scene graph wiring |
 | UI / HUD | `ecspresso/plugins/ui/ui` | `preUpdate + render` | Screen-space HUD primitives — anchored `uiElement`, `uiLabel`, `uiPanel`, `uiProgressBar`, plus `uiButton` / `uiInteractive` / `uiInteraction` / `uiDisabled` with AABB hit-testing and `uiButtonPressed` / `uiButtonHovered` events; `uiMessageLog` rolling buffer of mixed-color `LogFragment[]` lines mutated via the top-level `appendLogLine(ecs, entityId, line)` helper, which publishes `uiLogAppended`. Requires `bounds` from renderer2D and `inputState` from the input plugin; place on a `screenSpaceLayers: ['ui']` layer |
 
-For plugin-specific options and API details, see `docs/built-in-plugins.md`.
+For plugin-specific options, inspect the exported types for the application's
+installed ECSpresso version. Repository documentation may describe a newer
+release.

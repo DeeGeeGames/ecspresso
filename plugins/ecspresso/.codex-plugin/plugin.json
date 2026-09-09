@@ -1,7 +1,7 @@
 {
 	"name": "ecspresso",
 	"version": "0.22.0",
-	"description": "ECSpresso ECS library skill for AI-assisted development",
+	"description": "ECSpresso application-development skill for AI-assisted development",
 	"author": {
 		"name": "David Granado"
 	},
@@ -17,7 +17,7 @@
 	"interface": {
 		"displayName": "ECSpresso",
 		"shortDescription": "Use ECSpresso correctly in TypeScript game projects.",
-		"longDescription": "Adds ECSpresso-specific guidance for the builder API, system callbacks, resources, events, plugins, and built-in plugin imports.",
+		"longDescription": "Adds version-aware ECSpresso guidance for changing application systems, tracing dependencies, validating behavior, and using built-in plugins.",
 		"developerName": "David Granado",
 		"category": "Productivity",
 		"capabilities": [

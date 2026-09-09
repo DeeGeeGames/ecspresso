@@ -35,65 +35,9 @@ const unsub = ecs.onComponentRemoved('health', ({ value, entity }) => { ... });
 
 ### Change Detection
 
-Components are auto-marked changed on `spawn`, `addComponent`, `addComponents`. For in-place mutations, mark explicitly:
+Read [change-tracking.md](change-tracking.md) for `changed`, `mutates`, manual
+marking, subscription behavior, and system-ordering semantics.
 
-```typescript
-position.x += 10;
-ecs.markChanged(entityId, 'position');
-```
-
-Use `changed` in query definitions to only process entities whose specified components changed since the system last ran. When multiple components are listed, entities matching **any** are included (OR semantics).
-
-Each mark is processed exactly once per system, then expires. Marks from earlier phases are visible to later phases within the same frame.
-
-**Subscription model.** `markChanged` is only recorded when something subscribes to the component. Any system that declares `changed: ['foo']` auto-subscribes `foo` at registration. With no `changed:` filter anywhere, the default is track-all (every mark recorded — keeps direct `getEntitiesWithQuery(..., changed: [...])` calls from tests/user code working). With at least one `changed:` filter, only the subscribed union is tracked; everything else is a no-op. Worlds with zero `changed:` consumers can call `.disableChangeTracking()` on the builder for full opt-out.
-
-#### Declarative marking via `mutates`
-
-Declare which components the system writes on the query itself. After `process()` returns, every iterated entity gets `markChanged(id, comp)` called automatically for each listed component, so you don't need `ecs.markChanged(...)` in the loop body. Components in `with` but absent from `mutates` are also narrowed to `Readonly<T>` in the iteration entity, catching accidental writes at compile time.
-
-```typescript
-// Before — manual marking
-ecs.addSystem('movement')
-  .addQuery('movers', { with: ['position', 'velocity'] })
-  .setProcess(({ queries, dt, ecs }) => {
-    for (const entity of queries.movers) {
-      entity.components.position.x += entity.components.velocity.x * dt;
-      ecs.markChanged(entity.id, 'position');
-    }
-  });
-
-// After — declarative
-ecs.addSystem('movement')
-  .addQuery('movers', {
-    with: ['position', 'velocity'],
-    mutates: ['position'],
-  })
-  .setProcess(({ queries, dt }) => {
-    for (const entity of queries.movers) {
-      entity.components.position.x += entity.components.velocity.x * dt;
-      // no markChanged — auto-stamped after process()
-    }
-  });
-```
-
-Default semantics are over-marking: all iterated entities get stamped regardless of whether the body actually mutated them. For per-entity precision, use `setProcessEach` — the callback may `return false` to skip the auto-mark for a specific entity:
-
-```typescript
-ecs.addSystem('propagate')
-  .setProcessEach(
-    { with: ['localTransform', 'worldTransform'], mutates: ['worldTransform'] },
-    ({ entity }) => {
-      // `copyTransform` returns true iff dest actually changed —
-      // stationary entities return false and skip the stamp.
-      return copyTransform(entity.components.localTransform, entity.components.worldTransform);
-    },
-  );
-```
-
-`mutates` is opt-in; systems that don't declare it keep the existing manual-mark contract. Auto-mark runs before the per-system threshold advance, so a system does not re-fire on its own auto-marks.
-
-For details, see `docs/change-detection.md`.
 
 ## Command Buffer
 
@@ -231,7 +175,10 @@ Two ways to express "one matching entity" — system-builder style and instance 
 
 ```typescript
 ecs.addSystem('hud')
-  .addSingleton('flagship', { with: ['commandVessel', 'kinematic'] })
+  .addSingleton('flagship', {
+    with: ['commandVessel', 'kinematic'],
+    mutates: [],
+  })
   .setProcess(({ queries }) => {
     if (!queries.flagship) return;                 // FilteredEntity | undefined
     const { kinematic } = queries.flagship.components;

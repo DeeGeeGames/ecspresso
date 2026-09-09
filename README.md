@@ -80,16 +80,24 @@ world.update(1/60);
 - [Type Safety](./docs/type-safety.md) — type threading, error handling
 - [Performance](./docs/performance.md) — optimization tips
 
-## Claude Code Skill
+## AI coding assistant skills
 
-ECSpresso ships with a [Claude Code](https://claude.com/claude-code) plugin that installs a skill teaching the assistant the library's patterns, APIs, and built-in plugins. Install it to get ECSpresso-aware assistance when working on projects that use the library:
+ECSpresso ships a consumer skill that teaches supported coding assistants the
+library's application patterns, APIs, and built-in plugins. Install the plugin
+to get ECSpresso-aware assistance in projects that use the library:
 
 ```
 /plugin marketplace add DeeGeeGames/ecspresso
 /plugin install ecspresso@ecspresso
 ```
 
-The skill sources live under [`skills/ecspresso/`](./skills/ecspresso/); plugin and marketplace metadata are in [`.claude-plugin/`](./.claude-plugin/).
+The consumer skill sources live under
+[`skills/ecspresso/`](./skills/ecspresso/); plugin and marketplace metadata are
+in [`.claude-plugin/`](./.claude-plugin/) and
+[`.codex-plugin/`](./.codex-plugin/). ECSpresso repository contributors should
+instead follow [`AGENTS.md`](./AGENTS.md),
+[`docs/maintainer-workflow.md`](./docs/maintainer-workflow.md), and the
+repository-local `ecspresso-maintainer` skill.
 
 ## License
 

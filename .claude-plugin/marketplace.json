@@ -3,11 +3,12 @@
 	"owner": {
 		"name": "David Granado"
 	},
+	"description": "ECSpresso application-development guidance for supported coding assistants",
 	"plugins": [
 		{
 			"name": "ecspresso",
 			"source": "./",
-			"description": "ECSpresso ECS library skill for AI-assisted development"
+			"description": "ECSpresso application-development skill for AI-assisted development"
 		}
 	]
 }

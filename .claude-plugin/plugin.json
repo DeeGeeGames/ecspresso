@@ -1,5 +1,8 @@
 {
 	"name": "ecspresso",
-	"description": "ECSpresso ECS library skill for AI-assisted development",
-	"version": "0.22.0"
+	"description": "ECSpresso application-development skill for AI-assisted development",
+	"version": "0.22.0",
+	"author": {
+		"name": "David Granado"
+	}
 }

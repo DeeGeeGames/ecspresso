@@ -1,0 +1,4 @@
+interface:
+  display_name: "ECSpresso Maintainer"
+  short_description: "Develop and maintain the ECSpresso library"
+  default_prompt: "Use $ecspresso-maintainer to make a verified change to the ECSpresso library."

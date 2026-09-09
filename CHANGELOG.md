@@ -2,6 +2,20 @@
 
 All notable changes to ECSpresso are documented here. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## Unreleased
+
+### Changed
+
+- Refocused the bundled application-development skill around system ownership,
+  explicit mutation declarations, dependency timing, and proportional
+  validation, with focused change-tracking, lifecycle, and testing references.
+- Corrected the built-in plugin catalog to match every published package export.
+
+### Internal
+
+- Added cross-agent repository guidance, a repository-local maintainer skill,
+  and automated checks for consumer-skill references, mirrors, and plugin paths.
+
 ## 0.22.0
 
 ### Fixed
