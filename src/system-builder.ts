@@ -477,8 +477,8 @@ export class SystemBuilder<
 	 * Fires exactly once per system. For systems added before `initialize()`,
 	 * the hook is awaited inside `initialize()` itself. For systems added
 	 * after `initialize()` has returned, the hook fires on registration (at
-	 * the next `update()`'s finalize step) — async hooks run fire-and-forget,
-	 * so don't rely on completion ordering against the first `process` call.
+	 * the next `update()`'s finalize step) — async hooks run independently of
+	 * the first `process` call, and world disposal waits for them to settle.
 	 *
 	 * @param onInitialize Function to run when this system is initialized
 	 * @returns This SystemBuilder instance for method chaining

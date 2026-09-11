@@ -2,7 +2,7 @@ import { test, expect } from 'bun:test';
 import ECSpresso, { type InstallPluginParam, type PluginError } from './ecspresso';
 import { definePlugin, type Plugin } from './plugin';
 import type { ScreenDefinition } from './screen-types';
-import type { AssetsConfig, ComponentsConfig, EmptyConfig, EventsConfig, ResourcesConfig, ScreensConfig, WorldConfigFrom } from './type-utils';
+import type { AssetsConfig, ComponentsConfig, ConflictingSlot, EmptyConfig, EventsConfig, MissingRequirementSlot, ResourcesConfig, ScreensConfig, WorldConfigFrom } from './type-utils';
 
 // ==================== Type-level assertion helpers ====================
 
@@ -30,6 +30,36 @@ type RequiresMissingEvent = EventsConfig<{ missingEvent: true }>;
 type RequiresMissingResource = ResourcesConfig<{ missingResource: object }>;
 type RequiresMissingAsset = AssetsConfig<{ missingAsset: string }>;
 type RequiresMissingScreen = ScreensConfig<{ playing: ScreenDefinition<{ level: number }> }>;
+
+type MixedSlotWorld = WorldConfigFrom<
+	{ position: number; health: number },
+	{ click: true; close: false },
+	{ database: object; score: number },
+	{ image: string; font: string },
+	{ menu: ScreenDefinition<{ tab: string }>; game: ScreenDefinition<{ level: number }> }
+>;
+type MixedSlotPlugin = WorldConfigFrom<
+	{ position: number; health: string },
+	{ click: true; close: string },
+	{ database: object; score: string },
+	{ image: string; font: number },
+	{ menu: ScreenDefinition<{ tab: string }>; game: ScreenDefinition<{ level: string }> }
+>;
+type UnionWorld = WorldConfigFrom<
+	{ mode: 'idle' | 'run' },
+	{ result: 'hit' | 'miss' }
+>;
+type LiteralWorld = WorldConfigFrom<
+	{ mode: 'idle' },
+	{ result: 'hit' }
+>;
+type CompleteWorldCfg = WorldConfigFrom<
+	WorldCfg['components'],
+	WorldCfg['events'],
+	WorldCfg['resources'],
+	WorldCfg['assets'],
+	{ menu: ScreenDefinition<{ tab: string }> }
+>;
 
 // ==================== Type-level tests: failure messages ====================
 
@@ -64,6 +94,28 @@ test('type-level: multi-slot conflict produces union of named errors', () => {
 		| PluginError<"Plugin's components conflict with this world (same key, different type)">
 		| PluginError<"Plugin's events conflict with this world (same key, different type)">;
 	assertType<IsEqual<Actual, Expected>>();
+});
+
+test('type-level: mixed compatible and conflicting keys reject every affected slot', () => {
+	type Actual = ConflictingSlot<MixedSlotWorld, MixedSlotPlugin>;
+	type Expected = 'components' | 'events' | 'resources' | 'assets' | 'screens';
+	assertType<IsEqual<Actual, Expected>>();
+});
+
+test('type-level: requirements validate value types in every slot', () => {
+	type Actual = MissingRequirementSlot<MixedSlotWorld, MixedSlotPlugin>;
+	type Expected = 'components' | 'events' | 'resources' | 'assets' | 'screens';
+	assertType<IsEqual<Actual, Expected>>();
+});
+
+test('type-level: union and literal overlaps remain exact for provided slots', () => {
+	assertType<IsEqual<ConflictingSlot<UnionWorld, UnionWorld>, never>>();
+	assertType<IsEqual<ConflictingSlot<UnionWorld, LiteralWorld>, 'components' | 'events'>>();
+});
+
+test('type-level: narrower accumulated literals satisfy broader requirements', () => {
+	assertType<IsEqual<MissingRequirementSlot<LiteralWorld, UnionWorld>, never>>();
+	assertType<IsEqual<MissingRequirementSlot<UnionWorld, LiteralWorld>, 'components' | 'events'>>();
 });
 
 test('type-level: missing required component produces named error', () => {
@@ -159,14 +211,73 @@ test('wiring: installPlugin rejects incompatible plugin at call site', () => {
 	const conflictingPlugin = definePlugin('bad')
 		.withComponentTypes<{ pos: string }>()
 		.install(() => {});
-	// @ts-expect-error - conflicting component type should be rejected
-	world.installPlugin(conflictingPlugin);
+	const invalidInstanceInstall = () => {
+		// @ts-expect-error - conflicting component type should be rejected
+		world.installPlugin(conflictingPlugin);
+	};
 
 	const needyPlugin = definePlugin('needy')
 		.requires<ComponentsConfig<{ missing: number }>>()
 		.install(() => {});
-	// @ts-expect-error - missing required component should be rejected
-	world.installPlugin(needyPlugin);
+	const invalidRequiredInstall = () => {
+		// @ts-expect-error - missing required component should be rejected
+		world.installPlugin(needyPlugin);
+	};
 
+	const wrongRequirementPlugin = definePlugin('wrong-requirement')
+		.requires<ComponentsConfig<{ pos: string }>>()
+		.install(() => {});
+	const invalidValueRequirementInstall = () => {
+		// @ts-expect-error - a required component must have the declared value type
+		world.installPlugin(wrongRequirementPlugin);
+	};
+
+	const invalidFirstInstall = () => {
+		// @ts-expect-error - the first plugin must also have its requirements satisfied
+		ECSpresso.create().withPlugin(needyPlugin);
+	};
+
+	expect(invalidInstanceInstall).toBeDefined();
+	expect(invalidRequiredInstall).toBeDefined();
+	expect(invalidValueRequirementInstall).toBeDefined();
+	expect(invalidFirstInstall).toBeDefined();
 	expect(true).toBe(true);
+});
+
+test('wiring: direct install rejects wrong requirement values in every slot', () => {
+	const world = new ECSpresso<CompleteWorldCfg>();
+	const wrongEventPlugin = definePlugin('wrong-event-call-site')
+		.requires<EventsConfig<{ click: string }>>()
+		.install(() => {});
+	const wrongResourcePlugin = definePlugin('wrong-resource-call-site')
+		.requires<ResourcesConfig<{ db: string }>>()
+		.install(() => {});
+	const wrongAssetPlugin = definePlugin('wrong-asset-call-site')
+		.requires<AssetsConfig<{ img: number }>>()
+		.install(() => {});
+	const wrongScreenPlugin = definePlugin('wrong-screen-call-site')
+		.requires<ScreensConfig<{ menu: ScreenDefinition<{ tab: number }> }>>()
+		.install(() => {});
+
+	const invalidEventInstall = () => {
+		// @ts-expect-error - required event value type must match the world
+		world.installPlugin(wrongEventPlugin);
+	};
+	const invalidResourceInstall = () => {
+		// @ts-expect-error - required resource value type must match the world
+		world.installPlugin(wrongResourcePlugin);
+	};
+	const invalidAssetInstall = () => {
+		// @ts-expect-error - required asset value type must match the world
+		world.installPlugin(wrongAssetPlugin);
+	};
+	const invalidScreenInstall = () => {
+		// @ts-expect-error - required screen definition type must match the world
+		world.installPlugin(wrongScreenPlugin);
+	};
+
+	expect(invalidEventInstall).toBeDefined();
+	expect(invalidResourceInstall).toBeDefined();
+	expect(invalidAssetInstall).toBeDefined();
+	expect(invalidScreenInstall).toBeDefined();
 });

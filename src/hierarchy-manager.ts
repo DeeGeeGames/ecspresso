@@ -277,6 +277,13 @@ export default class HierarchyManager {
 		return roots;
 	}
 
+	/** @internal Release all hierarchy relationships and traversal scratch state. */
+	clear(): void {
+		this.parentMap.clear();
+		this.childrenMap.clear();
+		this._bfsQueue.length = 0;
+	}
+
 	/**
 	 * Check if setting a parent would create a cycle.
 	 * A cycle would occur if the prospective parent is a descendant of the child.

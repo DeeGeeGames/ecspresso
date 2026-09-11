@@ -635,6 +635,67 @@ describe('ResourceManager', () => {
 			expect(asyncDisposeCalled).toBe(true);
 		});
 
+		test('disposeResources() continues after a disposer fails and is repeat-safe', async () => {
+			const order: string[] = [];
+			const rm = new ResourceManager<{ first: number; second: number }>();
+
+			rm.add('first', {
+				factory: () => 1,
+				onDispose: () => {
+					order.push('first');
+					throw new Error('first disposer failed');
+				},
+			});
+			rm.add('second', {
+				factory: () => 2,
+				onDispose: () => { order.push('second'); },
+			});
+
+			await rm.initializeResources();
+			await expect(rm.disposeResources()).rejects.toThrow('first disposer failed');
+			expect(order).toEqual(['second', 'first']);
+			await rm.disposeResources();
+			expect(order).toEqual(['second', 'first']);
+		});
+
+		test('disposeResources() is safe to call from an async disposer', async () => {
+			let disposerCalls = 0;
+			const rm = new ResourceManager<{ value: number }>();
+			rm.add('value', {
+				factory: () => 1,
+				onDispose: async () => {
+					await rm.disposeResources();
+					disposerCalls++;
+				},
+			});
+
+			await rm.initializeResources();
+			await rm.disposeResources();
+
+			expect(disposerCalls).toBe(1);
+		});
+
+		test('tracks an async factory started through get() during disposal', async () => {
+			let resolveValue: ((value: number) => void) | undefined;
+			let disposerCalls = 0;
+			const valuePromise = new Promise<number>(resolve => {
+				resolveValue = resolve;
+			});
+			const rm = new ResourceManager<{ value: number }>();
+			rm.add('value', {
+				factory: () => valuePromise,
+				onDispose: () => { disposerCalls++; },
+			});
+
+			const value = rm.get('value');
+			const disposal = rm.disposeResources();
+			resolveValue?.(1);
+
+			expect(await value).toBe(1);
+			await disposal;
+			expect(disposerCalls).toBe(1);
+		});
+
 		test('resources without onDispose should just be removed', async () => {
 			const rm = new ResourceManager<{ simple: number }>();
 			rm.add('simple', 42);
@@ -643,6 +704,20 @@ describe('ResourceManager', () => {
 
 			expect(result).toBe(true);
 			expect(rm.has('simple')).toBe(false);
+		});
+
+		test('disposeResource() calls onDispose for an initialized undefined value', async () => {
+			let disposed = false;
+			const rm = new ResourceManager<{ optional: undefined }>();
+			rm.add('optional', {
+				factory: () => undefined,
+				onDispose: () => { disposed = true; },
+			});
+
+			await rm.initializeResource('optional');
+			await rm.disposeResource('optional');
+
+			expect(disposed).toBe(true);
 		});
 
 		test('disposeResources() should handle diamond dependencies', async () => {

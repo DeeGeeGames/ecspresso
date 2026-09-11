@@ -45,6 +45,7 @@ export default class ScreenManager<Screens extends Record<string, ScreenDefiniti
 	private eventBus: EventBus<ScreenEvents<keyof Screens & string>> | null = null;
 	private assetManager: ScreenManagerAssetDeps | null = null;
 	private ecs: unknown = null;
+	private closed = false;
 
 	/**
 	 * Set dependencies for screen transitions
@@ -72,6 +73,9 @@ export default class ScreenManager<Screens extends Record<string, ScreenDefiniti
 		name: K,
 		definition: ScreenDefinition<Config, State>
 	): void {
+		if (this.closed) {
+			throw new Error('ScreenManager is closed');
+		}
 		this.screens.set(name, { definition: definition as ErasedDefinition });
 	}
 
@@ -82,6 +86,9 @@ export default class ScreenManager<Screens extends Record<string, ScreenDefiniti
 		name: K,
 		config: Screens[K] extends ScreenDefinition<infer C, any> ? C : never
 	): Promise<void> {
+		if (this.closed) {
+			throw new Error('ScreenManager is closed');
+		}
 		const entry = this.screens.get(name);
 
 		if (!entry) {
@@ -90,18 +97,23 @@ export default class ScreenManager<Screens extends Record<string, ScreenDefiniti
 
 		// Verify required assets
 		await this.verifyRequiredAssets(entry.definition.requiredAssets, entry.definition.requiredAssetGroups);
+		if (this.closed) {
+			throw new Error('ScreenManager is closed');
+		}
 
 		// Exit all screens in stack (bottom to top order)
 		while (this.screenStack.length > 0) {
 			const stackScreen = this.screenStack.pop();
 			if (stackScreen) {
 				await this.exitScreen(stackScreen.name);
+				if (this.closed) throw new Error('ScreenManager is closed');
 			}
 		}
 
 		// Exit current screen
 		if (this.currentScreen) {
 			await this.exitScreen(this.currentScreen.name);
+			if (this.closed) throw new Error('ScreenManager is closed');
 		}
 
 		// Enter new screen
@@ -113,6 +125,7 @@ export default class ScreenManager<Screens extends Record<string, ScreenDefiniti
 		};
 
 		await entry.definition.onEnter?.({ config, ecs: this.requireEcs() });
+		if (this.closed) throw new Error('ScreenManager is closed');
 		this.eventBus?.publish('screenEnter', { screen: name as keyof Screens & string, config });
 	}
 
@@ -123,6 +136,9 @@ export default class ScreenManager<Screens extends Record<string, ScreenDefiniti
 		name: K,
 		config: Screens[K] extends ScreenDefinition<infer C, any> ? C : never
 	): Promise<void> {
+		if (this.closed) {
+			throw new Error('ScreenManager is closed');
+		}
 		const entry = this.screens.get(name);
 
 		if (!entry) {
@@ -131,6 +147,9 @@ export default class ScreenManager<Screens extends Record<string, ScreenDefiniti
 
 		// Verify required assets
 		await this.verifyRequiredAssets(entry.definition.requiredAssets, entry.definition.requiredAssetGroups);
+		if (this.closed) {
+			throw new Error('ScreenManager is closed');
+		}
 
 		// Push current screen to stack
 		if (this.currentScreen) {
@@ -146,6 +165,7 @@ export default class ScreenManager<Screens extends Record<string, ScreenDefiniti
 		};
 
 		await entry.definition.onEnter?.({ config, ecs: this.requireEcs() });
+		if (this.closed) throw new Error('ScreenManager is closed');
 		this.eventBus?.publish('screenPush', { screen: name as keyof Screens & string, config });
 	}
 
@@ -153,14 +173,19 @@ export default class ScreenManager<Screens extends Record<string, ScreenDefiniti
 	 * Pop the current screen and return to the previous one
 	 */
 	async popScreen(): Promise<void> {
+		if (this.closed) {
+			throw new Error('ScreenManager is closed');
+		}
 		if (this.screenStack.length === 0) {
 			throw new Error('Cannot pop screen: stack is empty');
 		}
 
 		// Exit current screen
 		if (this.currentScreen) {
-			await this.exitScreen(this.currentScreen.name);
-			this.eventBus?.publish('screenPop', { screen: this.currentScreen.name as keyof Screens & string });
+			const exitingScreen = this.currentScreen;
+			await this.exitScreen(exitingScreen.name);
+			if (this.closed) throw new Error('ScreenManager is closed');
+			this.eventBus?.publish('screenPop', { screen: exitingScreen.name as keyof Screens & string });
 		}
 
 		// Restore previous screen from stack
@@ -175,6 +200,7 @@ export default class ScreenManager<Screens extends Record<string, ScreenDefiniti
 			state: resumedScreen.state,
 			ecs: this.requireEcs(),
 		});
+		if (this.closed) throw new Error('ScreenManager is closed');
 		this.eventBus?.publish('screenResume', {
 			screen: resumedScreen.name as keyof Screens & string,
 			config: resumedScreen.config,
@@ -377,6 +403,46 @@ export default class ScreenManager<Screens extends Record<string, ScreenDefiniti
 	 */
 	hasScreen(name: keyof Screens): boolean {
 		return this.screens.has(name);
+	}
+
+	/** @internal Stop transitions while the enclosing world is disposing. */
+	close(): void {
+		this.closed = true;
+	}
+
+	/**
+	 * Exit active screens during enclosing-world disposal. Screen-exit events are
+	 * best-effort here because the world event bus is already closed; the world
+	 * separately removes all entities and screen-scope registrations.
+	 */
+	async dispose(): Promise<void> {
+		const activeScreens = [
+			...(this.currentScreen ? [this.currentScreen] : []),
+			...this.screenStack.slice().reverse(),
+		];
+		const errors: unknown[] = [];
+		for (const screen of activeScreens) {
+			try {
+				await this.screens.get(screen.name)?.definition.onExit?.(this.requireEcs());
+			} catch (error) {
+				errors.push(error);
+			}
+		}
+		this.currentScreen = null;
+		this.screenStack = [];
+		if (errors.length > 0) {
+			throw new AggregateError(errors, 'One or more screens failed to exit');
+		}
+	}
+
+	/** @internal Release screen definitions, active state, and world references. */
+	clear(): void {
+		this.screens.clear();
+		this.currentScreen = null;
+		this.screenStack = [];
+		this.eventBus = null;
+		this.assetManager = null;
+		this.ecs = null;
 	}
 }
 

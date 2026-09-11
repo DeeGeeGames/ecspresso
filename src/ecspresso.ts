@@ -6,7 +6,7 @@ import ScreenManager from "./screen-manager";
 import ReactiveQueryManager, { type ReactiveQueryDefinition } from "./reactive-query-manager";
 import CommandBuffer from "./command-buffer";
 import type { System, SystemPhase, FilteredEntity, Entity, QueryDefinition, RemoveEntityOptions, HierarchyEntry, HierarchyIteratorOptions } from "./types";
-import type { Plugin } from "./plugin";
+import type { Plugin, PluginCleanup } from "./plugin";
 import {
 	type SystemDefaults,
 	type SystemRegistrar,
@@ -39,6 +39,33 @@ export default interface ECSpresso<
 const PHASE_ORDER: readonly SystemPhase[] = [
 	'preUpdate', 'fixedUpdate', 'update', 'postUpdate', 'render',
 ];
+
+type WorldLifecycleState = 'active' | 'disposing' | 'disposed';
+
+function asError(value: unknown): Error {
+	return value instanceof Error ? value : new Error(String(value));
+}
+
+function aggregateErrors(errors: readonly unknown[], message: string): Error {
+	if (errors.length === 1) {
+		return asError(errors[0]);
+	}
+	return new AggregateError(errors, message);
+}
+
+function createDeferred<T>(): {
+	promise: Promise<T>;
+	resolve: (value: T | PromiseLike<T>) => void;
+	reject: (reason?: unknown) => void;
+} {
+	let resolve: (value: T | PromiseLike<T>) => void = () => undefined;
+	let reject: (reason?: unknown) => void = () => undefined;
+	const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+		resolve = resolvePromise;
+		reject = rejectPromise;
+	});
+	return { promise, resolve, reject };
+}
 
 function copySystemDefaults<Cfg extends WorldConfig>(
 	defaults: SystemDefaults<Cfg>,
@@ -125,7 +152,7 @@ export default class ECSpresso<
 	/** Track installed plugins to prevent duplicates*/
 	private _installedPlugins: Set<string> = new Set();
 	/** Per-plugin disposers registered via the install function's second arg */
-	private _pluginCleanups: Map<string, Array<() => void>> = new Map();
+	private _pluginCleanups: Map<string, Array<PluginCleanup>> = new Map();
 	/** Defaults applied to systems created via addSystem during a plugin's install */
 	private _currentSystemDefaults: SystemDefaults<Cfg> | undefined;
 	/** Entity IDs scoped to a specific screen — removed on that screen's exit */
@@ -179,6 +206,8 @@ export default class ECSpresso<
 	};
 	/** Per-system per-query seen entity IDs for onEntityEnter tracking */
 	private _entityEnterTracking: Map<object, Map<string, Set<number>>> = new Map();
+	/** Event subscription disposers registered for each system */
+	private _systemEventUnsubscribers: Map<object, Array<() => void>> = new Map();
 	/** Shared reusable set for per-tick entity enter comparison (avoids allocation) */
 	private _entityEnterFrameSet: Set<number> = new Set();
 	/** Pre-allocated process context per system (avoids per-frame allocation) */
@@ -193,6 +222,20 @@ export default class ECSpresso<
 	/** Whether `initialize()` has completed — flips the onInitialize firing path for late-added systems */
 	private _initializeFired = false;
 	private _systemsInitialized: WeakSet<object> = new WeakSet();
+	/** World lifecycle state. Disposal becomes visible before asynchronous cleanup starts. */
+	private _lifecycleState: WorldLifecycleState = 'active';
+	/** Shared completion promise for concurrent world disposal calls */
+	private _disposePromise: Promise<void> | undefined;
+	/** In-flight initialization, if initialize() is currently running */
+	private _initializePromise: Promise<void> | undefined;
+	/** Late system initialization promises that must settle before teardown completes */
+	private _pendingSystemInitializations: Set<Promise<void>> = new Set();
+	/** Detach promises started by removeSystem that must settle before teardown completes */
+	private _pendingSystemDetaches: Set<Promise<void>> = new Set();
+	/** Unsubscribers for lifecycle hooks installed on the entity manager */
+	private _lifecycleUnsubscribers: Array<() => void> = [];
+	/** Unsubscriber for the world-owned screen-exit cleanup handler */
+	private _screenExitUnsubscribe: (() => void) | undefined;
 
 	/**
 		* Creates a new ECSpresso instance.
@@ -208,6 +251,26 @@ export default class ECSpresso<
 		this._subscribeLifecycleHooks();
 	}
 
+	private _assertActive(operation: string): void {
+		if (this._lifecycleState === 'active') return;
+		throw new Error(`Cannot ${operation}: world is ${this._lifecycleState}`);
+	}
+
+	private _getCurrentScreen(): (keyof Cfg['screens'] & string) | null {
+		return (this._screenManager?.getCurrentScreen() ?? null) as (keyof Cfg['screens'] & string) | null;
+	}
+
+	private _isSystemActive(
+		system: System<Cfg, any, any>,
+		currentScreen: (keyof Cfg['screens'] & string) | null = this._getCurrentScreen(),
+	): boolean {
+		if (system.groups?.some(group => this._disabledGroups.has(group))) return false;
+		if (system.inScreens?.length && (currentScreen === null || !system.inScreens.includes(currentScreen))) return false;
+		if (system.excludeScreens?.length && currentScreen !== null && system.excludeScreens.includes(currentScreen)) return false;
+		if (!system.requiredAssets?.length || !this._assetManager) return true;
+		return system.requiredAssets.every(assetKey => this._assetManager?.isLoaded(assetKey) ?? false);
+	}
+
 	/**
 	 * Subscribes to EntityManager lifecycle hooks for change detection,
 	 * required component auto-addition, and reactive query tracking.
@@ -215,7 +278,7 @@ export default class ECSpresso<
 	 */
 	private _subscribeLifecycleHooks(): void {
 		// afterComponentAdded → mark changed + auto-add required components
-		this._entityManager.onAfterComponentAdded((entityId, componentName) => {
+		this._lifecycleUnsubscribers.push(this._entityManager.onAfterComponentAdded((entityId, componentName) => {
 			this._entityManager.markChanged(entityId, componentName);
 
 			// Auto-add required components (recursive via addComponent → this hook)
@@ -232,43 +295,43 @@ export default class ECSpresso<
 					}
 				}
 			}
-		});
+		}));
 
 		// afterEntityMutated → recheck reactive queries (entity itself + children for parentHas)
-		this._entityManager.onAfterEntityMutated((entityId) => {
+		this._lifecycleUnsubscribers.push(this._entityManager.onAfterEntityMutated((entityId) => {
 			const entity = this._entityManager.getEntity(entityId);
 			if (entity) {
 				this._reactiveQueryManager.recheckEntityAndChildren(entity);
 			}
-		});
+		}));
 
 		// afterComponentRemoved → notify reactive query manager
-		this._entityManager.onAfterComponentRemoved((entityId, componentName) => {
+		this._lifecycleUnsubscribers.push(this._entityManager.onAfterComponentRemoved((entityId, componentName) => {
 			const entity = this._entityManager.getEntity(entityId);
 			if (entity) {
 				this._reactiveQueryManager.onComponentRemoved(entity, componentName);
 			}
-		});
+		}));
 
 		// beforeEntityRemoved → notify reactive query manager + drain screen-scope tracking
-		this._entityManager.onBeforeEntityRemoved((entityId) => {
+		this._lifecycleUnsubscribers.push(this._entityManager.onBeforeEntityRemoved((entityId) => {
 			this._reactiveQueryManager.onEntityRemoved(entityId);
 			const scope = this._entityScreenScope.get(entityId);
 			if (scope !== undefined) {
 				this._entityScreenScope.delete(entityId);
 				this._screenScopedEntities.get(scope)?.delete(entityId);
 			}
-		});
+		}));
 
 		// afterParentChanged → recheck child entity for parentHas queries
-		this._entityManager.onAfterParentChanged((childId) => {
+		this._lifecycleUnsubscribers.push(this._entityManager.onAfterParentChanged((childId) => {
 			if (this._reactiveQueryManager.hasParentHasQueries) {
 				const childEntity = this._entityManager.getEntity(childId);
 				if (childEntity) {
 					this._reactiveQueryManager.recheckEntity(childEntity);
 				}
 			}
-		});
+		}));
 	}
 
 	/**
@@ -303,6 +366,7 @@ export default class ECSpresso<
 		* @returns A SystemBuilder instance for method chaining
 	*/
 	addSystem(label: string): SystemBuilder<Cfg> {
+		this._assertActive('register a system');
 		return this._createSystemBuilder(label, this._currentSystemDefaults);
 	}
 
@@ -311,6 +375,7 @@ export default class ECSpresso<
 	 * shared defaults.
 	 */
 	systemScope(defaults: SystemDefaults<Cfg>): SystemRegistrar<Cfg> {
+		this._assertActive('create a system scope');
 		const capturedDefaults = copySystemDefaults(defaults);
 		return {
 			addSystem: (label) =>
@@ -322,6 +387,7 @@ export default class ECSpresso<
 		label: string,
 		defaults?: SystemDefaults<Cfg>,
 	): SystemBuilder<Cfg> {
+		this._assertActive('register a system');
 		const builder = new SystemBuilder<Cfg>(label, defaults);
 		this._pendingFinalizers.push(() => {
 			this._registerSystem(builder._createSystemObject());
@@ -334,6 +400,7 @@ export default class ECSpresso<
 	 * @private
 	 */
 	private _finalizePendingBuilders(): void {
+		if (this._lifecycleState !== 'active') return;
 		if (this._pendingFinalizers.length === 0) return;
 		this._batchingRegistrations = true;
 		while (this._pendingFinalizers.length > 0) {
@@ -354,23 +421,27 @@ export default class ECSpresso<
 	 * @param deltaTime Time elapsed since the last update (in seconds)
 	 */
 	update(deltaTime: number) {
+		if (this._lifecycleState !== 'active') return;
 		this._finalizePendingBuilders();
-		const currentScreen = (this._screenManager?.getCurrentScreen() ?? null) as (keyof Cfg['screens'] & string) | null;
+		if (this._lifecycleState !== 'active') return;
+		const currentScreen = this._getCurrentScreen();
 		const timing = this._diagnosticsEnabled;
 
 		// 1. preUpdate phase
 		this._runPhase('preUpdate', deltaTime, currentScreen, timing);
+		if (this._lifecycleState !== 'active') return;
 
 		// 2. fixedUpdate phase — accumulate time and step N times
 		const fixedT0 = timing ? performance.now() : 0;
 		this._fixedAccumulator += deltaTime;
 		let steps = 0;
-		while (this._fixedAccumulator >= this._fixedDt && steps < this._maxFixedSteps) {
+		while (this._lifecycleState === 'active' && this._fixedAccumulator >= this._fixedDt && steps < this._maxFixedSteps) {
 			this._executePhase(this._phaseSystems.fixedUpdate, this._fixedDt, currentScreen);
 			this._commandBuffer.playback(this);
 			this._fixedAccumulator -= this._fixedDt;
 			steps++;
 		}
+		if (this._lifecycleState !== 'active') return;
 		// Clamp accumulator if we hit the spiral-of-death cap
 		if (this._fixedAccumulator >= this._fixedDt) {
 			this._fixedAccumulator = 0;
@@ -383,14 +454,18 @@ export default class ECSpresso<
 
 		// 3. update phase
 		this._runPhase('update', deltaTime, currentScreen, timing);
+		if (this._lifecycleState !== 'active') return;
 
 		// 4. postUpdate phase
 		this._runPhase('postUpdate', deltaTime, currentScreen, timing);
+		if (this._lifecycleState !== 'active') return;
 
 		// 5. Post-update hooks (between postUpdate and render, preserving existing behavior)
 		for (const hook of this._postUpdateHooks) {
+			if (this._lifecycleState !== 'active') return;
 			hook({ ecs: this, dt: deltaTime });
 		}
+		if (this._lifecycleState !== 'active') return;
 
 		// 6. render phase
 		this._runPhase('render', deltaTime, currentScreen, timing);
@@ -418,45 +493,9 @@ export default class ECSpresso<
 		currentScreen: (keyof Cfg['screens'] & string) | null
 	): void {
 		for (const system of systems) {
+			if (this._lifecycleState !== 'active') return;
 			if (!system.process && !system.onEntityEnter) continue;
-
-			// Group filtering - skip if any of the system's groups is disabled
-			if (system.groups?.length) {
-				let anyDisabled = false;
-				for (const group of system.groups) {
-					if (this._disabledGroups.has(group)) {
-						anyDisabled = true;
-						break;
-					}
-				}
-				if (anyDisabled) continue;
-			}
-
-			// Screen filtering - skip if system is restricted to specific screens
-			if (system.inScreens?.length) {
-				if (currentScreen === null || !system.inScreens.includes(currentScreen)) {
-					continue;
-				}
-			}
-
-			// Screen exclusion - skip if system excludes current screen
-			if (system.excludeScreens?.length) {
-				if (currentScreen !== null && system.excludeScreens.includes(currentScreen)) {
-					continue;
-				}
-			}
-
-			// Asset requirements - skip if required assets not loaded
-			if (system.requiredAssets?.length && this._assetManager) {
-				let assetsReady = true;
-				for (const assetKey of system.requiredAssets) {
-					if (!this._assetManager.isLoaded(assetKey)) {
-						assetsReady = false;
-						break;
-					}
-				}
-				if (!assetsReady) continue;
-			}
+			if (!this._isSystemActive(system, currentScreen)) continue;
 
 			// Set per-system change threshold from its last-seen sequence
 			const systemThreshold = this._systemLastSeqs.get(system) ?? 0;
@@ -577,6 +616,7 @@ export default class ECSpresso<
 					}
 				}
 			}
+			if (this._lifecycleState !== 'active') return;
 
 			// Auto-mark iterated entities for queries that declared `mutates`.
 			// Runs after process() and before the threshold advance so the
@@ -652,9 +692,28 @@ export default class ECSpresso<
 	 *
 	 * @returns Promise that resolves when everything is initialized
 	 */
-	async initialize(): Promise<void> {
+	initialize(): Promise<void> {
+		this._assertActive('initialize the world');
+		if (this._initializeFired) return Promise.resolve();
+		if (this._initializePromise) return this._initializePromise;
+
+		const initialization = this._initializeInternal();
+		this._initializePromise = initialization.then(
+			() => {
+				this._initializePromise = undefined;
+			},
+			(error: unknown) => {
+				this._initializePromise = undefined;
+				throw error;
+			},
+		);
+		return this._initializePromise;
+	}
+
+	private async _initializeInternal(): Promise<void> {
 		this._finalizePendingBuilders();
 		await this.initializeResources();
+		if (this._lifecycleState !== 'active') return;
 
 		// Set up asset manager if present
 		// Key/value casts are needed because the class generic doesn't constrain ResourceTypes
@@ -662,11 +721,13 @@ export default class ECSpresso<
 		if (this._assetManager) {
 			this._assetManager.setEventBus(this._eventBus as unknown as EventBus<AssetEvents<keyof Cfg['assets'] & string>>);
 			await this._assetManager.loadEagerAssets();
+			if (this._lifecycleState !== 'active') return;
 			this._resourceManager.add('$assets' as keyof Cfg['resources'], this._assetManager.createResource() as unknown as Cfg['resources'][keyof Cfg['resources']]);
 		}
 
 		// Set up screen manager if present
 		if (this._screenManager) {
+			if (this._lifecycleState !== 'active') return;
 			const screenBus = this._eventBus as unknown as EventBus<ScreenEvents<keyof Cfg['screens'] & string>>;
 			this._screenManager.setDependencies(
 				screenBus,
@@ -676,7 +737,7 @@ export default class ECSpresso<
 			this._resourceManager.add('$screen' as keyof Cfg['resources'], this._screenManager.createResource() as unknown as Cfg['resources'][keyof Cfg['resources']]);
 			// Drain screen-scoped entities on screen exit. Copy the set first
 			// because `removeEntity` fires `beforeEntityRemoved` → mutates the set.
-			screenBus.subscribe('screenExit', ({ screen }) => {
+			this._screenExitUnsubscribe = screenBus.subscribe('screenExit', ({ screen }) => {
 				const set = this._screenScopedEntities.get(screen);
 				if (!set || set.size === 0) return;
 				this._screenScopedEntities.delete(screen);
@@ -688,10 +749,12 @@ export default class ECSpresso<
 		}
 
 		for (const system of this._systems) {
+			if (this._lifecycleState !== 'active') return;
 			if (this._systemsInitialized.has(system)) continue;
 			this._systemsInitialized.add(system);
 			await system.onInitialize?.(this);
 		}
+		if (this._lifecycleState !== 'active') return;
 		this._initializeFired = true;
 	}
 
@@ -702,6 +765,7 @@ export default class ECSpresso<
 	 * @returns Promise that resolves when the specified resources are initialized
 	 */
 	async initializeResources<K extends keyof Cfg['resources']>(...keys: K[]): Promise<void> {
+		this._assertActive('initialize resources');
 		await this._resourceManager.initializeResources(this, ...keys);
 	}
 
@@ -836,16 +900,14 @@ export default class ECSpresso<
 		// This should never happen since we just found the system by index
 		if (!system) return false;
 
-		// Call the onDetach lifecycle hook if defined
-		if (system.onDetach) {
-			system.onDetach(this);
-		}
+		const detachResult = this._detachSystemSafely(system);
 
 		// Remove system and clean up per-system tracking
 		this._systems.splice(index, 1);
-		this._systemLastSeqs.delete(system);
-		this._entityEnterTracking.delete(system);
-		this._systemsInitialized.delete(system);
+		this._forgetSystem(system);
+		if (detachResult instanceof Promise) {
+			this._trackSystemDetach(detachResult, system.label);
+		}
 
 		// Re-sort systems
 		this._rebuildPhaseSystems();
@@ -853,11 +915,119 @@ export default class ECSpresso<
 		return true;
 	}
 
+	private _detachSystem(system: System<Cfg, any, any>): void | Promise<void> {
+		const unsubscribers = this._systemEventUnsubscribers.get(system) ?? [];
+		for (const unsubscribe of unsubscribers) {
+			unsubscribe();
+		}
+		this._systemEventUnsubscribers.delete(system);
+		return system.onDetach?.(this);
+	}
+
+	private _detachSystemSafely(system: System<Cfg, any, any>): void | Promise<void> {
+		try {
+			return this._detachSystem(system);
+		} catch (error) {
+			console.error(`onDetach for system "${system.label}" threw:`, error);
+			return undefined;
+		}
+	}
+
+	private _forgetSystem(system: System<Cfg, any, any>): void {
+		this._systemLastSeqs.delete(system);
+		this._entityEnterTracking.delete(system);
+		this._systemsInitialized.delete(system);
+	}
+
+	private _trackSystemInitialization(result: Promise<void>, label: string): void {
+		const pending = result.then(
+			() => undefined,
+			(error: unknown) => {
+				console.error(`onInitialize for system "${label}" rejected:`, error);
+			},
+		);
+		this._pendingSystemInitializations.add(pending);
+		pending.then(() => {
+			this._pendingSystemInitializations.delete(pending);
+		});
+	}
+
+	private _trackSystemDetach(result: Promise<void>, label: string): void {
+		const pending = result.catch((error: unknown) => {
+			console.error(`onDetach for system "${label}" rejected:`, error);
+			throw error;
+		});
+		this._pendingSystemDetaches.add(pending);
+		pending.then(
+			() => this._pendingSystemDetaches.delete(pending),
+			() => this._pendingSystemDetaches.delete(pending),
+		);
+	}
+
+	private async _awaitPendingSystemDetaches(errors: unknown[]): Promise<void> {
+		const pending = Array.from(this._pendingSystemDetaches);
+		const results = await Promise.allSettled(pending);
+		for (const result of results) {
+			if (result.status === 'rejected') errors.push(result.reason);
+		}
+		this._pendingSystemDetaches.clear();
+	}
+
+	private _detachAllSystems(errors: unknown[]): Promise<void> {
+		const systems = [...this._systems];
+		this._systems = [];
+		for (const phase of PHASE_ORDER) {
+			this._phaseSystems[phase] = [];
+		}
+
+		const pendingDetaches = systems.flatMap(system => {
+			try {
+				const result = this._detachSystem(system);
+				if (result instanceof Promise) {
+					return [result.catch((error: unknown) => {
+						errors.push(error);
+					})];
+				}
+				return [];
+			} catch (error) {
+				errors.push(error);
+				return [];
+			} finally {
+				this._forgetSystem(system);
+			}
+		});
+
+		this._systemEventUnsubscribers.clear();
+		return Promise.all(pendingDetaches).then(() => undefined);
+	}
+
+	private async _runPluginCleanups(errors: unknown[]): Promise<void> {
+		const ids = Array.from(this._installedPlugins).reverse();
+		this._installedPlugins.clear();
+		for (const id of ids) {
+			const disposers = this._pluginCleanups.get(id);
+			this._pluginCleanups.delete(id);
+			if (!disposers) continue;
+			for (const disposer of [...disposers].reverse()) {
+				try {
+					const result = disposer();
+					if (result instanceof Promise) {
+						await result;
+					}
+				} catch (error) {
+					console.warn(`Plugin '${id}' cleanup threw:`, error);
+					errors.push(error);
+				}
+			}
+		}
+	}
+
 	/**
 		* Internal method to register a system with this ECSpresso instance
 		* @internal Used by SystemBuilder - replaces direct private property access
 	*/
 	_registerSystem(system: System<Cfg, any, any>): void {
+		if (this._lifecycleState !== 'active') return;
 		this._systems.push(system);
 		// Initialize the system's last-seen sequence to the current change threshold.
 		// Before any update this is 0, so newly added systems see spawn marks.
@@ -931,25 +1101,28 @@ export default class ECSpresso<
 
 		// Set up event handlers if they exist
 		if (system.eventHandlers) {
+			const unsubscribers: Array<() => void> = [];
 			for (const eventName in system.eventHandlers) {
 				const handler = system.eventHandlers[eventName];
 				if (handler) {
-					this._eventBus.subscribe(eventName, (data) => {
+					const unsubscribe = this._eventBus.subscribe(eventName, (data) => {
+						if (!this._isSystemActive(system)) return;
 						handler({ data, ecs: this });
 					});
+					unsubscribers.push(unsubscribe);
 				}
 			}
+			this._systemEventUnsubscribers.set(system, unsubscribers);
 		}
 
-		// Late-bound systems fire onInitialize fire-and-forget on registration;
-		// rejections surface via console.error so async failures aren't silent.
+		// Late-bound systems fire onInitialize on registration; rejections surface
+		// via console.error so async failures aren't silent. Track async work so
+		// disposal cannot finish while a late initializer is still running.
 		if (this._initializeFired && !this._systemsInitialized.has(system)) {
 			this._systemsInitialized.add(system);
 			const result = system.onInitialize?.(this);
 			if (result instanceof Promise) {
-				result.catch((err: unknown) => {
-					console.error(`onInitialize for system "${system.label}" rejected:`, err);
-				});
+				this._trackSystemInitialization(result, system.label);
 			}
 		}
 	}
@@ -1017,6 +1190,7 @@ export default class ECSpresso<
 			| ResourceFactoryWithDeps<Cfg['resources'][K], ECSpresso<Cfg>, keyof Cfg['resources'] & string>
 			| ResourceDirectValue<Cfg['resources'][K]>
 	): this {
+		this._assertActive('register a resource');
 		this._resourceManager.add(key, resource);
 		return this;
 	}
@@ -1059,6 +1233,7 @@ export default class ECSpresso<
 		key: K,
 		updater: (current: Cfg['resources'][K]) => Cfg['resources'][K]
 	): this {
+		this._assertActive('update a resource');
 		const oldValue = this.getResource(key);
 		const newValue = updater(oldValue);
 		this._resourceManager.add(key, newValue);
@@ -1077,6 +1252,7 @@ export default class ECSpresso<
 		key: K,
 		value: Cfg['resources'][K]
 	): this {
+		this._assertActive('set a resource');
 		const oldValue = this.tryGetResource(key);
 		this._resourceManager.add(key, value);
 		if (oldValue !== undefined) {
@@ -1095,6 +1271,7 @@ export default class ECSpresso<
 		key: K,
 		callback: (newValue: Cfg['resources'][K], oldValue: Cfg['resources'][K]) => void
 	): () => void {
+		this._assertActive('observe a resource');
 		return this._resourceManager.onResourceChange(key, callback);
 	}
 
@@ -1156,6 +1333,7 @@ export default class ECSpresso<
 		componentName: K,
 		value: Cfg['components'][K]
 	): void {
+		this._assertActive('add a component');
 		this._entityManager.addComponent(entityId, componentName, value);
 	}
 
@@ -1168,6 +1346,7 @@ export default class ECSpresso<
 		entityId: number,
 		components: T & Record<Exclude<keyof T, keyof Cfg['components']>, never>
 	): void {
+		this._assertActive('add components');
 		this._entityManager.addComponents(entityId, components);
 	}
 
@@ -1181,6 +1360,7 @@ export default class ECSpresso<
 		entityId: number,
 		componentName: K
 	): void {
+		this._assertActive('remove a component');
 		this._entityManager.removeComponent(entityId, componentName);
 	}
 
@@ -1204,6 +1384,7 @@ export default class ECSpresso<
 		components: T & Record<Exclude<keyof T, keyof Cfg['components']>, never>,
 		options?: { scope?: (keyof Cfg['screens'] & string) | null }
 	): FilteredEntity<Cfg['components'], keyof T & keyof Cfg['components']> {
+		this._assertActive('spawn an entity');
 		const entity = this._entityManager.createEntity();
 		this._entityManager.addComponents(entity.id, components);
 		this._applyScreenScope(entity.id, options);
@@ -1336,6 +1517,7 @@ export default class ECSpresso<
 		components: T & Record<Exclude<keyof T, keyof Cfg['components']>, never>,
 		options?: { scope?: (keyof Cfg['screens'] & string) | null }
 	): FilteredEntity<Cfg['components'], keyof T & keyof Cfg['components']> {
+		this._assertActive('spawn a child entity');
 		const entity = this._entityManager.spawnChild(parentId, components);
 		this._emitHierarchyChanged(entity.id, null, parentId);
 		this._applyScreenScope(entity.id, options);
@@ -1348,6 +1530,7 @@ export default class ECSpresso<
 	 * @param parentId The entity ID to set as the parent
 	 */
 	setParent(childId: number, parentId: number): this {
+		this._assertActive('set an entity parent');
 		const oldParent = this._entityManager.getParent(childId);
 		this._entityManager.setParent(childId, parentId);
 		this._emitHierarchyChanged(childId, oldParent, parentId);
@@ -1360,6 +1543,7 @@ export default class ECSpresso<
 	 * @returns true if a parent was removed, false if entity had no parent
 	 */
 	removeParent(childId: number): boolean {
+		this._assertActive('remove an entity parent');
 		const oldParent = this._entityManager.getParent(childId);
 		const result = this._entityManager.removeParent(childId);
 		if (result) {
@@ -1598,6 +1782,7 @@ export default class ECSpresso<
 		componentName: K,
 		mutator: (value: Cfg['components'][K]) => void
 	): Cfg['components'][K] {
+		this._assertActive('mutate a component');
 		const component = this._entityManager.getComponent(entityId, componentName);
 		if (component === undefined) {
 			throw new Error(`Entity ${entityId} does not have component "${String(componentName)}"`);
@@ -1614,6 +1799,7 @@ export default class ECSpresso<
 	 * monotonic sequence; `changed:` queries see the mark once on their next run.
 	 */
 	markChanged<K extends keyof Cfg['components']>(entityId: number, componentName: K): void {
+		this._assertActive('mark a component as changed');
 		this._entityManager.markChanged(entityId, componentName);
 	}
 
@@ -1630,6 +1816,7 @@ export default class ECSpresso<
 		componentName: K,
 		callback: (ctx: { value: Cfg['components'][K]; entityId: number }) => void
 	): void {
+		this._assertActive('register a component disposer');
 		this._entityManager.registerDispose(componentName, callback);
 	}
 
@@ -1652,6 +1839,7 @@ export default class ECSpresso<
 		required: Required,
 		factory: (triggerValue: Cfg['components'][Trigger]) => Cfg['components'][Required]
 	): void {
+		this._assertActive('register a required component');
 		if (String(trigger) === String(required)) {
 			throw new Error(`Cannot require a component to depend on itself: '${String(trigger)}'`);
 		}
@@ -1697,6 +1885,7 @@ export default class ECSpresso<
 		componentName: K,
 		handler: (ctx: { value: Cfg['components'][K]; entity: Entity<Cfg['components']> }) => void
 	): () => void {
+		this._assertActive('register a component-added handler');
 		return this._entityManager.onComponentAdded(componentName, handler);
 	}
 
@@ -1710,6 +1899,7 @@ export default class ECSpresso<
 		componentName: K,
 		handler: (ctx: { value: Cfg['components'][K]; entity: Entity<Cfg['components']> }) => void
 	): () => void {
+		this._assertActive('register a component-removed handler');
 		return this._entityManager.onComponentRemoved(componentName, handler);
 	}
 
@@ -1728,6 +1918,7 @@ export default class ECSpresso<
 		name: ReactiveQueryNames,
 		definition: ReactiveQueryDefinition<Cfg, WithComponents, WithoutComponents, OptionalComponents>
 	): void {
+		this._assertActive('register a reactive query');
 		this._reactiveQueryManager.addQuery(name, definition);
 	}
 
@@ -1752,6 +1943,7 @@ export default class ECSpresso<
 		eventType: E,
 		callback: (data: Cfg['events'][E]) => void
 	): () => void {
+		this._assertActive('subscribe to an event');
 		return this._eventBus.subscribe(eventType, callback);
 	}
 
@@ -1776,6 +1968,7 @@ export default class ECSpresso<
 	onPostUpdate(
 		callback: (ctx: { ecs: ECSpresso<Cfg>; dt: number }) => void
 	): () => void {
+		this._assertActive('register a post-update hook');
 		this._postUpdateHooks.push(callback);
 		return () => {
 			const index = this._postUpdateHooks.indexOf(callback);
@@ -2120,6 +2313,7 @@ export default class ECSpresso<
 	 * @internal Used by plugins that need to register assets
 	 */
 	_registerAsset(key: string, definition: AssetDefinition<unknown>): void {
+		this._assertActive('register an asset');
 		this._pendingPluginAssets.push([key, definition]);
 	}
 
@@ -2128,6 +2322,7 @@ export default class ECSpresso<
 	 * @internal Used by plugins that need to register screens
 	 */
 	_registerScreen(name: string, definition: ScreenDefinition<any, any>): void {
+		this._assertActive('register a screen');
 		this._pendingPluginScreens.push([name, definition]);
 	}
 
@@ -2166,13 +2361,14 @@ export default class ECSpresso<
 	 * at `withPlugin` time via the builder's own constrained overload.
 	 */
 	_installPluginUnchecked(plugin: Plugin<WorldConfig, WorldConfig, string, string, string, string>): this {
+		this._assertActive('install a plugin');
 		if (this._installedPlugins.has(plugin.id)) {
 			return this;
 		}
 		this._installedPlugins.add(plugin.id);
-		const disposers: Array<() => void> = [];
+		const disposers: Array<PluginCleanup> = [];
 		this._pluginCleanups.set(plugin.id, disposers);
-		const onCleanup = (fn: () => void) => {
+		const onCleanup = (fn: PluginCleanup) => {
 			disposers.push(fn);
 		};
 		const previousDefaults = this._currentSystemDefaults;
@@ -2206,7 +2402,12 @@ export default class ECSpresso<
 				const fn = disposers[i];
 				if (!fn) continue;
 				try {
-					fn();
+					const result = fn();
+					if (result instanceof Promise) {
+						result.catch((error: unknown) => {
+							console.warn(`Plugin '${id}' cleanup threw:`, error);
+						});
+					}
 				} catch (error) {
 					console.warn(`Plugin '${id}' cleanup threw:`, error);
 				}
@@ -2216,18 +2417,109 @@ export default class ECSpresso<
 	}
 
 	/**
-	 * Uninstall every installed plugin, running their cleanup disposers.
-	 * Plugins are uninstalled in reverse install order so a plugin that depends
-	 * on another is torn down before its dependency.
+	 * Fully dispose this world.
 	 *
-	 * Does not touch resource disposal — callers that need async resource
-	 * teardown should `await world.disposeResources()` separately.
+	 * Disposal is idempotent and concurrent callers share the same completion
+	 * promise. The world stops updating and accepting registrations immediately;
+	 * asynchronous system and resource cleanup completes before the promise
+	 * resolves. Uninitialized lazy resources are not created just to dispose them.
 	 */
-	dispose(): void {
-		const ids = Array.from(this._installedPlugins);
-		for (let i = ids.length - 1; i >= 0; i--) {
-			const id = ids[i];
-			if (id !== undefined) this.uninstallPlugin(id);
+	dispose(): Promise<void> {
+		if (this._lifecycleState === 'disposed') return Promise.resolve();
+		if (this._disposePromise) return this._disposePromise;
+
+		this._lifecycleState = 'disposing';
+		this._eventBus.close();
+		this._commandBuffer.close();
+		this._entityManager.close();
+		this._resourceManager.close();
+		this._assetManager?.close();
+		this._screenManager?.close();
+		this._pendingFinalizers = [];
+
+		const deferred = createDeferred<void>();
+		this._disposePromise = deferred.promise;
+		void this._disposeInternal().then(deferred.resolve, deferred.reject);
+		return deferred.promise;
+	}
+
+	private async _disposeInternal(): Promise<void> {
+		const errors: unknown[] = [];
+		const initialization = this._initializePromise;
+
+		// Plugin cleanup remains synchronous up to the first awaited system/resource
+		// disposer, preserving access to the world during teardown.
+		await this._runPluginCleanups(errors);
+
+		if (initialization) {
+			try {
+				await initialization;
+			} catch (error) {
+				errors.push(error);
+			}
+		}
+		await Promise.all(Array.from(this._pendingSystemInitializations));
+		this._pendingSystemInitializations.clear();
+		await this._detachAllSystems(errors);
+		await this._awaitPendingSystemDetaches(errors);
+
+		if (this._screenManager) {
+			try {
+				await this._screenManager.dispose();
+			} catch (error) {
+				errors.push(error);
+			}
+		}
+
+		// Remove entities while lifecycle hooks are still connected so component
+		// disposal, reactive-query exits, and screen-scope tracking all run.
+		const entityIds = this._entityManager
+			.getEntitiesWithQuery()
+			.map(entity => entity.id);
+		for (const entityId of entityIds) {
+			try {
+				this._entityManager.removeEntity(entityId);
+			} catch (error) {
+				errors.push(error);
+			}
+		}
+
+		try {
+			await this._resourceManager.disposeResources(this);
+		} catch (error) {
+			errors.push(error);
+		}
+		this._resourceManager.clear();
+
+		if (this._screenExitUnsubscribe) {
+			this._screenExitUnsubscribe();
+			this._screenExitUnsubscribe = undefined;
+		}
+		for (const unsubscribe of this._lifecycleUnsubscribers) {
+			unsubscribe();
+		}
+		this._lifecycleUnsubscribers = [];
+		this._entityManager.clearRegistrations();
+		this._entityManager.clearState();
+		this._reactiveQueryManager.clear();
+		this._postUpdateHooks = [];
+		this._requiredComponents.clear();
+		this._screenScopedEntities.clear();
+		this._entityScreenScope.clear();
+		this._disabledGroups.clear();
+		this._pendingPluginAssets = [];
+		this._pendingPluginScreens = [];
+		this._systemEventUnsubscribers.clear();
+		this._assetManager?.clear();
+		this._screenManager?.clear();
+		this._assetManager = null;
+		this._screenManager = null;
+		this._eventBus.clear();
+		this._commandBuffer.clear();
+		this._lifecycleState = 'disposed';
+
+		if (errors.length > 0) {
+			throw aggregateErrors(errors, 'World disposal failed');
 		}
 	}
 

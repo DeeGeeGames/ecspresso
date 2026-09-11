@@ -27,12 +27,14 @@ export default class AssetManager<AssetTypes extends Record<string, unknown> = R
 	private readonly assets: Map<keyof AssetTypes, AssetEntry<unknown>> = new Map();
 	private readonly groups: Map<string, Set<keyof AssetTypes>> = new Map();
 	private eventBus: EventBus<AssetEvents<keyof AssetTypes & string, AssetGroupNames>> | null = null;
+	private closed = false;
 
 	/**
 	 * Set the event bus for asset events
 	 * @internal
 	 */
 	setEventBus(eventBus: EventBus<AssetEvents<keyof AssetTypes & string, AssetGroupNames>>): void {
+		if (this.closed) return;
 		this.eventBus = eventBus;
 	}
 
@@ -43,6 +45,9 @@ export default class AssetManager<AssetTypes extends Record<string, unknown> = R
 		key: K,
 		definition: AssetDefinition<T>
 	): void {
+		if (this.closed) {
+			throw new Error('AssetManager is closed');
+		}
 		this.assets.set(key, {
 			definition,
 			status: 'pending',
@@ -74,6 +79,9 @@ export default class AssetManager<AssetTypes extends Record<string, unknown> = R
 	 * Load a single asset by key
 	 */
 	async loadAsset<K extends keyof AssetTypes>(key: K): Promise<AssetTypes[K]> {
+		if (this.closed) {
+			throw new Error('AssetManager is closed');
+		}
 		const entry = this.assets.get(key);
 
 		if (!entry) {
@@ -101,6 +109,13 @@ export default class AssetManager<AssetTypes extends Record<string, unknown> = R
 
 		try {
 			const value = await entry.loadPromise;
+			if (this.closed) {
+				const error = new Error('AssetManager was closed while loading an asset');
+				entry.status = 'failed';
+				entry.error = error;
+				entry.loadPromise = undefined;
+				throw error;
+			}
 			entry.value = value;
 			entry.status = 'loaded';
 			entry.loadPromise = undefined;
@@ -331,6 +346,19 @@ export default class AssetManager<AssetTypes extends Record<string, unknown> = R
 	getGroupKeys(groupName: string): Array<keyof AssetTypes> {
 		const groupKeys = this.groups.get(groupName);
 		return groupKeys ? Array.from(groupKeys) : [];
+	}
+
+	/** @internal Stop in-flight loads from publishing or reactivating the manager. */
+	close(): void {
+		this.closed = true;
+		this.eventBus = null;
+	}
+
+	/** @internal Release definitions and dependency references after world teardown. */
+	clear(): void {
+		this.assets.clear();
+		this.groups.clear();
+		this.eventBus = null;
 	}
 }
 

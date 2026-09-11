@@ -376,10 +376,10 @@ ecs.addSystem('label')
   .requiresAssets(['texture1'])              // skip until assets loaded
   .runWhenEmpty()                            // run even with 0 matching entities
   .setOnEntityEnter('queryName', ({ entity, ecs }) => { ... })
-  .setOnInitialize(async (ecs) => { ... })   // runs during ecs.initialize(); for systems added after init, runs fire-and-forget on next update()
+  .setOnInitialize(async (ecs) => { ... })   // awaited during initialize(); late async hooks are tracked until disposal
   .setOnDetach((ecs) => { ... })             // runs on system removal
   .setEventHandlers({
-    playerDied: ({ data, ecs }) => { ... },  // auto-subscribed event handlers
+    playerDied: ({ data, ecs }) => { ... },  // live group/screen/asset gates; auto-subscribed
   })
   .setProcess(({ queries, dt, ecs }) => { ... })
   // --- OR, for single-query systems, replace addQuery + setProcess with: ---

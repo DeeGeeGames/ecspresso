@@ -10,6 +10,16 @@ All notable changes to ECSpresso are documented here. Format loosely follows [Ke
   explicit mutation declarations, dependency timing, and proportional
   validation, with focused change-tracking, lifecycle, and testing references.
 - Corrected the built-in plugin catalog to match every published package export.
+- System event handlers now apply live group, screen, and asset activation
+  gates, and are detached when their system is removed.
+- Plugin compatibility checks now reject conflicting overlapping types and
+  validate required value types across components, events, resources, assets,
+  and screens, including the first builder plugin.
+- `await world.dispose()` is now the complete asynchronous world teardown
+  operation. It stops new work, detaches systems, removes entities, runs async
+  plugin/resource cleanup, and reports failures after cleanup continues.
+  Callers that previously ignored `dispose()` may continue doing so, but code
+  that needs teardown completion should await it.
 
 ### Internal
 

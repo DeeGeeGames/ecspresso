@@ -288,7 +288,7 @@ interface System<
 	 */
 	onDetach?(
 		ecs: import("./ecspresso").default<Cfg>
-	): void;
+	): void | Promise<void>;
 
 	/**
 	 * Per-query callbacks that fire once per entity the first time it appears

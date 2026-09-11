@@ -25,7 +25,7 @@ toolbar.appendChild(bevyBtn);
 document.body.appendChild(toolbar);
 
 let current: Engine | null = null;
-let teardown: (() => void) | null = null;
+let teardown: (() => void | Promise<void>) | null = null;
 let generation = 0;
 let entityCount = 50;
 const onCountChange = (n: number) => { entityCount = n; };
@@ -41,7 +41,7 @@ const paintButtons = () => {
 	setActive(bevyBtn, current === 'bevy');
 };
 
-const starters: Record<Engine, (opts: { initialCount: number; onCountChange: (n: number) => void }) => Promise<() => void> | (() => void)> = {
+const starters: Record<Engine, (opts: { initialCount: number; onCountChange: (n: number) => void }) => Promise<() => void | Promise<void>> | (() => void | Promise<void>)> = {
 	ecspresso: startECSpresso,
 	phaser: startPhaser,
 	bevy: startBevy,
@@ -51,7 +51,7 @@ async function switchTo(engine: Engine) {
 	if (current === engine) return;
 	const gen = ++generation;
 	if (teardown) {
-		teardown();
+		await teardown();
 		teardown = null;
 	}
 	current = engine;

@@ -36,6 +36,19 @@ const world = ECSpresso.create()
   .build();
 ```
 
+Plugin compatibility is checked for all five configuration slots:
+components, events, resources, assets, and screens. Every overlapping
+provided key must have the same type, so one compatible property cannot hide a
+second conflict. Plugin requirements check both key presence and value type;
+the check applies to the first plugin in a builder chain, later plugins, and
+direct `world.installPlugin()` calls. Invalid programs should be kept in
+compile-time tests with `@ts-expect-error`; they should not be executed.
+
+Provided overlaps are checked mutually because providers may write or replace
+shared values. Requirements use the safe world-to-requirement direction, so a
+narrower concrete value (such as a literal layer) can satisfy a broader
+dependency contract, while an incompatible or wider value is rejected.
+
 ## Error Handling
 
 ECSpresso provides clear, contextual error messages:

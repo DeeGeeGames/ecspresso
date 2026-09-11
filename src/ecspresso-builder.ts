@@ -53,24 +53,7 @@ export class ECSpressoBuilder<
 	constructor() {}
 
 	/**
-		* Add the first plugin when starting with empty types.
-		* This overload allows any plugin to be added to an empty ECSpresso instance.
-		* Only merges the plugin's Provides (PCfg) into accumulated config, not its Requires (PReq).
-	*/
-	withPlugin<
-		PCfg extends WorldConfig,
-		PReq extends WorldConfig = EmptyConfig,
-		BL extends string = never,
-		BG extends string = never,
-		BAG extends string = never,
-		BRQ extends string = never,
-	>(
-		this: ECSpressoBuilder<{ readonly components: {}; readonly events: {}; readonly resources: {}; readonly assets: Cfg['assets']; readonly screens: Cfg['screens'] }, Labels, Groups, AssetGroupNames, ReactiveQueryNames>,
-		plugin: Plugin<PCfg, PReq, BL, BG, BAG, BRQ>
-	): ECSpressoBuilder<MergeConfigs<Cfg, PCfg>, Labels | BL, Groups | BG, AssetGroupNames | BAG, ReactiveQueryNames | BRQ>;
-
-	/**
-		* Add a subsequent plugin with type checking.
+		* Add a plugin with type checking.
 		* This overload enforces plugin type compatibility and requirement satisfaction.
 		* Only merges the plugin's Provides (PCfg) into accumulated config, not its Requires (PReq).
 	*/
@@ -100,7 +83,7 @@ export class ECSpressoBuilder<
 	>(
 		plugin: Plugin<PCfg, PReq, BL, BG, BAG, BRQ> | PluginError<string>
 	): ECSpressoBuilder<MergeConfigs<Cfg, PCfg>, Labels | BL, Groups | BG, AssetGroupNames | BAG, ReactiveQueryNames | BRQ> {
-		// PluginError is uninhabitable at the value level — the second overload
+		// PluginError is uninhabitable at the value level — the overload
 		// only resolves to it when the argument is rejected, so the runtime path
 		// always receives a real Plugin.
 		this.pendingPlugins.push(plugin as Plugin<PCfg, PReq, BL, BG, BAG, BRQ>);

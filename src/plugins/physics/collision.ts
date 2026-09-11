@@ -49,6 +49,10 @@ export interface CollisionLayer<L extends string = never> {
 	collidesWith: readonly L[];
 }
 
+// An empty layer map still exposes a general layer contract so it can compose
+// with other plugins that use the default string-valued collision layer.
+type NormalizedCollisionLayer<L extends string> = [L] extends [never] ? string : L;
+
 /**
  * Component types provided by the collision plugin.
  * Included automatically via `.withPlugin(createCollisionPlugin())`.
@@ -450,21 +454,22 @@ export function createCollisionPlugin<L extends string, G extends string = 'phys
 	} = options;
 
 	return definePlugin('collision')
-		.withComponentTypes<CollisionComponentTypes<L>>()
-		.withEventTypes<CollisionEventTypes<L>>()
+		.withComponentTypes<CollisionComponentTypes<NormalizedCollisionLayer<L>>>()
+		.withEventTypes<CollisionEventTypes<NormalizedCollisionLayer<L>>>()
 		.withLabels<'collision-detection'>()
 		.withGroups<G>()
 		.requires<TransformWorldConfig>()
 		.install((world) => {
+			type CollisionLayerType = NormalizedCollisionLayer<L>;
 			// Grow-only pool of BaseColliderInfo slots reused across frames.
 			// Steady-state: zero allocations per frame once the pool is warm.
-			const colliderPool: BaseColliderInfo<L>[] = [];
-			const broadphaseScratch = createBroadphaseScratch<BaseColliderInfo<L>>();
+			const colliderPool: BaseColliderInfo<CollisionLayerType>[] = [];
+			const broadphaseScratch = createBroadphaseScratch<BaseColliderInfo<CollisionLayerType>>();
 			// Cached spatial index reference (resolved once on first frame).
 			let cachedSI: SpatialIndex | undefined;
 			let siResolved = false;
 
-			const ensureSlot = (idx: number, entityId: number, layer: L, collidesWith: readonly L[]): BaseColliderInfo<L> => {
+			const ensureSlot = (idx: number, entityId: number, layer: CollisionLayerType, collidesWith: readonly CollisionLayerType[]): BaseColliderInfo<CollisionLayerType> => {
 				let slot = colliderPool[idx];
 				if (!slot) {
 					slot = {
@@ -545,8 +550,7 @@ export function createCollisionPlugin<L extends string, G extends string = 'phys
 						cachedSI = ecs.tryGetResource<SpatialIndex>('spatialIndex');
 						siResolved = true;
 					}
-					detectCollisions(colliderPool, count, broadphaseScratch, cachedSI, onCollisionDetected<L>, ecs.eventBus);
+					detectCollisions(colliderPool, count, broadphaseScratch, cachedSI, onCollisionDetected<CollisionLayerType>, ecs.eventBus);
 				});
 		});
 }
-

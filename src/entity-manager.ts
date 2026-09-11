@@ -64,6 +64,7 @@ class CallbackList<ComponentTypes> {
 export default
 class EntityManager<ComponentTypes> {
 	private nextId: number = 1;
+	private closed = false;
 	private entities: Map<number, Entity<ComponentTypes>> = new Map();
 	private componentIndices: Map<keyof ComponentTypes, Set<number>> = new Map();
 	/**
@@ -141,7 +142,12 @@ class EntityManager<ComponentTypes> {
 		return this.entities.size;
 	}
 
+	private assertOpen(operation: string): void {
+		if (this.closed) throw new Error(`Cannot ${operation}: EntityManager is closed`);
+	}
+
 	createEntity(): Entity<ComponentTypes> {
+		this.assertOpen('create an entity');
 		const id = this.nextId++;
 		const entity: Entity<ComponentTypes> = { id, components: {} };
 		this.entities.set(id, entity);
@@ -159,6 +165,7 @@ class EntityManager<ComponentTypes> {
 		componentName: ComponentName,
 		callback: (ctx: { value: ComponentTypes[ComponentName]; entityId: number }) => void
 	): void {
+		this.assertOpen('register a component disposer');
 		this.disposeCallbacks.set(componentName, callback as (ctx: { value: unknown; entityId: number }) => void);
 	}
 
@@ -194,6 +201,7 @@ class EntityManager<ComponentTypes> {
 		componentName: ComponentName,
 		data: ComponentTypes[ComponentName]
 	) {
+		this.assertOpen('add a component');
 		const entity = this.entities.get(entityId);
 
 		if (!entity) {
@@ -254,6 +262,7 @@ class EntityManager<ComponentTypes> {
 		entityId: number,
 		components: T & Record<Exclude<keyof T, keyof ComponentTypes>, never>
 	) {
+		this.assertOpen('add components');
 		const entity = this.entities.get(entityId);
 
 		if (!entity) {
@@ -289,6 +298,7 @@ class EntityManager<ComponentTypes> {
 		entityId: number,
 		componentName: ComponentName
 	) {
+		this.assertOpen('remove a component');
 		const entity = this.entities.get(entityId);
 
 		if (!entity) {
@@ -518,6 +528,7 @@ class EntityManager<ComponentTypes> {
 		componentName: ComponentName,
 		handler: (ctx: { value: ComponentTypes[ComponentName]; entity: Entity<ComponentTypes> }) => void
 	): () => void {
+		this.assertOpen('register a component-added handler');
 		const widened = handler as ComponentCallback<ComponentTypes>;
 		let list = this.addedCallbacks.get(componentName);
 		if (!list) {
@@ -540,6 +551,7 @@ class EntityManager<ComponentTypes> {
 		componentName: ComponentName,
 		handler: (ctx: { value: ComponentTypes[ComponentName]; entity: Entity<ComponentTypes> }) => void
 	): () => void {
+		this.assertOpen('register a component-removed handler');
 		const widened = handler as ComponentCallback<ComponentTypes>;
 		let list = this.removedCallbacks.get(componentName);
 		if (!list) {
@@ -555,6 +567,7 @@ class EntityManager<ComponentTypes> {
 	// ==================== Lifecycle Hook Registration ====================
 
 	onAfterComponentAdded(hook: (entityId: number, componentName: keyof ComponentTypes) => void): () => void {
+		this.assertOpen('register an entity lifecycle hook');
 		this._afterComponentAddedHooks.push(hook);
 		return () => {
 			const idx = this._afterComponentAddedHooks.indexOf(hook);
@@ -563,6 +576,7 @@ class EntityManager<ComponentTypes> {
 	}
 
 	onAfterEntityMutated(hook: (entityId: number) => void): () => void {
+		this.assertOpen('register an entity lifecycle hook');
 		this._afterEntityMutatedHooks.push(hook);
 		return () => {
 			const idx = this._afterEntityMutatedHooks.indexOf(hook);
@@ -571,6 +585,7 @@ class EntityManager<ComponentTypes> {
 	}
 
 	onAfterComponentRemoved(hook: (entityId: number, componentName: keyof ComponentTypes) => void): () => void {
+		this.assertOpen('register an entity lifecycle hook');
 		this._afterComponentRemovedHooks.push(hook);
 		return () => {
 			const idx = this._afterComponentRemovedHooks.indexOf(hook);
@@ -579,6 +594,7 @@ class EntityManager<ComponentTypes> {
 	}
 
 	onBeforeEntityRemoved(hook: (entityId: number) => void): () => void {
+		this.assertOpen('register an entity lifecycle hook');
 		this._beforeEntityRemovedHooks.push(hook);
 		return () => {
 			const idx = this._beforeEntityRemovedHooks.indexOf(hook);
@@ -587,11 +603,48 @@ class EntityManager<ComponentTypes> {
 	}
 
 	onAfterParentChanged(hook: (childId: number) => void): () => void {
+		this.assertOpen('register an entity lifecycle hook');
 		this._afterParentChangedHooks.push(hook);
 		return () => {
 			const idx = this._afterParentChangedHooks.indexOf(hook);
 			if (idx !== -1) this._afterParentChangedHooks.splice(idx, 1);
 		};
+	}
+
+	/** @internal Release callbacks owned by the enclosing world. */
+	clearRegistrations(): void {
+		this.addedCallbacks.clear();
+		this.removedCallbacks.clear();
+		this.disposeCallbacks.clear();
+		this._afterComponentAddedHooks.length = 0;
+		this._afterEntityMutatedHooks.length = 0;
+		this._afterComponentRemovedHooks.length = 0;
+		this._beforeEntityRemovedHooks.length = 0;
+		this._afterParentChangedHooks.length = 0;
+		this._batchedEntityIds.clear();
+		this._pendingBatchKeys = null;
+	}
+
+	/** @internal Prevent public manager mutations while the owning world tears down. */
+	close(): void {
+		this.closed = true;
+	}
+
+	/** @internal Release entities, indexes, hierarchy, and query-cache state. */
+	clearState(): void {
+		this.entities.clear();
+		this.componentIndices.clear();
+		this.changeSeqs.length = 0;
+		this.componentNameToIdx.clear();
+		this._queryCache.clear();
+		this.hierarchyManager.clear();
+		this._idxCache0Name = undefined;
+		this._idxCache0Idx = -1;
+		this._idxCache1Name = undefined;
+		this._idxCache1Idx = -1;
+		this._subscribedComponentIdx = null;
+		this._changeSeq = 0;
+		this.nextId = 1;
 	}
 
 	// ==================== Change Detection Methods ====================
@@ -610,6 +663,7 @@ class EntityManager<ComponentTypes> {
 	 * @param componentName The component that changed
 	 */
 	markChanged<K extends keyof ComponentTypes>(entityId: number, componentName: K): void {
+		this.assertOpen('mark a component as changed');
 		this.markChangedByIdx(entityId, this.getOrAssignComponentIdx(componentName));
 	}
 
@@ -618,6 +672,7 @@ class EntityManager<ComponentTypes> {
 	 * Use after resolving names to indices once via getOrAssignComponentIdx.
 	 */
 	markChangedByIdx(entityId: number, componentIdx: number): void {
+		this.assertOpen('mark a component as changed');
 		const bitmap = this._subscribedComponentIdx;
 		if (bitmap !== null && (componentIdx >= bitmap.length || bitmap[componentIdx] === 0)) return;
 		const seq = ++this._changeSeq;
@@ -663,6 +718,7 @@ class EntityManager<ComponentTypes> {
 	 * component named in a query's `changed:` filter.
 	 */
 	subscribeChanged<K extends keyof ComponentTypes>(componentName: K): void {
+		this.assertOpen('subscribe to change tracking');
 		const idx = this.getOrAssignComponentIdx(componentName);
 		let bitmap = this._subscribedComponentIdx;
 		if (bitmap === null) {
@@ -684,6 +740,7 @@ class EntityManager<ComponentTypes> {
 	 * reactive consumers.
 	 */
 	disableChangeTracking(): void {
+		this.assertOpen('disable change tracking');
 		this._subscribedComponentIdx = new Uint8Array(0);
 	}
 
@@ -741,6 +798,7 @@ class EntityManager<ComponentTypes> {
 	 * @param parentId The entity ID to set as the parent
 	 */
 	setParent(childId: number, parentId: number): this {
+		this.assertOpen('set an entity parent');
 		this.hierarchyManager.setParent(childId, parentId);
 		this._queryCache.onParentChanged(childId);
 		for (const hook of this._afterParentChangedHooks) {
@@ -755,6 +813,7 @@ class EntityManager<ComponentTypes> {
 	 * @returns true if a parent was removed, false if entity had no parent
 	 */
 	removeParent(childId: number): boolean {
+		this.assertOpen('remove an entity parent');
 		const result = this.hierarchyManager.removeParent(childId);
 		if (result) {
 			this._queryCache.onParentChanged(childId);

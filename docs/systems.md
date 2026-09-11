@@ -271,6 +271,14 @@ world.addSystem('gameSystem')
 await world.initialize();
 ```
 
+`onDetach` may be asynchronous. Removing one system starts its detach hook
+and logs a rejected promise; `await world.dispose()` detaches every
+registered system and waits for all asynchronous detach hooks before it
+resolves. System event handlers are also removed as part of detachment.
+Systems that only declare event handlers are still attached and receive events
+whenever their live group, screen, and asset gates allow it; see
+[Events](./events.md).
+
 ### Entity Enter Callbacks
 
 Register a callback that fires when an entity first matches a query:

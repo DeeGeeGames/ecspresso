@@ -89,4 +89,7 @@ definePlugin('legend').install((world, onCleanup) => {
 ```
 
 Cleanup runs in reverse registration order when uninstalling the plugin or
-disposing the world.
+disposing the world. Cleanup functions may return promises. `await ecs.dispose()`
+waits for them and for system/resource teardown. Standalone
+`ecs.uninstallPlugin(id)` remains synchronous and does not remove systems or
+other registrations made by that plugin.

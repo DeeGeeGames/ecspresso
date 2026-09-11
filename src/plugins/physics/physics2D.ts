@@ -345,7 +345,7 @@ function resolvePhysicsContact(
 
 type Physics2DProvides<L extends string = never> = Physics2DOwnComponentTypes & CollisionComponentTypes<L>;
 
-export function createPhysics2DPlugin<L extends string = never, G extends string = 'physics2D', CG extends string = never>(
+export function createPhysics2DPlugin<L extends string = string, G extends string = 'physics2D', CG extends string = never>(
 	options?: Physics2DPluginOptions<G, CG> & { layers?: LayerFactories<Record<L, readonly string[]>> },
 ) {
 	const {

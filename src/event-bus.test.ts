@@ -448,6 +448,27 @@ describe('publish correctness', () => {
 		expect(laterCalls).toBe(1); // only the second subscription remains
 	});
 
+	test('mid-publish unsubscribe does not skip an unrelated live handler', () => {
+		const { eventBus } = new ECSpresso<WorldConfigFrom<TestComponents, TestEvents>>();
+		const calls: string[] = [];
+		let unsubscribeLater: (() => void) | undefined;
+
+		eventBus.subscribe('entityCreated', () => {
+			calls.push('first');
+			unsubscribeLater?.();
+		});
+		unsubscribeLater = eventBus.subscribe('entityCreated', () => {
+			calls.push('later');
+		});
+		eventBus.subscribe('entityCreated', () => {
+			calls.push('unrelated');
+		});
+
+		eventBus.publish('entityCreated', { entityId: 1 });
+
+		expect(calls).toEqual(['first', 'unrelated']);
+	});
+
 	test('multiple once-handlers are all removed after publish', () => {
 		const { eventBus } = new ECSpresso<WorldConfigFrom<TestComponents, TestEvents>>();
 		let count1 = 0;
@@ -463,6 +484,62 @@ describe('publish correctness', () => {
 		eventBus.publish('entityCreated', { entityId: 2 });
 		expect(count1).toBe(1);
 		expect(count2).toBe(1);
+	});
+});
+
+describe('system event activation', () => {
+	test('uses live group, screen, and asset gates and detaches cleanly', async () => {
+		const world = ECSpresso.create()
+			.withEventTypes<TestEvents>()
+			.withAssets(assets => assets.add('sprite', async () => 'sprite'))
+			.withScreens(screens => screens.add('menu', {
+				initialState: () => ({}),
+			}))
+			.build();
+		let systemCalls = 0;
+		let directCalls = 0;
+
+		world.addSystem('gated-events')
+			.inGroup('gated')
+			.inScreens(['menu'])
+			.requiresAssets(['sprite'])
+			.setEventHandlers({
+				playerDamaged: () => { systemCalls++; },
+			});
+		world.on('playerDamaged', () => { directCalls++; });
+
+		world.eventBus.publish('playerDamaged', { entityId: 1, amount: 1 });
+		await world.initialize();
+		world.eventBus.publish('playerDamaged', { entityId: 1, amount: 1 });
+		await world.setScreen('menu', {});
+		world.eventBus.publish('playerDamaged', { entityId: 1, amount: 1 });
+		world.disableSystemGroup('gated');
+		world.eventBus.publish('playerDamaged', { entityId: 1, amount: 1 });
+		world.enableSystemGroup('gated');
+		world.removeSystem('gated-events');
+		world.eventBus.publish('playerDamaged', { entityId: 1, amount: 1 });
+
+		expect(systemCalls).toBe(1);
+		expect(directCalls).toBe(5);
+		await world.dispose();
+	});
+
+	test('removing a system from its event handler is safe during publication', () => {
+		const world = ECSpresso.create().withEventTypes<TestEvents>().build();
+		const calls: string[] = [];
+		world.addSystem('self-removing')
+			.setEventHandlers({
+				playerDamaged: () => {
+					calls.push('system');
+					world.removeSystem('self-removing');
+				},
+			});
+		world.eventBus.subscribe('playerDamaged', () => { calls.push('other'); });
+
+		world.eventBus.publish('playerDamaged', { entityId: 1, amount: 1 });
+		world.eventBus.publish('playerDamaged', { entityId: 1, amount: 1 });
+
+		expect(calls).toEqual(['system', 'other', 'other']);
 	});
 });
 

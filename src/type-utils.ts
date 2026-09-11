@@ -8,7 +8,7 @@ import type { ScreenDefinition } from './screen-types';
 /**
  * Check if two types are exactly the same for overlapping keys
  */
-type ExactlyCompatible<T, U> = T extends U ? U extends T ? true : false : false;
+type ExactlyCompatible<T, U> = [T] extends [U] ? [U] extends [T] ? true : false : false;
 
 /**
  * Check if two record types are compatible (no conflicting keys).
@@ -17,11 +17,11 @@ type ExactlyCompatible<T, U> = T extends U ? U extends T ? true : false : false;
 export type TypesAreCompatible<T extends Record<string, any>, U extends Record<string, any>> =
 	[keyof T & keyof U] extends [never]
 		? true  // No overlapping keys = compatible
-		: {
+		: [{
 			[K in keyof T & keyof U]: ExactlyCompatible<T[K], U[K]>;
-		}[keyof T & keyof U] extends false
-			? false
-			: true;
+		}[keyof T & keyof U]] extends [true]
+			? true
+			: false;
 
 // ==================== WorldConfig ====================
 
@@ -152,6 +152,21 @@ export type ConflictingSlot<A extends WorldConfig, B extends WorldConfig> =
 	| (TypesAreCompatible<A['assets'], B['assets']> extends true ? never : 'assets')
 	| (TypesAreCompatible<A['screens'], B['screens']> extends true ? never : 'screens');
 
+type RequirementSlotSatisfied<
+	Accumulated extends Record<string, any>,
+	Required extends Record<string, any>,
+> = [keyof Required] extends [keyof Accumulated]
+	// A requirement is a contract the accumulated world must satisfy. The
+	// accumulated value may be narrower (for example, a literal collision
+	// layer satisfying a string-valued dependency), but it may not be wider or
+	// otherwise incompatible with the required value.
+	? {
+		[K in keyof Required]: Accumulated[K & keyof Accumulated];
+	} extends Required
+		? true
+		: false
+	: false;
+
 /**
  * Union of WorldConfig slots where Required has keys not present in
  * Accumulated. Empty (`never`) when all requirements are satisfied.
@@ -160,11 +175,11 @@ export type MissingRequirementSlot<
 	Accumulated extends WorldConfig,
 	Required extends WorldConfig,
 > =
-	| (keyof Required['components'] extends keyof Accumulated['components'] ? never : 'components')
-	| (keyof Required['events'] extends keyof Accumulated['events'] ? never : 'events')
-	| (keyof Required['resources'] extends keyof Accumulated['resources'] ? never : 'resources')
-	| (keyof Required['assets'] extends keyof Accumulated['assets'] ? never : 'assets')
-	| (keyof Required['screens'] extends keyof Accumulated['screens'] ? never : 'screens');
+	| (RequirementSlotSatisfied<Accumulated['components'], Required['components']> extends true ? never : 'components')
+	| (RequirementSlotSatisfied<Accumulated['events'], Required['events']> extends true ? never : 'events')
+	| (RequirementSlotSatisfied<Accumulated['resources'], Required['resources']> extends true ? never : 'resources')
+	| (RequirementSlotSatisfied<Accumulated['assets'], Required['assets']> extends true ? never : 'assets')
+	| (RequirementSlotSatisfied<Accumulated['screens'], Required['screens']> extends true ? never : 'screens');
 
 /**
  * Check if two WorldConfig types are compatible (no conflicting keys
@@ -176,6 +191,9 @@ export type ConfigsAreCompatible<A extends WorldConfig, B extends WorldConfig> =
 /**
  * Check if a Requires config is satisfied by an Accumulated config.
  * Checks all five WorldConfig slots (components, events, resources, assets, screens).
+ * Requirement values use world-to-requirement assignability: a narrower
+ * accumulated value may satisfy a broader dependency contract, but an
+ * incompatible or wider accumulated value does not.
  * When Required is EmptyConfig, all slots have `keyof {} = never`,
  * and `never extends X = true`, so empty requirements are always satisfied.
  */

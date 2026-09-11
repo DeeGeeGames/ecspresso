@@ -126,6 +126,18 @@ function topologicalSort<K extends string>(
  */
 type ContextArgs<Context> = unknown extends Context ? [context?: Context] : [context: Context];
 
+function asError(value: unknown): Error {
+	return value instanceof Error ? value : new Error(String(value));
+}
+
+function aggregateErrors(errors: readonly unknown[], message: string): Error {
+	if (errors.length === 1) {
+		const error = errors[0];
+		return asError(error);
+	}
+	return new AggregateError(errors, message);
+}
+
 export default
 class ResourceManager<
 	ResourceTypes extends Record<string, any> = Record<string, any>,
@@ -136,6 +148,18 @@ class ResourceManager<
 	private resourceDependencies: Map<keyof ResourceTypes, readonly (keyof ResourceTypes & string)[]> = new Map();
 	private resourceDisposers: Map<keyof ResourceTypes, (resource: any, context: Context) => void | Promise<void>> = new Map();
 	private initializedResourceKeys: Set<keyof ResourceTypes> = new Set();
+	/** In-flight factory calls, preventing duplicate initialization and late races. */
+	private pendingInitializations: Map<keyof ResourceTypes, Promise<void>> = new Map();
+	/** Resources currently inside an onDispose callback. */
+	private disposingResourceKeys: Set<keyof ResourceTypes> = new Set();
+	/** Shared promise for concurrent disposeResources() calls. */
+	private disposePromise: Promise<void> | undefined;
+	/** Prevent new factories from starting or storing values after world teardown begins. */
+	private closed = false;
+	/** Prevent a late factory result from repopulating a manager that was cleared. */
+	private cleared = false;
+	/** Non-zero while an onDispose callback is running. */
+	private disposalCallbackDepth = 0;
 	private _changeSubscribers: Map<keyof ResourceTypes, Set<(newValue: any, oldValue: any) => void>> = new Map();
 	/** Shallow snapshots of observed resources, keyed by resource key */
 	private _observedSnapshots: Map<keyof ResourceTypes, Record<string, unknown>> = new Map();
@@ -161,6 +185,9 @@ class ResourceManager<
 			| ResourceFactoryWithDeps<ResourceTypes[K], Context, keyof ResourceTypes & string>
 			| ResourceDirectValue<ResourceTypes[K]>,
 	) {
+		if (this.closed) {
+			throw new Error('ResourceManager is closed');
+		}
 		const storeValue = (value: unknown) => {
 			this.resources.set(label, value);
 			this.initializedResourceKeys.add(label);
@@ -217,10 +244,8 @@ class ResourceManager<
 		...args: ContextArgs<Context>
 	): ResourceTypes[K] {
 		// Check if we already have the initialized resource
-		const resource = this.resources.get(label);
-		if (resource !== undefined) {
-			return resource;
-		}
+		if (this.resources.has(label)) return this.resources.get(label) as ResourceTypes[K];
+		if (this.closed) throw new Error('ResourceManager is closed');
 
 		// Check if we have a factory for this resource
 		const factory = this.resourceFactories.get(label);
@@ -236,6 +261,25 @@ class ResourceManager<
 		if (!(initializedResource instanceof Promise)) {
 			this.resources.set(label, initializedResource);
 			this.initializedResourceKeys.add(label);
+		} else {
+			const initialization = initializedResource.then(value => {
+				if (this.cleared) return;
+				this.resources.set(label, value);
+				this.initializedResourceKeys.add(label);
+			});
+			this.pendingInitializations.set(label, initialization);
+			initialization.then(
+				() => {
+					if (this.pendingInitializations.get(label) === initialization) {
+						this.pendingInitializations.delete(label);
+					}
+				},
+				() => {
+					if (this.pendingInitializations.get(label) === initialization) {
+						this.pendingInitializations.delete(label);
+					}
+				},
+			);
 		}
 
 		return initializedResource;
@@ -305,14 +349,37 @@ class ResourceManager<
 		label: K,
 		...args: ContextArgs<Context>
 	): Promise<void> {
+		if (this.closed) return;
 		if (!this.resourceFactories.has(label) || this.initializedResourceKeys.has(label)) {
+			return;
+		}
+		const pending = this.pendingInitializations.get(label);
+		if (pending) {
+			await pending;
 			return;
 		}
 
 		const factory = this.resourceFactories.get(label);
 		if (!factory) return;
 		const context = args[0] as Context;
+		const initialization = this.initializeResourceValue(label, factory, context);
+		this.pendingInitializations.set(label, initialization);
+		try {
+			await initialization;
+		} finally {
+			if (this.pendingInitializations.get(label) === initialization) {
+				this.pendingInitializations.delete(label);
+			}
+		}
+	}
+
+	private async initializeResourceValue<K extends keyof ResourceTypes>(
+		label: K,
+		factory: (context: Context) => ResourceTypes[K] | Promise<ResourceTypes[K]>,
+		context: Context,
+	): Promise<void> {
 		const initializedResource = await factory(context);
+		if (this.cleared) return;
 		this.resources.set(label, initializedResource);
 		this.initializedResourceKeys.add(label);
 		this.resourceFactories.delete(label);
@@ -370,29 +437,46 @@ class ResourceManager<
 		label: K,
 		...args: ContextArgs<Context>
 	): Promise<boolean> {
+		const pending = this.pendingInitializations.get(label);
+		if (pending) {
+			await pending;
+		}
 		if (!this.resources.has(label) && !this.resourceFactories.has(label)) {
 			return false;
 		}
+		if (this.disposingResourceKeys.has(label)) return false;
 
-		// Only call onDispose if the resource was initialized
-		if (this.initializedResourceKeys.has(label)) {
-			const disposer = this.resourceDisposers.get(label);
-			const resource = this.resources.get(label);
-			if (disposer && resource !== undefined) {
-				const context = args[0] as Context;
-				await disposer(resource, context);
+		this.disposingResourceKeys.add(label);
+		try {
+			// Only call onDispose if the resource was initialized. Keep the resource
+			// maps intact until the callback completes so it can read dependencies.
+			if (this.initializedResourceKeys.has(label)) {
+				const disposer = this.resourceDisposers.get(label);
+				const resource = this.resources.get(label);
+				if (disposer && this.resources.has(label)) {
+					const context = args[0] as Context;
+					this.disposalCallbackDepth++;
+					try {
+						await disposer(resource, context);
+					} finally {
+						this.disposalCallbackDepth--;
+					}
+				}
 			}
+
+			return true;
+		} finally {
+			// Clean up all tracking after the callback, including when it throws, so
+			// a failed disposal cannot be repeated on a later call.
+			this.resources.delete(label);
+			this.resourceFactories.delete(label);
+			this.resourceDependencies.delete(label);
+			this.resourceDisposers.delete(label);
+			this.initializedResourceKeys.delete(label);
+			this._changeSubscribers.delete(label);
+			this._observedSnapshots.delete(label);
+			this.disposingResourceKeys.delete(label);
 		}
-
-		// Clean up all tracking
-		this.resources.delete(label);
-		this.resourceFactories.delete(label);
-		this.resourceDependencies.delete(label);
-		this.resourceDisposers.delete(label);
-		this.initializedResourceKeys.delete(label);
-		this._changeSubscribers.delete(label);
-
-		return true;
 	}
 
 	/**
@@ -495,20 +579,78 @@ class ResourceManager<
 	async disposeResources(
 		...args: ContextArgs<Context>
 	): Promise<void> {
-		// Get only initialized resource keys
+		if (this.disposalCallbackDepth > 0) return;
+		if (this.disposePromise) {
+			await this.disposePromise;
+			return;
+		}
+
+		const disposal = this.disposeResourcesInternal(...args);
+		this.disposePromise = disposal;
+		disposal.then(
+			() => {
+				if (this.disposePromise === disposal) this.disposePromise = undefined;
+			},
+			() => {
+				if (this.disposePromise === disposal) this.disposePromise = undefined;
+			},
+		);
+		try {
+			await disposal;
+		} finally {
+			if (this.disposePromise === disposal) {
+				this.disposePromise = undefined;
+			}
+		}
+	}
+
+	private async disposeResourcesInternal(
+		...args: ContextArgs<Context>
+	): Promise<void> {
+		const pending = Array.from(this.pendingInitializations.values());
+		const initializationResults = await Promise.allSettled(pending);
+		const errors = initializationResults
+			.filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+			.map(result => result.reason);
+
+		// Get only initialized resource keys after pending factories have settled.
 		const initializedKeys = Array.from(this.initializedResourceKeys);
-
-		if (initializedKeys.length === 0) return;
-
-		// Sort in dependency order, then reverse for disposal
 		const sortedKeys = topologicalSort(
 			initializedKeys as readonly (keyof ResourceTypes & string)[],
 			(key) => [...(this.resourceDependencies.get(key) ?? [])]
 		).reverse();
 
-		// Dispose in reverse dependency order
+		// Dispose in reverse dependency order and continue after individual failures.
 		for (const key of sortedKeys) {
-			await this.disposeResource(key, ...args);
+			try {
+				await this.disposeResource(key, ...args);
+			} catch (error) {
+				errors.push(error);
+			}
 		}
+
+		if (errors.length > 0) {
+			throw aggregateErrors(errors, 'One or more resources failed to initialize or dispose');
+		}
+	}
+
+	/** @internal Prevent new factory work while the owning world is tearing down. */
+	close(): void {
+		this.closed = true;
+	}
+
+	/** @internal Release uninitialized factories and any remaining manager state. */
+	clear(): void {
+		this.closed = true;
+		this.cleared = true;
+		this.resources.clear();
+		this.resourceFactories.clear();
+		this.resourceDependencies.clear();
+		this.resourceDisposers.clear();
+		this.initializedResourceKeys.clear();
+		this.pendingInitializations.clear();
+		this.disposingResourceKeys.clear();
+		this._changeSubscribers.clear();
+		this._observedSnapshots.clear();
 	}
 }

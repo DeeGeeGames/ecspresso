@@ -335,7 +335,8 @@ world.addSystem('spawner').inScreens(['playing']).setProcess(({ ecs }) => {
 
 ## Plugin Lifecycle
 
-`install` receives `(world, onCleanup)` — register disposers that run on uninstall or dispose.
+`install` receives `(world, onCleanup)` — register synchronous or asynchronous
+disposers that run on uninstall or world disposal.
 
 ```typescript
 definePlugin('legend').install((world, onCleanup) => {
@@ -346,7 +347,15 @@ definePlugin('legend').install((world, onCleanup) => {
 });
 
 ecs.uninstallPlugin('legend');  // runs registered cleanups in reverse order
-ecs.dispose();                   // uninstalls every plugin in reverse install order
+await ecs.dispose();             // complete asynchronous world teardown
 ```
 
-`dispose()` does not call `disposeResources()` — resource teardown is async and handled separately.
+`uninstallPlugin()` remains synchronous and only runs that plugin's registered
+cleanup callbacks; it does not remove systems or other registrations made by
+the plugin. If a standalone uninstall callback is asynchronous, the library
+observes and reports its rejection but the boolean-returning API does not wait
+for it. `await dispose()` runs all plugin cleanups, detaches all systems,
+removes entities and commands, exits active screens, and disposes initialized
+resources in reverse dependency order. Lazy resources are not created for
+disposal. The promise rejects after remaining cleanup finishes if a disposer
+fails, and repeated or concurrent disposal calls share the teardown.

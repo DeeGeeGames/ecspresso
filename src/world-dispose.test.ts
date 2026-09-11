@@ -1,0 +1,290 @@
+import { describe, expect, test } from 'bun:test';
+import ECSpresso from './ecspresso';
+import { definePlugin } from './plugin';
+import type { WorldConfigFrom } from './type-utils';
+
+type Components = {
+	resource: { id: number };
+};
+
+type Events = {
+	ping: void;
+};
+
+type Resources = {
+	base: { value: number };
+	child: { value: number };
+	lazy: number;
+};
+
+type Config = WorldConfigFrom<Components, Events, Resources>;
+type PendingConfig = WorldConfigFrom<Components, Events, { base: number; child: { value: number }; lazy: number }>;
+
+describe('world disposal', () => {
+	test('awaits cleanup, removes entities, detaches systems, and becomes inert', async () => {
+		const resourceOrder: string[] = [];
+		const componentDisposals: number[] = [];
+		let processCalls = 0;
+		let systemEvents = 0;
+		let directEvents = 0;
+		let detachCalls = 0;
+		let releaseDetach: (() => void) | undefined;
+		const detachGate = new Promise<void>(resolve => {
+			releaseDetach = resolve;
+		});
+
+		const world = ECSpresso.create<Config>()
+			.withResource('base', {
+				factory: () => ({ value: 1 }),
+				onDispose: (_resource, ecs) => {
+					resourceOrder.push('base');
+					expect(ecs.hasResource('base')).toBe(true);
+					expect(ecs.hasResource('child')).toBe(false);
+				},
+			})
+			.withResource('child', {
+				dependsOn: ['base'],
+				factory: () => ({ value: 2 }),
+				onDispose: (_resource, ecs) => {
+					resourceOrder.push('child');
+					expect(ecs.getResource('base')).toEqual({ value: 1 });
+				},
+			})
+			.withResource('lazy', () => {
+				throw new Error('lazy resource was initialized during disposal');
+			})
+			.build();
+
+		world.registerDispose('resource', ({ entityId }) => {
+			componentDisposals.push(entityId);
+		});
+		world.addSystem('cleanup-system')
+			.setProcess(() => { processCalls++; })
+			.setEventHandlers({
+				ping: () => { systemEvents++; },
+			})
+			.setOnDetach(async ecs => {
+				expect(ecs.hasResource('base')).toBe(true);
+				await detachGate;
+				detachCalls++;
+			});
+
+		await world.initializeResources('base', 'child');
+		const entity = world.spawn({ resource: { id: 1 } });
+		world.on('ping', () => { directEvents++; });
+		world.eventBus.publish('ping');
+		world.update(0.016);
+		world.commands.spawn({ resource: { id: 2 } });
+
+		expect(systemEvents).toBe(1);
+		expect(directEvents).toBe(1);
+		expect(processCalls).toBe(1);
+
+		const disposal = world.dispose();
+		expect(world.dispose()).toBe(disposal);
+		expect(world.commands.length).toBe(0);
+		expect(detachCalls).toBe(0);
+		world.update(0.016);
+		expect(processCalls).toBe(1);
+
+		releaseDetach?.();
+		await disposal;
+
+		expect(detachCalls).toBe(1);
+		expect(componentDisposals).toEqual([entity.id]);
+		expect(world.entityCount).toBe(0);
+		expect(resourceOrder).toEqual(['child', 'base']);
+		expect(world.resourceNeedsInitialization('lazy')).toBe(false);
+		expect(world.commands.length).toBe(0);
+
+		world.eventBus.publish('ping');
+		world.commands.spawn({ resource: { id: 3 } });
+		expect(systemEvents).toBe(1);
+		expect(directEvents).toBe(1);
+		expect(world.commands.length).toBe(0);
+		expect(() => world.addSystem('after-dispose')).toThrow(/disposed/);
+	});
+
+	test('does not finalize pending systems or invoke their initialization', async () => {
+		let initialized = false;
+		const world = new ECSpresso<Config>();
+		world.addSystem('pending').setOnInitialize(() => {
+			initialized = true;
+		});
+
+		await world.dispose();
+
+		expect(initialized).toBe(false);
+		expect(world.entityCount).toBe(0);
+	});
+
+	test('closes the exposed entity manager during teardown', async () => {
+		const world = new ECSpresso<Config>();
+		const disposal = world.dispose();
+
+		expect(() => world.entityManager.createEntity()).toThrow(/closed/);
+		await disposal;
+	});
+
+	test('stops the current update when disposal starts inside a system', async () => {
+		const phases: string[] = [];
+		const world = new ECSpresso<Config>();
+		world.addSystem('dispose-in-update')
+			.inPhase('preUpdate')
+			.setProcess(() => {
+				phases.push('pre');
+				void world.dispose();
+			});
+		world.addSystem('later-update')
+			.inPhase('update')
+			.setProcess(() => { phases.push('update'); });
+
+		world.update(0.016);
+		await world.dispose();
+
+		expect(phases).toEqual(['pre']);
+	});
+
+	test('waits for an asynchronous detach already started by removeSystem', async () => {
+		let releaseDetach: (() => void) | undefined;
+		let detachFinished = false;
+		const detachGate = new Promise<void>(resolve => {
+			releaseDetach = resolve;
+		});
+		const world = new ECSpresso<Config>();
+		world.addSystem('removed-before-dispose').setOnDetach(async () => {
+			await detachGate;
+			detachFinished = true;
+		});
+		world.update(0);
+
+		expect(world.removeSystem('removed-before-dispose')).toBe(true);
+		const disposal = world.dispose();
+		expect(detachFinished).toBe(false);
+		releaseDetach?.();
+		await disposal;
+		expect(detachFinished).toBe(true);
+	});
+
+	test('waits for an in-flight resource factory without creating lazy resources', async () => {
+		let resolveResource: ((value: number) => void) | undefined;
+		let factoryCalls = 0;
+		let disposalCalls = 0;
+		const pendingResource = new Promise<number>(resolve => {
+			resolveResource = resolve;
+		});
+		const world = ECSpresso.create<PendingConfig>()
+			.withResource('base', {
+				factory: () => {
+					factoryCalls++;
+					return pendingResource;
+				},
+				onDispose: () => { disposalCalls++; },
+			})
+			.build();
+
+		const initialization = world.initializeResources('base');
+		const disposal = world.dispose();
+		resolveResource?.(7);
+
+		await initialization;
+		await disposal;
+
+		expect(factoryCalls).toBe(1);
+		expect(disposalCalls).toBe(1);
+	});
+
+	test('does not initialize systems after disposal interrupts initialize()', async () => {
+		let resolveResource: ((value: number) => void) | undefined;
+		let initializeCalls = 0;
+		const pendingResource = new Promise<number>(resolve => {
+			resolveResource = resolve;
+		});
+		const world = ECSpresso.create<PendingConfig>()
+			.withResource('base', () => pendingResource)
+			.build();
+		world.addSystem('late-initializer').setOnInitialize(() => {
+			initializeCalls++;
+		});
+
+		const initialization = world.initialize();
+		const disposal = world.dispose();
+		resolveResource?.(1);
+
+		await initialization;
+		await disposal;
+		expect(initializeCalls).toBe(0);
+	});
+
+	test('exits the active screen stack during world disposal', async () => {
+		const exits: string[] = [];
+		const world = ECSpresso.create()
+			.withScreens(screens => screens
+				.add('base', {
+					initialState: () => ({}),
+					onExit: async () => { exits.push('base'); },
+				})
+				.add('overlay', {
+					initialState: () => ({}),
+					onExit: async () => { exits.push('overlay'); },
+				})
+			)
+			.build();
+
+		await world.initialize();
+		await world.setScreen('base', {});
+		await world.pushScreen('overlay', {});
+		await world.dispose();
+
+		expect(exits).toEqual(['overlay', 'base']);
+		expect(world.getCurrentScreen()).toBe(null);
+		expect(world.getScreenStackDepth()).toBe(0);
+	});
+
+	test('surfaces resource disposal failures after finishing remaining cleanup', async () => {
+		const disposed: string[] = [];
+		const world = ECSpresso.create<Config>()
+			.withResource('base', {
+				factory: () => ({ value: 1 }),
+				onDispose: () => {
+					disposed.push('base');
+					throw new Error('base disposal failed');
+				},
+			})
+			.withResource('child', {
+				dependsOn: ['base'],
+				factory: () => ({ value: 2 }),
+				onDispose: () => { disposed.push('child'); },
+			})
+			.build();
+
+		await world.initializeResources('base', 'child');
+		await expect(world.dispose()).rejects.toThrow('base disposal failed');
+		expect(disposed).toEqual(['child', 'base']);
+
+		await world.dispose();
+		expect(disposed).toEqual(['child', 'base']);
+	});
+
+	test('awaits asynchronous plugin cleanup callbacks', async () => {
+		let releaseCleanup: (() => void) | undefined;
+		let cleanupCalls = 0;
+		const cleanupGate = new Promise<void>(resolve => {
+			releaseCleanup = resolve;
+		});
+		const plugin = definePlugin('async-cleanup').install((_world, onCleanup) => {
+			onCleanup(async () => {
+				await cleanupGate;
+				cleanupCalls++;
+			});
+		});
+		const world = ECSpresso.create().withPlugin(plugin).build();
+
+		const disposal = world.dispose();
+		expect(cleanupCalls).toBe(0);
+		releaseCleanup?.();
+		await disposal;
+
+		expect(cleanupCalls).toBe(1);
+	});
+});

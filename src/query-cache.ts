@@ -169,6 +169,13 @@ export default class QueryCache<ComponentTypes> {
 			for (const cid of children) entry.members.delete(cid);
 		}
 	}
+
+	/** @internal Release all cached query shapes and entity memberships. */
+	clear(): void {
+		this.caches.clear();
+		this.byComp.clear();
+		this.byParentComp.clear();
+	}
 }
 
 function pushTo<K, V>(map: Map<K, V[]>, key: K, value: V): void {

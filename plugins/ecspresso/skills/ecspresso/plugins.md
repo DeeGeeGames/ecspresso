@@ -45,7 +45,16 @@ const physicsPlugin = definePlugin('physics')
   });
 ```
 
-`install` receives `(world, onCleanup)`. `onCleanup(fn)` registers a disposer that runs (in reverse order) when `world.uninstallPlugin(id)` or `world.dispose()` is called. Declaring just `(world) => { ... }` is still valid — the second parameter is optional.
+`install` receives `(world, onCleanup)`. `onCleanup(fn)` registers a
+sync or async disposer that runs (in reverse order) when
+`world.uninstallPlugin(id)` or `world.dispose()` is called. Declaring just
+`(world) => { ... }` is still valid — the second parameter is optional.
+
+`world.uninstallPlugin(id)` is synchronous and only runs that plugin's
+registered cleanup callbacks; it does not remove systems or other registrations
+made by the plugin. `await world.dispose()` performs complete asynchronous
+world teardown and waits for registered async cleanup, system detachment, and
+initialized resource disposal.
 
 The builder mirrors `ECSpresso.create()`:
 - `.withComponentTypes<T>()`, `.withEventTypes<T>()`, `.withResourceTypes<T>()`, `.withAssetTypes<T>()`, `.withScreenTypes<T>()` — declare types this plugin provides

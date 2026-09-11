@@ -22,6 +22,7 @@ export default class CommandBuffer<
 	Cfg extends WorldConfig = EmptyConfig,
 > {
 	private commands: Array<(ecs: ECSpresso<Cfg>) => void> = [];
+	private closed = false;
 
 	/**
 	 * @param parent Owning ECS instance, used to read the active scope hint at
@@ -36,7 +37,7 @@ export default class CommandBuffer<
 	 * @param options Optional removal options (cascade, etc.)
 	 */
 	removeEntity(entityId: number, options?: RemoveEntityOptions): void {
-		this.commands.push((ecs) => {
+		this.enqueue((ecs) => {
 			ecs.removeEntity(entityId, options);
 		});
 	}
@@ -52,7 +53,7 @@ export default class CommandBuffer<
 		componentName: K,
 		componentValue: Cfg['components'][K]
 	): void {
-		this.commands.push((ecs) => {
+		this.enqueue((ecs) => {
 			ecs.addComponent(entityId, componentName, componentValue);
 		});
 	}
@@ -66,7 +67,7 @@ export default class CommandBuffer<
 		entityId: number,
 		componentName: K
 	): void {
-		this.commands.push((ecs) => {
+		this.enqueue((ecs) => {
 			ecs.removeComponent(entityId, componentName);
 		});
 	}
@@ -81,7 +82,7 @@ export default class CommandBuffer<
 		options?: { scope?: (keyof Cfg['screens'] & string) | null }
 	): void {
 		const resolved = this._resolveScope(options);
-		this.commands.push((ecs) => {
+		this.enqueue((ecs) => {
 			ecs.spawn(components, resolved);
 		});
 	}
@@ -97,7 +98,7 @@ export default class CommandBuffer<
 		options?: { scope?: (keyof Cfg['screens'] & string) | null }
 	): void {
 		const resolved = this._resolveScope(options);
-		this.commands.push((ecs) => {
+		this.enqueue((ecs) => {
 			ecs.spawnChild(parentId, components, resolved);
 		});
 	}
@@ -126,7 +127,7 @@ export default class CommandBuffer<
 		entityId: number,
 		components: T & Record<Exclude<keyof T, keyof Cfg['components']>, never>
 	): void {
-		this.commands.push((ecs) => {
+		this.enqueue((ecs) => {
 			ecs.addComponents(entityId, components);
 		});
 	}
@@ -137,7 +138,7 @@ export default class CommandBuffer<
 	 * @param parentId The parent entity ID
 	 */
 	setParent(childId: number, parentId: number): void {
-		this.commands.push((ecs) => {
+		this.enqueue((ecs) => {
 			ecs.setParent(childId, parentId);
 		});
 	}
@@ -155,14 +156,14 @@ export default class CommandBuffer<
 		componentName: K,
 		mutator: (value: Cfg['components'][K]) => void
 	): void {
-		this.commands.push((ecs) => {
+		this.enqueue((ecs) => {
 			ecs.mutateComponent(entityId, componentName, mutator);
 		});
 	}
 
 	/** Queue a markChanged command for playback. */
 	markChanged<K extends keyof Cfg['components']>(entityId: number, componentName: K): void {
-		this.commands.push((ecs) => {
+		this.enqueue((ecs) => {
 			ecs.markChanged(entityId, componentName);
 		});
 	}
@@ -172,7 +173,7 @@ export default class CommandBuffer<
 	 * @param childId The child entity ID
 	 */
 	removeParent(childId: number): void {
-		this.commands.push((ecs) => {
+		this.enqueue((ecs) => {
 			ecs.removeParent(childId);
 		});
 	}
@@ -185,6 +186,7 @@ export default class CommandBuffer<
 	playback(
 		ecs: ECSpresso<Cfg>
 	): void {
+		if (this.closed) return;
 		// Execute all commands, catching errors to prevent one bad command from stopping all playback
 		for (const command of this.commands) {
 			try {
@@ -205,6 +207,17 @@ export default class CommandBuffer<
 	 */
 	clear(): void {
 		this.commands.length = 0;
+	}
+
+	/** @internal Discard queued commands and reject future queueing after world disposal. */
+	close(): void {
+		this.clear();
+		this.closed = true;
+	}
+
+	private enqueue(command: (ecs: ECSpresso<Cfg>) => void): void {
+		if (this.closed) return;
+		this.commands.push(command);
 	}
 
 	/**

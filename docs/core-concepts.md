@@ -169,4 +169,22 @@ await world.disposeResource('keyboard');     // Dispose a single resource
 await world.disposeResources();              // All, in reverse dependency order
 ```
 
-`onDispose` receives the resource value and the ECSpresso instance. Supports sync and async callbacks. Only initialized resources have their `onDispose` called. `removeResource()` still exists for removal without disposal.
+`onDispose` receives the resource value and the ECSpresso instance. It
+supports sync and async callbacks, and only initialized resources have their
+`onDispose` called. `removeResource()` still exists for removal without
+disposal.
+
+For complete teardown, use the single idempotent world operation:
+
+```typescript
+await world.dispose();
+```
+
+It stops updates and new registrations immediately, detaches systems, removes
+entities and their components, discards queued commands, runs plugin cleanups,
+exits active screens, and disposes initialized resources in reverse dependency
+order. Lazy resources are not created just to dispose them. Cleanup continues
+after independent disposer failures; the returned promise rejects after the
+remaining cleanup completes. Repeated or concurrent calls await the same
+teardown. `disposeResource()` and `disposeResources()` remain available for
+partial resource teardown before the world is disposed.

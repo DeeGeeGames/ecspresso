@@ -39,7 +39,7 @@ export type StartOptions = {
 	onCountChange: (count: number) => void;
 };
 
-export async function startECSpresso(options: StartOptions): Promise<() => void> {
+export async function startECSpresso(options: StartOptions): Promise<() => Promise<void>> {
 	const layers = defineCollisionLayers({ ball: ['ball'] });
 
 	const ecs = ECSpresso.create()
@@ -193,7 +193,7 @@ export async function startECSpresso(options: StartOptions): Promise<() => void>
 		maxSystemsShown: 8,
 	});
 
-	return function destroy() {
+	return async function destroy() {
 		canvas.removeEventListener('pointerdown', onPointerDown);
 		canvas.removeEventListener('pointermove', onPointerMove);
 		canvas.removeEventListener('pointerup', onPointerUp);
@@ -201,7 +201,7 @@ export async function startECSpresso(options: StartOptions): Promise<() => void>
 		cleanupOverlay();
 		cleanupCountInput();
 		cleanupToggle();
-		ecs.dispose();
+		await ecs.dispose();
 		ballTextures.forEach(t => t.destroy(true));
 		pixiApp.destroy(true, { children: true, texture: true });
 	};

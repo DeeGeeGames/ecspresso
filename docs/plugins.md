@@ -90,14 +90,25 @@ const inputPlugin = definePlugin('input')
   });
 ```
 
-Disposers run in reverse registration order. A failing disposer does not prevent later ones from running.
+Disposers run in reverse registration order. They may be synchronous or
+return a promise. A failing disposer does not prevent later cleanup from
+running; `await world.dispose()` rejects after the remaining world teardown is
+complete.
 
 ### Uninstalling plugins at runtime
 
 ```typescript
 world.uninstallPlugin('input');  // runs cleanup disposers, returns true if found
-world.dispose();                 // uninstalls all plugins, then cleans up world state
+await world.dispose();           // full, asynchronous world teardown
 ```
+
+`uninstallPlugin()` remains a synchronous plugin-cleanup operation and does
+not remove systems or other registrations that the plugin installed. An async
+cleanup started by standalone `uninstallPlugin()` is observed and reported by
+the library but is not awaited by that boolean-returning API. World disposal
+does await registered async plugin cleanups and detaches every remaining
+system; automatic per-plugin ownership and uninstall-time removal of every
+registration is a separate feature.
 
 ## Choosing Plugins or Application Registration
 

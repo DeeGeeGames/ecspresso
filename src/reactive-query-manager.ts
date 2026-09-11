@@ -141,6 +141,12 @@ export default class ReactiveQueryManager<Cfg extends WorldConfig, QueryNames ex
 		return result;
 	}
 
+	/** @internal Release query definitions and their entity tracking. */
+	clear(): void {
+		this.queries.clear();
+		this._hasParentHasQueries = false;
+	}
+
 	private entityMatchesQuery(
 		entity: Entity<Cfg['components']>,
 		definition: StoredReactiveQueryDefinition<Cfg>

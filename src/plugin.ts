@@ -16,8 +16,10 @@ import type {
  * Registrar passed as the second argument to a plugin's `install` function.
  * Each registered disposer runs (in reverse order) when the plugin is
  * uninstalled via `world.uninstallPlugin(id)` or when `world.dispose()` is called.
+ * Disposers may return promises; world disposal awaits them.
  */
-export type PluginCleanupRegistrar = (fn: () => void) => void;
+export type PluginCleanup = (() => void) | (() => Promise<void>);
+export type PluginCleanupRegistrar = (fn: PluginCleanup) => void;
 
 /**
  * Plugin interface for ECSpresso. A plugin is a plain object with an `install`
