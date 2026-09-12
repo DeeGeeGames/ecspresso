@@ -377,7 +377,7 @@ ecs.addSystem('label')
   .runWhenEmpty()                            // run even with 0 matching entities
   .setOnEntityEnter('queryName', ({ entity, ecs }) => { ... })
   .setOnInitialize(async (ecs) => { ... })   // awaited during initialize(); late async hooks are tracked until disposal
-  .setOnDetach((ecs) => { ... })             // runs on system removal
+  .setOnDetach((ecs, cleanup) => { ... })    // cleanup.requestDisposal() can initiate teardown
   .setEventHandlers({
     playerDied: ({ data, ecs }) => { ... },  // live group/screen/asset gates; auto-subscribed
   })

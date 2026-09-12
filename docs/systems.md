@@ -99,10 +99,17 @@ The inline query definition accepts the full query shape (`with`, `without`, `op
 
 ## Extracted System Callbacks
 
-Use `SystemProcessFn` and `SystemLifecycleFn` when system callbacks are extracted into named helpers:
+Use `SystemProcessFn`, `SystemLifecycleFn`, and `SystemDetachFn` when system
+callbacks are extracted into named helpers:
 
 ```typescript
-import type { ConfigOf, QueryDefinition, SystemLifecycleFn, SystemProcessFn } from 'ecspresso';
+import type {
+  ConfigOf,
+  QueryDefinition,
+  SystemDetachFn,
+  SystemLifecycleFn,
+  SystemProcessFn,
+} from 'ecspresso';
 
 type GameConfig = ConfigOf<typeof game>;
 type MovementQueries = {
@@ -122,9 +129,14 @@ const initializeMovement: SystemLifecycleFn<GameConfig> = function initializeMov
   }));
 };
 
+const detachMovement: SystemDetachFn<GameConfig> = function detachMovement(_ecs, _cleanup) {
+  console.log('Movement system detached');
+};
+
 game.addSystem('movement')
   .addQuery('moving', { with: ['position', 'velocity'], mutates: ['position'] })
   .setOnInitialize(initializeMovement)
+  .setOnDetach(detachMovement)
   .setProcess(processMovement);
 ```
 
@@ -269,8 +281,9 @@ world.addSystem('gameSystem')
   .setOnInitialize(async (ecs) => {
     console.log('System starting...');
   })
-  .setOnDetach((ecs) => {
+  .setOnDetach((ecs, cleanup) => {
     console.log('System shutting down...');
+    // cleanup.requestDisposal(); // if this hook must initiate world teardown
   });
 
 await world.initialize();
@@ -280,7 +293,11 @@ await world.initialize();
 and logs a rejected promise; `await world.dispose()` detaches every registered
 system and every still-pending builder, without initializing pending builders,
 and waits for all asynchronous detach hooks before it resolves. System event
-handlers are also removed as part of detachment.
+handlers are also removed as part of detachment. A detach hook that needs to
+initiate world teardown calls its `CleanupControl.requestDisposal()` argument;
+external callers continue to await `world.dispose()` for complete cleanup and
+failure reporting.
+
 Systems that only declare event handlers are still attached and receive events
 whenever their live group, screen, and asset gates allow it; see
 [Events](./events.md).

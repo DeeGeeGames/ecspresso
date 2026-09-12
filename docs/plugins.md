@@ -93,11 +93,21 @@ const inputPlugin = definePlugin('input')
 Disposers run in reverse registration order. They may be synchronous or
 return a promise. A failing disposer does not prevent later cleanup from
 running; `await world.dispose()` rejects after the remaining world teardown is
-complete. A cleanup callback may call `await world.dispose()` again, including
-after an asynchronous suspension; that nested call resolves immediately so it
-does not wait on the callback that the outer disposal is already awaiting.
-Calls made outside cleanup remain pending on the complete world-teardown
-barrier.
+complete. Each disposer receives a `CleanupControl`. If cleanup needs to start
+world disposal, call `cleanup.requestDisposal()` rather than awaiting
+`world.dispose()` from inside the callback:
+
+```typescript
+onCleanup(async (cleanup) => {
+  await stopWorker();
+  cleanup.requestDisposal();
+});
+```
+
+The request is non-blocking because complete teardown includes the callback
+making it. Calls to `world.dispose()` made outside cleanup remain pending on
+the complete world-teardown barrier and receive any cleanup failure. This
+explicit control has the same semantics in browsers, Bun, and Node.
 
 ### Uninstalling plugins at runtime
 

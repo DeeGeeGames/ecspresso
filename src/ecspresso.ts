@@ -18,7 +18,7 @@ import type { AssetDefinition, AssetHandle, AssetEvents } from "./asset-types";
 import type { ScreenDefinition, ScreenEvents } from "./screen-types";
 import { ECSpressoBuilder } from "./ecspresso-builder";
 import type { WorldConfig, EmptyConfig, ConflictingSlot, MissingRequirementSlot } from "./type-utils";
-import { createDeferred, isCleanupReentry, withCleanupScope } from "./cleanup-context";
+import { createCleanupControl, createDeferred, type CleanupControl } from "./cleanup-control";
 
 /**
 	* Interface declaration for ECSpresso constructor to ensure type augmentation works properly.
@@ -42,6 +42,11 @@ const PHASE_ORDER: readonly SystemPhase[] = [
 ];
 
 type WorldLifecycleState = 'active' | 'disposing' | 'disposed';
+
+interface SystemDetachOperation {
+	readonly promise: Promise<void>;
+	trackedByDisposal: boolean;
+}
 
 function asError(value: unknown): Error {
 	return value instanceof Error ? value : new Error(String(value));
@@ -217,12 +222,16 @@ export default class ECSpresso<
 	private _initializePromise: Promise<void> | undefined;
 	/** Late system initialization promises that must settle before teardown completes */
 	private _pendingSystemInitializations: Set<Promise<void>> = new Set();
-	/** Detach promises started by removeSystem that must settle before teardown completes */
-	private _pendingSystemDetaches: Set<Promise<void>> = new Set();
+	/** Detach operations started by removeSystem that teardown must observe. */
+	private _pendingSystemDetaches: Set<SystemDetachOperation> = new Set();
+	/** Failed detaches that settled before world teardown reached its barrier. */
+	private _completedSystemDetachErrors: unknown[] = [];
 	/** Unsubscribers for lifecycle hooks installed on the entity manager */
 	private _lifecycleUnsubscribers: Array<() => void> = [];
 	/** Unsubscriber for the world-owned screen-exit cleanup handler */
 	private _screenExitUnsubscribe: (() => void) | undefined;
+	/** Portable non-blocking disposal capability supplied only to cleanup hooks. */
+	private readonly _cleanupControl: CleanupControl;
 
 	/**
 		* Creates a new ECSpresso instance.
@@ -230,7 +239,10 @@ export default class ECSpresso<
 	constructor() {
 		this._entityManager = new EntityManager<Cfg['components']>();
 		this._eventBus = new EventBus<Cfg['events']>();
-		this._resourceManager = new ResourceManager<Cfg['resources'], ECSpresso<Cfg>>();
+		this._cleanupControl = createCleanupControl(() => this.dispose());
+		this._resourceManager = new ResourceManager<Cfg['resources'], ECSpresso<Cfg>>(
+			() => this.dispose(),
+		);
 		this._reactiveQueryManager = new ReactiveQueryManager<Cfg, ReactiveQueryNames>(this._entityManager, this);
 		this._commandBuffer = new CommandBuffer<Cfg>(this);
 
@@ -910,7 +922,7 @@ export default class ECSpresso<
 			unsubscribe();
 		}
 		this._systemEventUnsubscribers.delete(system);
-		return withCleanupScope([this], () => system.onDetach?.(this));
+		return system.onDetach?.(this, this._cleanupControl);
 	}
 
 	private _detachSystemSafely(system: System<Cfg, any, any>): void | Promise<void> {
@@ -946,19 +958,33 @@ export default class ECSpresso<
 			console.error(`onDetach for system "${label}" rejected:`, error);
 			throw error;
 		});
-		this._pendingSystemDetaches.add(pending);
+		const operation: SystemDetachOperation = {
+			promise: pending,
+			trackedByDisposal: false,
+		};
+		this._pendingSystemDetaches.add(operation);
 		pending.then(
-			() => this._pendingSystemDetaches.delete(pending),
-			() => this._pendingSystemDetaches.delete(pending),
+			() => this._pendingSystemDetaches.delete(operation),
+			(error: unknown) => {
+				this._pendingSystemDetaches.delete(operation);
+				if (!operation.trackedByDisposal) {
+					this._completedSystemDetachErrors.push(error);
+				}
+			},
 		);
 	}
 
 	private async _awaitPendingSystemDetaches(errors: unknown[]): Promise<void> {
 		const pending = Array.from(this._pendingSystemDetaches);
-		const results = await Promise.allSettled(pending);
+		pending.forEach(operation => {
+			operation.trackedByDisposal = true;
+		});
+		const results = await Promise.allSettled(pending.map(operation => operation.promise));
 		for (const result of results) {
 			if (result.status === 'rejected') errors.push(result.reason);
 		}
+		errors.push(...this._completedSystemDetachErrors);
+		this._completedSystemDetachErrors = [];
 		this._pendingSystemDetaches.clear();
 	}
 
@@ -1037,10 +1063,7 @@ export default class ECSpresso<
 				const cleanup = cleanups[index];
 				if (!cleanup) continue;
 				try {
-					const result = withCleanupScope(
-						[this],
-						(): void | Promise<void> => cleanup.disposer(),
-					);
+					const result = cleanup.disposer(this._cleanupControl);
 					if (result instanceof Promise) {
 						return result.then(
 							() => runRemaining(index + 1),
@@ -1247,8 +1270,8 @@ export default class ECSpresso<
 	 * Dispose a single resource, calling its onDispose callback if defined
 	 * @param key The resource key to dispose
 	 * @returns True if the resource existed and was disposed, false if it didn't exist
-	 * External calls wait for an active bulk teardown; cleanup reentry returns
-	 * without waiting on the callback currently being awaited.
+	 * External calls wait for an active bulk teardown. An onDispose callback that
+	 * needs to initiate owner teardown must use its CleanupControl.
 	 */
 	async disposeResource<K extends keyof Cfg['resources']>(key: K): Promise<boolean> {
 		return this._resourceManager.disposeResource(key, this);
@@ -2445,7 +2468,7 @@ export default class ECSpresso<
 				const fn = disposers[i];
 				if (!fn) continue;
 				try {
-					const result = fn();
+					const result = fn(this._cleanupControl);
 					if (result instanceof Promise) {
 						result.catch((error: unknown) => {
 							console.warn(`Plugin '${id}' cleanup threw:`, error);
@@ -2466,16 +2489,12 @@ export default class ECSpresso<
 	 * promise. The world stops updating and accepting registrations immediately;
 	 * asynchronous system and resource cleanup completes before the promise
 	 * resolves. Uninitialized lazy resources are not created just to dispose them.
-	 * A cleanup callback may reenter disposal after suspension; that nested call
-	 * resolves immediately, while external concurrent callers await the full
-	 * teardown barrier.
+	 * Cleanup callbacks that need to initiate disposal use their supplied
+	 * CleanupControl. External concurrent callers await the full teardown barrier.
 	 */
 	dispose(): Promise<void> {
 		if (this._lifecycleState === 'disposed') return Promise.resolve();
-		if (this._disposePromise) {
-			if (isCleanupReentry(this)) return Promise.resolve();
-			return this._disposePromise;
-		}
+		if (this._disposePromise) return this._disposePromise;
 
 		this._lifecycleState = 'disposing';
 		this._eventBus.close();
@@ -2514,7 +2533,7 @@ export default class ECSpresso<
 
 		if (this._screenManager) {
 			try {
-				await withCleanupScope([this], () => this._screenManager?.dispose());
+				await this._screenManager.dispose();
 			} catch (error) {
 				errors.push(error);
 			}
@@ -2527,14 +2546,14 @@ export default class ECSpresso<
 			.map(entity => entity.id);
 		for (const entityId of entityIds) {
 			try {
-				withCleanupScope([this], () => this._entityManager.removeEntity(entityId));
+				this._entityManager.removeEntity(entityId);
 			} catch (error) {
 				errors.push(error);
 			}
 		}
 
 		try {
-			await withCleanupScope([this], () => this._resourceManager.disposeResources(this));
+			await this._resourceManager.disposeResources(this);
 		} catch (error) {
 			errors.push(error);
 		}

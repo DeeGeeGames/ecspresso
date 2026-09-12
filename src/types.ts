@@ -285,9 +285,11 @@ interface System<
 	/**
 	 * Lifecycle hook called when the system is detached from the ECS
 	 * @param ecs The ECSpresso instance providing access to all ECS functionality
+	 * @param cleanup Non-blocking capability for initiating world disposal
 	 */
 	onDetach?(
-		ecs: import("./ecspresso").default<Cfg>
+		ecs: import("./ecspresso").default<Cfg>,
+		cleanup: import("./cleanup-control").CleanupControl,
 	): void | Promise<void>;
 
 	/**

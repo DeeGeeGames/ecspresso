@@ -49,6 +49,8 @@ const physicsPlugin = definePlugin('physics')
 sync or async disposer that runs (in reverse order) when
 `world.uninstallPlugin(id)` or `world.dispose()` is called. Declaring just
 `(world) => { ... }` is still valid — the second parameter is optional.
+Each disposer receives a `CleanupControl`; use `cleanup.requestDisposal()` if
+the disposer itself must initiate world teardown.
 
 `world.uninstallPlugin(id)` is synchronous and only runs that plugin's
 registered cleanup callbacks; it does not remove systems or other registrations

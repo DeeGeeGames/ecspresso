@@ -1,12 +1,14 @@
-import { createDeferred, isCleanupReentry, withCleanupScope } from './cleanup-context';
+import { createCleanupControl, createDeferred, type CleanupControl } from './cleanup-control';
 
 /**
- * Resource factory with declared dependencies and optional disposal callback
+ * Resource factory with declared dependencies and optional disposal callback.
+ * The callback receives a CleanupControl for initiating owner disposal without
+ * waiting on its own teardown barrier.
  */
 export interface ResourceFactoryWithDeps<T, Context = unknown, D extends string = string> {
 	dependsOn?: readonly D[];
 	factory: (context: Context) => T | Promise<T>;
-	onDispose?: (resource: T, context: Context) => void | Promise<void>;
+	onDispose?: (resource: T, context: Context, cleanup: CleanupControl) => void | Promise<void>;
 }
 
 /** @internal */
@@ -132,10 +134,6 @@ function asError(value: unknown): Error {
 	return value instanceof Error ? value : new Error(String(value));
 }
 
-function isObjectLike(value: unknown): value is object {
-	return (typeof value === 'object' && value !== null) || typeof value === 'function';
-}
-
 function aggregateErrors(errors: readonly unknown[], message: string): Error {
 	if (errors.length === 1) {
 		const error = errors[0];
@@ -159,7 +157,7 @@ class ResourceManager<
 	private resources: Map<keyof ResourceTypes, any> = new Map();
 	private resourceFactories: Map<keyof ResourceTypes, (context: Context) => any | Promise<any>> = new Map();
 	private resourceDependencies: Map<keyof ResourceTypes, readonly (keyof ResourceTypes & string)[]> = new Map();
-	private resourceDisposers: Map<keyof ResourceTypes, (resource: any, context: Context) => void | Promise<void>> = new Map();
+	private resourceDisposers: Map<keyof ResourceTypes, (resource: any, context: Context, cleanup: CleanupControl) => void | Promise<void>> = new Map();
 	private initializedResourceKeys: Set<keyof ResourceTypes> = new Set();
 	/** In-flight factory calls, preventing duplicate initialization and late races. */
 	private pendingInitializations: Map<keyof ResourceTypes, Promise<void>> = new Map();
@@ -178,6 +176,8 @@ class ResourceManager<
 	private _changeSubscribers: Map<keyof ResourceTypes, Set<(newValue: any, oldValue: any) => void>> = new Map();
 	/** Shallow snapshots of observed resources, keyed by resource key */
 	private _observedSnapshots: Map<keyof ResourceTypes, Record<string, unknown>> = new Map();
+
+	constructor(private readonly requestOwnerDisposal?: () => Promise<unknown>) {}
 
 	/**
 	 * Add a resource to the manager.
@@ -452,8 +452,8 @@ class ResourceManager<
 	 * @param label The resource key to dispose
 	 * @param context Context to pass to the onDispose callback
 	 * @returns True if the resource existed and was disposed, false if it didn't exist
-	 * External calls wait for an active bulk teardown; cleanup reentry returns
-	 * without waiting on the callback currently being awaited.
+	 * External calls wait for an active bulk teardown. An onDispose callback that
+	 * needs to initiate owner teardown must use its CleanupControl.
 	 */
 	async disposeResource<K extends keyof ResourceTypes>(
 		label: K,
@@ -465,11 +465,9 @@ class ResourceManager<
 		}
 		const pendingDisposal = this.pendingDisposals.get(label);
 		if (pendingDisposal) {
-			if (isCleanupReentry(this)) return false;
 			return pendingDisposal.promise;
 		}
 		if (this.disposePromise) {
-			if (isCleanupReentry(this)) return false;
 			await this.disposePromise;
 			return false;
 		}
@@ -535,8 +533,10 @@ class ResourceManager<
 				const resource = this.resources.get(label);
 				if (disposer && this.resources.has(label)) {
 					const context = args[0] as Context;
-					const owners = isObjectLike(context) ? [this, context] : [this];
-					await withCleanupScope(owners, () => disposer(resource, context));
+					const startDisposal = this.requestOwnerDisposal
+						?? (() => this.disposeResources(...args));
+					const cleanup = createCleanupControl(startDisposal);
+					await disposer(resource, context, cleanup);
 				}
 			}
 
@@ -657,7 +657,6 @@ class ResourceManager<
 	async disposeResources(
 		...args: ContextArgs<Context>
 	): Promise<void> {
-		if (isCleanupReentry(this)) return;
 		if (this.disposePromise) {
 			await this.disposePromise;
 			return;

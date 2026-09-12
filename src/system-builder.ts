@@ -2,6 +2,7 @@ import type ECSpresso from "./ecspresso";
 import type { SystemDefaults } from "./system-registrar";
 import type { FilteredEntity, QueryDefinition, System, SystemPhase } from "./types";
 import type { WorldConfig, EmptyConfig } from "./type-utils";
+import type { CleanupControl } from "./cleanup-control";
 
 export const PROCESS_EACH_QUERY = '__each' as const;
 type ProcessEachKey = typeof PROCESS_EACH_QUERY;
@@ -22,7 +23,7 @@ export class SystemBuilder<
 	private queries: Queries = {} as Queries;
 	private singletons: Singletons = {} as Singletons;
 	private processFunction?: InternalProcessFunction<Cfg, Queries, Singletons>;
-	private detachFunction?: SystemLifecycleFn<Cfg>;
+	private detachFunction?: SystemDetachFn<Cfg>;
 	private initializeFunction?: SystemLifecycleFn<Cfg>;
 	private eventHandlers?: {
 		[EventName in keyof Cfg['events']]?: (ctx: {
@@ -461,11 +462,12 @@ export class SystemBuilder<
 	/**
 	 * Set the onDetach lifecycle hook
 	 * Called when the system is removed from the ECS
-	 * @param onDetach Function to run when this system is detached from the ECS
+	 * @param onDetach Function receiving the world and a CleanupControl when this
+	 * system is detached from the ECS
 	 * @returns This SystemBuilder instance for method chaining
 	 */
 	setOnDetach(
-		onDetach: SystemLifecycleFn<Cfg>
+		onDetach: SystemDetachFn<Cfg>
 	): this {
 		this.detachFunction = onDetach;
 		return this;
@@ -590,4 +592,13 @@ type InternalProcessFunction<
  */
 export type SystemLifecycleFn<Cfg extends WorldConfig> = (
 	ecs: ECSpresso<Cfg>,
+) => void | Promise<void>;
+
+/**
+ * Type for system detach callbacks. Cleanup may request world disposal through
+ * the explicit control without waiting on its own completion barrier.
+ */
+export type SystemDetachFn<Cfg extends WorldConfig> = (
+	ecs: ECSpresso<Cfg>,
+	cleanup: CleanupControl,
 ) => void | Promise<void>;

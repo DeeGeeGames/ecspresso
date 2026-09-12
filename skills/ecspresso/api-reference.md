@@ -98,10 +98,10 @@ await ecs.disposeResources();          // all, in reverse dependency order
 ```
 
 Bulk disposal waits for already-started partial resource disposal, including
-async callbacks, before removing dependencies. External concurrent callers wait
-on the active teardown; a callback reentering disposal returns immediately so
-it cannot wait on itself. Failures are surfaced after remaining resource
-cleanup completes.
+async callbacks, before removing dependencies. Cleanup callbacks receive a
+`CleanupControl`; call `cleanup.requestDisposal()` if one must initiate owner
+teardown without waiting on itself. External concurrent callers wait on the
+active teardown and receive failures after remaining cleanup completes.
 
 ## Events
 
@@ -365,6 +365,8 @@ including pending builders without initializing them, removes entities and
 commands, exits active screens, and disposes initialized resources in reverse
 dependency order. Lazy resources are not created for disposal. The promise
 rejects after remaining cleanup finishes if a disposer fails. During active
-teardown, external concurrent calls share the completion barrier; a cleanup
-callback may reenter `await dispose()` after suspension and receives an
-immediate no-op result so it can finish. Calls after teardown are no-ops.
+teardown, external concurrent calls share the completion barrier. Plugin
+cleanup, system detach, and resource disposal callbacks receive a
+`CleanupControl`; use `cleanup.requestDisposal()` when a callback must initiate
+owner teardown without joining the barrier that includes itself. Calls after
+teardown are no-ops.

@@ -169,10 +169,12 @@ await world.disposeResource('keyboard');     // Dispose a single resource
 await world.disposeResources();              // All, in reverse dependency order
 ```
 
-`onDispose` receives the resource value and the ECSpresso instance. It
-supports sync and async callbacks, and only initialized resources have their
-`onDispose` called. `removeResource()` still exists for removal without
-disposal.
+`onDispose` receives the resource value, the ECSpresso instance, and a
+`CleanupControl`. It supports sync and async callbacks, and only initialized
+resources have their `onDispose` called. If a disposer needs to initiate world
+teardown, call `cleanup.requestDisposal()` through that third argument;
+awaiting `world.dispose()` inside a callback would wait on the callback itself.
+`removeResource()` still exists for removal without disposal.
 
 For complete teardown, use the single idempotent world operation:
 
@@ -187,10 +189,10 @@ order. Lazy resources are not created just to dispose them. Cleanup continues
 after independent disposer failures; the returned promise rejects after the
 remaining cleanup completes. External concurrent calls made while teardown is
 active wait on the same completion barrier, while calls made after teardown
-are no-ops. A cleanup callback may call `await world.dispose()` reentrantly;
-that nested call resolves immediately so the callback can finish, and the
-outer disposal remains responsible for the complete teardown result. Resource
-bulk disposal also waits for already-started partial disposal and preserves
-dependencies until each callback finishes. `disposeResource()` and
-`disposeResources()` remain available for partial resource teardown before the
-world is disposed.
+are no-ops. Cleanup callbacks receive a portable `CleanupControl` and may call
+`cleanup.requestDisposal()` without joining their own completion barrier.
+External `world.dispose()` calls remain responsible for the complete teardown
+result. Resource bulk disposal also waits for already-started partial disposal
+and preserves dependencies until each callback finishes. `disposeResource()`
+and `disposeResources()` remain available for partial resource teardown before
+the world is disposed.

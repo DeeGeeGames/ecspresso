@@ -747,13 +747,14 @@ describe('ResourceManager', () => {
 			expect(order).toEqual(['second', 'first']);
 		});
 
-		test('disposeResources() is safe to call from an async disposer', async () => {
+		test('cleanup control can request bulk disposal from an async disposer', async () => {
 			let disposerCalls = 0;
 			const rm = new ResourceManager<{ value: number }>();
 			rm.add('value', {
 				factory: () => 1,
-				onDispose: async () => {
-					await rm.disposeResources();
+				onDispose: async (_resource, _context, cleanup) => {
+					await Promise.resolve();
+					cleanup.requestDisposal();
 					disposerCalls++;
 				},
 			});

@@ -23,10 +23,14 @@ All notable changes to ECSpresso are documented here. Format loosely follows [Ke
   plugin/resource cleanup, and reports failures after cleanup continues.
   Callers that previously ignored `dispose()` may continue doing so, but code
   that needs teardown completion should await it.
-- Cleanup reentry no longer deadlocks world disposal after an asynchronous
-  suspension. External concurrent callers still await the complete teardown,
-  resource bulk disposal waits for partial resource operations, and failures
-  remain observable after dependencies and remaining cleanup are released.
+- Plugin cleanup, system detach, and resource disposal callbacks now receive a
+  browser-portable `CleanupControl`. Call `cleanup.requestDisposal()` when a
+  callback must initiate owner teardown without waiting on itself; normal
+  `await world.dispose()` calls remain the complete external barrier. Resource
+  teardown joins active partial/bulk work, preserves dependencies, and reports
+  initiating cleanup failures after remaining disposal completes.
+- `SystemDetachFn<Cfg>` now names the two-argument `.setOnDetach(...)` callback
+  shape; `SystemLifecycleFn<Cfg>` remains the initialization callback shape.
 - Pending system builders now run asynchronous `onDetach` cleanup during world
   disposal without being initialized or registered for processing.
 

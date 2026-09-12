@@ -344,17 +344,17 @@ describe('world disposal', () => {
 		expect(cleanupCalls).toBe(1);
 	});
 
-	test('allows plugin cleanup to await reentrant world disposal after suspension', async () => {
+	test('allows plugin cleanup to request world disposal after suspension', async () => {
 		let releaseCleanup: (() => void) | undefined;
 		let cleanupCalls = 0;
 		let nestedCompleted = false;
 		const cleanupGate = new Promise<void>(resolve => {
 			releaseCleanup = resolve;
 		});
-		const plugin = definePlugin('reentrant-plugin').install((world, onCleanup) => {
-			onCleanup(async () => {
+		const plugin = definePlugin('reentrant-plugin').install((_world, onCleanup) => {
+			onCleanup(async cleanup => {
 				await cleanupGate;
-				await world.dispose();
+				cleanup.requestDisposal();
 				nestedCompleted = true;
 				cleanupCalls++;
 			});
@@ -406,16 +406,16 @@ describe('world disposal', () => {
 		expect(externalCompleted).toBe(true);
 	});
 
-	test('allows system detach to await reentrant disposal after suspension', async () => {
+	test('allows system detach to request disposal after suspension', async () => {
 		let releaseDetach: (() => void) | undefined;
 		let detachCalls = 0;
 		const detachGate = new Promise<void>(resolve => {
 			releaseDetach = resolve;
 		});
 		const world = new ECSpresso<Config>();
-		world.addSystem('reentrant-detach').setOnDetach(async ecs => {
+		world.addSystem('reentrant-detach').setOnDetach(async (_ecs, cleanup) => {
 			await detachGate;
-			await ecs.dispose();
+			cleanup.requestDisposal();
 			detachCalls++;
 		});
 		world.update(0);
@@ -426,7 +426,7 @@ describe('world disposal', () => {
 		expect(detachCalls).toBe(1);
 	});
 
-	test('allows resource disposal to await reentrant world disposal after suspension', async () => {
+	test('allows resource disposal to request world disposal after suspension', async () => {
 		let releaseResource: (() => void) | undefined;
 		let disposeCalls = 0;
 		const resourceGate = new Promise<void>(resolve => {
@@ -435,9 +435,9 @@ describe('world disposal', () => {
 		const world = ECSpresso.create<Config>()
 			.withResource('base', {
 				factory: () => ({ value: 1 }),
-				onDispose: async (_resource, ecs) => {
+				onDispose: async (_resource, _ecs, cleanup) => {
 					await resourceGate;
-					await ecs.dispose();
+					cleanup.requestDisposal();
 					disposeCalls++;
 				},
 			})
@@ -448,6 +448,184 @@ describe('world disposal', () => {
 		releaseResource?.();
 		await settleWithin(disposal);
 		expect(disposeCalls).toBe(1);
+	});
+
+	test('a suspended detach can initiate disposal without weakening the external barrier', async () => {
+		let releaseInitiator: (() => void) | undefined;
+		let releaseOther: (() => void) | undefined;
+		let disposalRequested: (() => void) | undefined;
+		const initiatorGate = new Promise<void>(resolve => {
+			releaseInitiator = resolve;
+		});
+		const otherGate = new Promise<void>(resolve => {
+			releaseOther = resolve;
+		});
+		const requestSignal = new Promise<void>(resolve => {
+			disposalRequested = resolve;
+		});
+		const detached: string[] = [];
+		const world = new ECSpresso<Config>();
+		world.addSystem('detach-initiator').setOnDetach(async (_ecs, cleanup) => {
+			await Promise.resolve();
+			cleanup.requestDisposal();
+			disposalRequested?.();
+			await initiatorGate;
+			detached.push('initiator');
+		});
+		world.addSystem('other-detach').setOnDetach(async () => {
+			await otherGate;
+			detached.push('other');
+		});
+		world.update(0);
+
+		expect(world.removeSystem('detach-initiator')).toBe(true);
+		await requestSignal;
+		let externalCompleted = false;
+		const external = world.dispose().then(() => {
+			externalCompleted = true;
+		});
+		await Promise.resolve();
+		expect(externalCompleted).toBe(false);
+
+		releaseInitiator?.();
+		await Promise.resolve();
+		expect(externalCompleted).toBe(false);
+		releaseOther?.();
+		await settleWithin(external);
+
+		expect(detached).toContain('initiator');
+		expect(detached).toContain('other');
+	});
+
+	test('an immediate detach request starts world disposal exactly once', async () => {
+		let detachCalls = 0;
+		const world = new ECSpresso<Config>();
+		world.addSystem('immediate-detach').setOnDetach((_ecs, cleanup) => {
+			detachCalls++;
+			cleanup.requestDisposal();
+		});
+		world.update(0);
+
+		expect(world.removeSystem('immediate-detach')).toBe(true);
+		await settleWithin(world.dispose());
+		expect(detachCalls).toBe(1);
+	});
+
+	test('a failing detach that initiates disposal rejects the external barrier', async () => {
+		let disposalRequested: (() => void) | undefined;
+		let releaseFailure: (() => void) | undefined;
+		const requestSignal = new Promise<void>(resolve => {
+			disposalRequested = resolve;
+		});
+		const failureGate = new Promise<void>(resolve => {
+			releaseFailure = resolve;
+		});
+		const originalError = console.error;
+		console.error = () => undefined;
+		try {
+			const world = new ECSpresso<Config>();
+			world.addSystem('failing-initiator').setOnDetach(async (_ecs, cleanup) => {
+				await Promise.resolve();
+				cleanup.requestDisposal();
+				disposalRequested?.();
+				await failureGate;
+				throw new Error('initiating detach failed');
+			});
+			world.update(0);
+
+			expect(world.removeSystem('failing-initiator')).toBe(true);
+			await requestSignal;
+			const external = world.dispose();
+			releaseFailure?.();
+			await expect(settleWithin(external)).rejects.toThrow('initiating detach failed');
+		} finally {
+			console.error = originalError;
+		}
+	});
+
+	test('partial resource cleanup can initiate world disposal without losing dependencies', async () => {
+		let releaseChild: (() => void) | undefined;
+		let disposalRequested: (() => void) | undefined;
+		const childGate = new Promise<void>(resolve => {
+			releaseChild = resolve;
+		});
+		const requestSignal = new Promise<void>(resolve => {
+			disposalRequested = resolve;
+		});
+		const disposed: string[] = [];
+		const world = ECSpresso.create<Config>()
+			.withResource('base', {
+				factory: () => ({ value: 1 }),
+				onDispose: () => { disposed.push('base'); },
+			})
+			.withResource('child', {
+				dependsOn: ['base'],
+				factory: () => ({ value: 2 }),
+				onDispose: async (_resource, ecs, cleanup) => {
+					await Promise.resolve();
+					cleanup.requestDisposal();
+					disposalRequested?.();
+					await childGate;
+					expect(ecs.getResource('base')).toEqual({ value: 1 });
+					disposed.push('child');
+				},
+			})
+			.build();
+		await world.initializeResources('base', 'child');
+
+		const partial = world.disposeResource('child');
+		await requestSignal;
+		let externalCompleted = false;
+		const external = world.dispose().then(() => {
+			externalCompleted = true;
+		});
+		await Promise.resolve();
+		expect(externalCompleted).toBe(false);
+		releaseChild?.();
+
+		expect(await settleWithin(partial)).toBe(true);
+		await settleWithin(external);
+		expect(disposed).toEqual(['child', 'base']);
+	});
+
+	test('bulk resource cleanup can initiate world disposal and surface failures', async () => {
+		let disposalRequested: (() => void) | undefined;
+		let releaseFailure: (() => void) | undefined;
+		const requestSignal = new Promise<void>(resolve => {
+			disposalRequested = resolve;
+		});
+		const failureGate = new Promise<void>(resolve => {
+			releaseFailure = resolve;
+		});
+		const disposed: string[] = [];
+		const world = ECSpresso.create<Config>()
+			.withResource('base', {
+				factory: () => ({ value: 1 }),
+				onDispose: () => { disposed.push('base'); },
+			})
+			.withResource('child', {
+				dependsOn: ['base'],
+				factory: () => ({ value: 2 }),
+				onDispose: async (_resource, ecs, cleanup) => {
+					await Promise.resolve();
+					cleanup.requestDisposal();
+					disposalRequested?.();
+					expect(ecs.getResource('base')).toEqual({ value: 1 });
+					await failureGate;
+					disposed.push('child');
+					throw new Error('initiating resource failed');
+				},
+			})
+			.build();
+		await world.initializeResources('base', 'child');
+
+		const bulk = world.disposeResources();
+		await requestSignal;
+		const external = world.dispose();
+		releaseFailure?.();
+		await expect(settleWithin(bulk)).rejects.toThrow('initiating resource failed');
+		await expect(settleWithin(external)).rejects.toThrow('initiating resource failed');
+		expect(disposed).toEqual(['child', 'base']);
 	});
 
 	test('waits for a partial resource teardown before clearing dependencies', async () => {

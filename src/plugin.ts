@@ -1,6 +1,7 @@
 import type ECSpresso from './ecspresso';
 import type { SystemPhase } from './types';
 import type { SystemDefaults } from './system-registrar';
+import type { CleanupControl } from './cleanup-control';
 import type {
 	WorldConfig,
 	EmptyConfig,
@@ -16,9 +17,13 @@ import type {
  * Registrar passed as the second argument to a plugin's `install` function.
  * Each registered disposer runs (in reverse order) when the plugin is
  * uninstalled via `world.uninstallPlugin(id)` or when `world.dispose()` is called.
- * Disposers may return promises; world disposal awaits them.
+ * Disposers may return promises; world disposal awaits them. The supplied
+ * cleanup control can request world disposal without making the callback wait
+ * on the external teardown barrier that includes that callback.
  */
-export type PluginCleanup = (() => void) | (() => Promise<void>);
+export type PluginCleanup =
+	| ((cleanup: CleanupControl) => void)
+	| ((cleanup: CleanupControl) => Promise<void>);
 export type PluginCleanupRegistrar = (fn: PluginCleanup) => void;
 
 /**

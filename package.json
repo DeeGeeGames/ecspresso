@@ -217,6 +217,7 @@
 		"build": "bun build:clean && bun build:ts && bun build:js",
 		"check:types": "bun tsc --noEmit --skipLibCheck",
 		"check": "bun run check:types && bun test",
+		"test:browser:build": "bun build browser-tests/disposal-regression.ts --target=browser --outfile=browser-tests/disposal-regression.js",
 		"examples": "bun ./examples/serve-examples.ts",
 		"bench": "bun bench/narrowphase.bench.ts && bun bench/ecs-physics.bench.ts --spatial && bun bench/ecs-physics.bench.ts --no-spatial && bun bench/ecs-physics3D.bench.ts --spatial && bun bench/ecs-physics3D.bench.ts --no-spatial",
 		"bench:ecs3D": "bun bench/ecs-physics3D.bench.ts",
