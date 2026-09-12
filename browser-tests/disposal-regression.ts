@@ -139,7 +139,73 @@ async function failuresReachExternalCallers(): Promise<void> {
 	);
 }
 
+async function assertPending(promise: Promise<unknown>): Promise<void> {
+	const status = await Promise.race([
+		promise.then(() => 'settled', () => 'settled'),
+		new Promise<string>(resolve => setTimeout(() => resolve('pending'), 10)),
+	]);
+	assert(status === 'pending', 'world disposal completed before its cleanup');
+}
+
+async function uninstalledPluginCleanup(): Promise<void> {
+	const finish = deferred<void>();
+	const calls: string[] = [];
+	const plugin = definePlugin('uninstalled-browser-plugin').install((_world, onCleanup) => {
+		onCleanup(async cleanup => {
+			cleanup.requestDisposal();
+			await finish.promise;
+			calls.push('finished');
+		});
+	});
+	const world = ECSpresso.create().withPlugin(plugin).build();
+	world.uninstallPlugin('uninstalled-browser-plugin');
+	const disposal = world.dispose();
+	await assertPending(disposal);
+	finish.resolve();
+	await settleWithin(disposal);
+	assert(calls.length === 1, 'uninstalled cleanup was not joined');
+}
+
+async function screenEntryTeardown(): Promise<void> {
+	const started = deferred<void>();
+	const finish = deferred<void>();
+	const calls: string[] = [];
+	const world = ECSpresso.create().withScreens(screens => screens.add('base', {
+		initialState: () => ({}),
+		onEnter: async () => {
+			started.resolve();
+			await finish.promise;
+			calls.push('enter');
+		},
+		onExit: () => { calls.push('exit'); },
+	})).build();
+	await world.initialize();
+	const transition = world.setScreen('base', {}).catch((error: unknown) => error);
+	await started.promise;
+	const disposal = world.dispose();
+	await assertPending(disposal);
+	finish.resolve();
+	await settleWithin(disposal);
+	await transition;
+	assert(calls.join(',') === 'enter,exit', 'screen exit raced pending entry');
+}
+
+async function removalFailureIsolation(): Promise<void> {
+	const calls: string[] = [];
+	const world = ECSpresso.create().withComponentTypes<{ a: number; b: number }>().build();
+	world.registerDispose('a', () => { calls.push('a'); });
+	world.registerDispose('b', () => { calls.push('b'); });
+	world.onComponentRemoved('a', () => { throw new Error('observer failed'); });
+	world.spawn({ a: 1, b: 2 });
+	const failure = await world.dispose().catch((error: unknown) => error);
+	assert(failure instanceof Error, 'observer error was not reported');
+	assert(calls.join(',') === 'a,b' && world.entityCount === 0, 'component cleanup was skipped');
+}
+
 const cases = [
+	['uninstalled plugin cleanup', uninstalledPluginCleanup],
+	['pending screen entry', screenEntryTeardown],
+	['removal failure isolation', removalFailureIsolation],
 	['plugin cleanup reentry', pluginCleanupReentry],
 	['detach initiates disposal', detachInitiatesDisposal],
 	['resource initiates disposal', resourceInitiatesDisposal],

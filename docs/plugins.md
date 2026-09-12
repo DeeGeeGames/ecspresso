@@ -120,7 +120,8 @@ await world.dispose();           // full, asynchronous world teardown
 not remove systems or other registrations that the plugin installed. An async
 cleanup started by standalone `uninstallPlugin()` is observed and reported by
 the library but is not awaited by that boolean-returning API. World disposal
-does await registered async plugin cleanups and detaches every remaining
+joins those already-started cleanups and reports their failures, even when the
+plugin has already been uninstalled. It also detaches every remaining
 system; automatic per-plugin ownership and uninstall-time removal of every
 registration is a separate feature.
 

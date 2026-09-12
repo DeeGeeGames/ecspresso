@@ -3,6 +3,7 @@
  */
 
 import type EventBus from './event-bus';
+import { createDeferred } from './cleanup-control';
 import type {
 	ScreenDefinition,
 	ScreenResource,
@@ -46,6 +47,28 @@ export default class ScreenManager<Screens extends Record<string, ScreenDefiniti
 	private assetManager: ScreenManagerAssetDeps | null = null;
 	private ecs: unknown = null;
 	private closed = false;
+	private readonly pendingHooks = new Set<Promise<void>>();
+	private readonly teardownErrors: unknown[] = [];
+	private readonly exitedScreens = new WeakSet<ActiveScreen<Screens>>();
+
+	/** Register before invoking user code, which may synchronously start teardown. */
+	private runHook(callback: () => void | Promise<void>): Promise<void> {
+		const deferred = createDeferred<void>();
+		const tracked = deferred.promise.then(
+			() => undefined,
+			(error: unknown) => {
+				if (this.closed) this.teardownErrors.push(error);
+			},
+		);
+		this.pendingHooks.add(tracked);
+		void tracked.then(() => this.pendingHooks.delete(tracked));
+		try {
+			deferred.resolve(callback());
+		} catch (error) {
+			deferred.reject(error);
+		}
+		return deferred.promise;
+	}
 
 	/**
 	 * Set dependencies for screen transitions
@@ -105,14 +128,14 @@ export default class ScreenManager<Screens extends Record<string, ScreenDefiniti
 		while (this.screenStack.length > 0) {
 			const stackScreen = this.screenStack.pop();
 			if (stackScreen) {
-				await this.exitScreen(stackScreen.name);
+				await this.exitScreen(stackScreen);
 				if (this.closed) throw new Error('ScreenManager is closed');
 			}
 		}
 
 		// Exit current screen
 		if (this.currentScreen) {
-			await this.exitScreen(this.currentScreen.name);
+			await this.exitScreen(this.currentScreen);
 			if (this.closed) throw new Error('ScreenManager is closed');
 		}
 
@@ -124,7 +147,7 @@ export default class ScreenManager<Screens extends Record<string, ScreenDefiniti
 			state,
 		};
 
-		await entry.definition.onEnter?.({ config, ecs: this.requireEcs() });
+		await this.runHook(() => entry.definition.onEnter?.({ config, ecs: this.requireEcs() }));
 		if (this.closed) throw new Error('ScreenManager is closed');
 		this.eventBus?.publish('screenEnter', { screen: name as keyof Screens & string, config });
 	}
@@ -164,7 +187,7 @@ export default class ScreenManager<Screens extends Record<string, ScreenDefiniti
 			state,
 		};
 
-		await entry.definition.onEnter?.({ config, ecs: this.requireEcs() });
+		await this.runHook(() => entry.definition.onEnter?.({ config, ecs: this.requireEcs() }));
 		if (this.closed) throw new Error('ScreenManager is closed');
 		this.eventBus?.publish('screenPush', { screen: name as keyof Screens & string, config });
 	}
@@ -183,7 +206,7 @@ export default class ScreenManager<Screens extends Record<string, ScreenDefiniti
 		// Exit current screen
 		if (this.currentScreen) {
 			const exitingScreen = this.currentScreen;
-			await this.exitScreen(exitingScreen.name);
+			await this.exitScreen(exitingScreen);
 			if (this.closed) throw new Error('ScreenManager is closed');
 			this.eventBus?.publish('screenPop', { screen: exitingScreen.name as keyof Screens & string });
 		}
@@ -195,11 +218,11 @@ export default class ScreenManager<Screens extends Record<string, ScreenDefiniti
 		if (!resumedScreen) return;
 
 		const entry = this.screens.get(resumedScreen.name);
-		await entry?.definition.onResume?.({
+		await this.runHook(() => entry?.definition.onResume?.({
 			config: resumedScreen.config,
 			state: resumedScreen.state,
 			ecs: this.requireEcs(),
-		});
+		}));
 		if (this.closed) throw new Error('ScreenManager is closed');
 		this.eventBus?.publish('screenResume', {
 			screen: resumedScreen.name as keyof Screens & string,
@@ -209,12 +232,15 @@ export default class ScreenManager<Screens extends Record<string, ScreenDefiniti
 	}
 
 	/**
-	 * Exit a screen by name (internal helper)
+	 * Exit an activation once, including when teardown overlaps a transition.
 	 */
-	private async exitScreen(name: keyof Screens): Promise<void> {
+	private async exitScreen(screen: ActiveScreen<Screens>): Promise<void> {
+		if (this.exitedScreens.has(screen)) return;
+		this.exitedScreens.add(screen);
+		const name = screen.name;
 		const entry = this.screens.get(name);
 		if (entry?.definition.onExit) {
-			await entry.definition.onExit(this.requireEcs());
+			await this.runHook(() => entry.definition.onExit?.(this.requireEcs()));
 		}
 		this.eventBus?.publish('screenExit', { screen: name as keyof Screens & string });
 	}
@@ -416,6 +442,10 @@ export default class ScreenManager<Screens extends Record<string, ScreenDefiniti
 	 * separately removes all entities and screen-scope registrations.
 	 */
 	async dispose(): Promise<void> {
+		this.close();
+		// Entry/resume may still acquire external state. Finish them before exit,
+		// and join an exit already underway rather than invoking it twice.
+		await Promise.all(this.pendingHooks);
 		const activeScreens = [
 			...(this.currentScreen ? [this.currentScreen] : []),
 			...this.screenStack.slice().reverse(),
@@ -423,13 +453,15 @@ export default class ScreenManager<Screens extends Record<string, ScreenDefiniti
 		const errors: unknown[] = [];
 		for (const screen of activeScreens) {
 			try {
-				await this.screens.get(screen.name)?.definition.onExit?.(this.requireEcs());
-			} catch (error) {
-				errors.push(error);
+				await this.exitScreen(screen);
+			} catch {
+				// runHook records failures during teardown; keep removing screens.
 			}
 		}
 		this.currentScreen = null;
 		this.screenStack = [];
+		errors.push(...this.teardownErrors);
+		this.teardownErrors.length = 0;
 		if (errors.length > 0) {
 			throw new AggregateError(errors, 'One or more screens failed to exit');
 		}

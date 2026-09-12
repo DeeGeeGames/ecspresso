@@ -57,6 +57,8 @@ registered cleanup callbacks; it does not remove systems or other registrations
 made by the plugin. `await world.dispose()` performs complete asynchronous
 world teardown and waits for registered async cleanup, system detachment, and
 initialized resource disposal.
+This includes asynchronous cleanup already started by standalone uninstall;
+its failures are retained for the world-disposal result.
 
 The builder mirrors `ECSpresso.create()`:
 - `.withComponentTypes<T>()`, `.withEventTypes<T>()`, `.withResourceTypes<T>()`, `.withAssetTypes<T>()`, `.withScreenTypes<T>()` — declare types this plugin provides

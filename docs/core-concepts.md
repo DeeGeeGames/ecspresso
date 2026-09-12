@@ -196,3 +196,10 @@ result. Resource bulk disposal also waits for already-started partial disposal
 and preserves dependencies until each callback finishes. `disposeResource()`
 and `disposeResources()` remain available for partial resource teardown before
 the world is disposed.
+
+World teardown also joins cleanup started by standalone plugin uninstall and
+waits for in-flight screen lifecycle hooks before running screen exits and
+releasing resource dependencies. A transition interrupted by disposal rejects
+instead of activating another screen. An exit already underway is not repeated.
+If an entity-removal observer throws, remaining observers, component cleanup,
+and descendant removal still run; removal then reports an aggregate error.

@@ -6,6 +6,13 @@ All notable changes to ECSpresso are documented here. Format loosely follows [Ke
 
 ### Changed
 
+- World disposal now joins asynchronous plugin cleanup already started by
+  standalone uninstall and retains its failures until teardown observes them.
+- Screen teardown waits for in-flight enter/resume/exit hooks before releasing
+  dependencies, and does not repeat an exit already underway.
+- Entity removal continues through observer failures, including remaining
+  components and descendants, then throws an aggregate error after removal.
+
 - Refocused the bundled application-development skill around system ownership,
   explicit mutation declarations, dependency timing, and proportional
   validation, with focused change-tracking, lifecycle, and testing references.

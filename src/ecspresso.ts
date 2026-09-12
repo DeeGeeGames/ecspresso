@@ -226,6 +226,9 @@ export default class ECSpresso<
 	private _pendingSystemDetaches: Set<SystemDetachOperation> = new Set();
 	/** Failed detaches that settled before world teardown reached its barrier. */
 	private _completedSystemDetachErrors: unknown[] = [];
+	/** Cleanup already started by standalone plugin uninstall. */
+	private _pendingPluginCleanups = new Set<Promise<void>>();
+	private _completedPluginCleanupErrors: unknown[] = [];
 	/** Unsubscribers for lifecycle hooks installed on the entity manager */
 	private _lifecycleUnsubscribers: Array<() => void> = [];
 	/** Unsubscriber for the world-owned screen-exit cleanup handler */
@@ -2470,12 +2473,16 @@ export default class ECSpresso<
 				try {
 					const result = fn(this._cleanupControl);
 					if (result instanceof Promise) {
-						result.catch((error: unknown) => {
+						const pending = result.catch((error: unknown) => {
 							console.warn(`Plugin '${id}' cleanup threw:`, error);
+							this._completedPluginCleanupErrors.push(error);
 						});
+						this._pendingPluginCleanups.add(pending);
+						void pending.then(() => this._pendingPluginCleanups.delete(pending));
 					}
 				} catch (error) {
 					console.warn(`Plugin '${id}' cleanup threw:`, error);
+					this._completedPluginCleanupErrors.push(error);
 				}
 			}
 		}
@@ -2517,6 +2524,9 @@ export default class ECSpresso<
 		// Plugin cleanup remains synchronous up to the first awaited system/resource
 		// disposer, preserving access to the world during teardown.
 		await this._runPluginCleanups(errors);
+		await Promise.all(this._pendingPluginCleanups);
+		errors.push(...this._completedPluginCleanupErrors);
+		this._completedPluginCleanupErrors = [];
 
 		if (initialization) {
 			try {

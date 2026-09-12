@@ -43,20 +43,28 @@ class CallbackList<ComponentTypes> {
 		if (idx !== -1) this.callbacks.splice(idx, 1);
 	}
 
-	invoke(ctx: { value: unknown; entity: Entity<ComponentTypes> }): void {
+	invoke(ctx: { value: unknown; entity: Entity<ComponentTypes> }, errors?: unknown[]): void {
 		this._iterDepth++;
 		const len = this.callbacks.length;
-		for (let i = 0; i < len; i++) {
-			const cb = this.callbacks[i];
-			if (cb) cb(ctx);
-		}
-		this._iterDepth--;
-		if (this._iterDepth === 0 && this._pendingRemovals.length > 0) {
-			for (const cb of this._pendingRemovals) {
-				const idx = this.callbacks.indexOf(cb);
-				if (idx !== -1) this.callbacks.splice(idx, 1);
+		try {
+			for (let i = 0; i < len; i++) {
+				const cb = this.callbacks[i];
+				try {
+					cb?.(ctx);
+				} catch (error) {
+					if (!errors) throw error;
+					errors.push(error);
+				}
 			}
-			this._pendingRemovals.length = 0;
+		} finally {
+			this._iterDepth--;
+			if (this._iterDepth === 0 && this._pendingRemovals.length > 0) {
+				for (const cb of this._pendingRemovals) {
+					const idx = this.callbacks.indexOf(cb);
+					if (idx !== -1) this.callbacks.splice(idx, 1);
+				}
+				this._pendingRemovals.length = 0;
+			}
 		}
 	}
 }
@@ -439,49 +447,35 @@ class EntityManager<ComponentTypes> {
 
 	removeEntity(entityId: number, options?: RemoveEntityOptions): boolean {
 		const entity = this.entities.get(entityId);
-
 		if (!entity) return false;
 
-		const cascade = options?.cascade ?? true;
+		const descendants = options?.cascade === false
+			? []
+			: [...this.hierarchyManager.getDescendants(entity.id)].reverse();
+		const entityIds = [...descendants, entity.id];
+		const errors: unknown[] = [];
 
-		if (cascade) {
-			// Get all descendants first (depth-first order)
-			const descendants = this.hierarchyManager.getDescendants(entity.id);
-			// Fire beforeEntityRemoved for descendants (reverse: children before parents)
-			for (let i = descendants.length - 1; i >= 0; i--) {
-				const descendantId = descendants[i];
-				if (descendantId === undefined) continue;
-				this._queryCache.onEntityRemoved(descendantId);
-				for (const hook of this._beforeEntityRemovedHooks) {
-					hook(descendantId);
+		// Notify all observers before structural removal, retaining child-first order.
+		entityIds.forEach(id => {
+			this._queryCache.onEntityRemoved(id);
+			this._beforeEntityRemovedHooks.forEach(hook => {
+				try {
+					hook(id);
+				} catch (error) {
+					errors.push(error);
 				}
-			}
-			// Fire beforeEntityRemoved for the entity itself
-			this._queryCache.onEntityRemoved(entity.id);
-			for (const hook of this._beforeEntityRemovedHooks) {
-				hook(entity.id);
-			}
-			// Now do actual removal (descendants in reverse order)
-			for (let i = descendants.length - 1; i >= 0; i--) {
-				const descendantId = descendants[i];
-				if (descendantId === undefined) continue;
-				this.removeEntityInternal(descendantId);
-			}
-		} else {
-			// Fire beforeEntityRemoved for just this entity
-			this._queryCache.onEntityRemoved(entity.id);
-			for (const hook of this._beforeEntityRemovedHooks) {
-				hook(entity.id);
-			}
-		}
+			});
+		});
+		entityIds.forEach(id => this.removeEntityInternal(id, errors));
 
-		return this.removeEntityInternal(entity.id);
+		if (errors.length > 0) throw new AggregateError(errors, 'Entity removal observers failed');
+		return true;
 	}
 
 	/**
 	 * Internal method to remove a single entity without cascade logic
 	 */
-	private removeEntityInternal(entityId: number): boolean {
+	private removeEntityInternal(entityId: number, errors: unknown[]): boolean {
 		const entity = this.entities.get(entityId);
 		if (!entity) return false;
 
@@ -499,7 +493,7 @@ class EntityManager<ComponentTypes> {
 				// Trigger removed callbacks (index-based iteration; unsubscribe nulls slots, compacted after)
 				const removeCbs = this.removedCallbacks.get(componentName);
 				if (removeCbs) {
-					removeCbs.invoke({ value: oldValue, entity });
+					removeCbs.invoke({ value: oldValue, entity }, errors);
 				}
 			}
 

@@ -667,10 +667,12 @@ class ResourceManager<
 		this.disposePromise = disposal;
 		disposal.then(
 			() => {
-				if (this.disposePromise === disposal) this.disposePromise = undefined;
+				if (!this.closed && this.disposePromise === disposal) this.disposePromise = undefined;
 			},
 			() => {
-				if (this.disposePromise === disposal) this.disposePromise = undefined;
+				// World teardown may still be draining other owners. Retain a failed
+				// bulk barrier until it can join us, rather than losing the error.
+				if (!this.closed && this.disposePromise === disposal) this.disposePromise = undefined;
 			},
 		);
 		void this.disposeResourcesInternal(...args).then(
@@ -733,6 +735,7 @@ class ResourceManager<
 	clear(): void {
 		this.closed = true;
 		this.cleared = true;
+		this.disposePromise = undefined;
 		this.resources.clear();
 		this.resourceFactories.clear();
 		this.resourceDependencies.clear();
