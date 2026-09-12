@@ -18,6 +18,7 @@ import type { AssetDefinition, AssetHandle, AssetEvents } from "./asset-types";
 import type { ScreenDefinition, ScreenEvents } from "./screen-types";
 import { ECSpressoBuilder } from "./ecspresso-builder";
 import type { WorldConfig, EmptyConfig, ConflictingSlot, MissingRequirementSlot } from "./type-utils";
+import { createDeferred, isCleanupReentry, withCleanupScope } from "./cleanup-context";
 
 /**
 	* Interface declaration for ECSpresso constructor to ensure type augmentation works properly.
@@ -51,20 +52,6 @@ function aggregateErrors(errors: readonly unknown[], message: string): Error {
 		return asError(errors[0]);
 	}
 	return new AggregateError(errors, message);
-}
-
-function createDeferred<T>(): {
-	promise: Promise<T>;
-	resolve: (value: T | PromiseLike<T>) => void;
-	reject: (reason?: unknown) => void;
-} {
-	let resolve: (value: T | PromiseLike<T>) => void = () => undefined;
-	let reject: (reason?: unknown) => void = () => undefined;
-	const promise = new Promise<T>((resolvePromise, rejectPromise) => {
-		resolve = resolvePromise;
-		reject = rejectPromise;
-	});
-	return { promise, resolve, reject };
 }
 
 function copySystemDefaults<Cfg extends WorldConfig>(
@@ -216,8 +203,8 @@ export default class ECSpresso<
 	/** Shared scratch array for singleton query resolution (cleared and reused each resolution) */
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any -- matches EntityManager output-array shape
 	private _singletonScratch: any[] = [];
-	/** Pending system builder finalizers to run before next update/initialize */
-	private _pendingFinalizers: Array<() => void> = [];
+	/** Pending system builders retained until finalization or teardown. */
+	private _pendingFinalizers: Array<() => System<Cfg, any, any>> = [];
 	private _batchingRegistrations = false;
 	/** Whether `initialize()` has completed — flips the onInitialize firing path for late-added systems */
 	private _initializeFired = false;
@@ -390,7 +377,7 @@ export default class ECSpresso<
 		this._assertActive('register a system');
 		const builder = new SystemBuilder<Cfg>(label, defaults);
 		this._pendingFinalizers.push(() => {
-			this._registerSystem(builder._createSystemObject());
+			return builder._createSystemObject();
 		});
 		return builder;
 	}
@@ -407,7 +394,7 @@ export default class ECSpresso<
 			const finalizers = this._pendingFinalizers;
 			this._pendingFinalizers = [];
 			for (const finalize of finalizers) {
-				finalize();
+				this._registerSystem(finalize());
 			}
 		}
 		this._batchingRegistrations = false;
@@ -697,17 +684,19 @@ export default class ECSpresso<
 		if (this._initializeFired) return Promise.resolve();
 		if (this._initializePromise) return this._initializePromise;
 
-		const initialization = this._initializeInternal();
-		this._initializePromise = initialization.then(
+		const deferred = createDeferred<void>();
+		this._initializePromise = deferred.promise;
+		void this._initializeInternal().then(
 			() => {
-				this._initializePromise = undefined;
+				if (this._initializePromise === deferred.promise) this._initializePromise = undefined;
+				deferred.resolve();
 			},
 			(error: unknown) => {
-				this._initializePromise = undefined;
-				throw error;
+				if (this._initializePromise === deferred.promise) this._initializePromise = undefined;
+				deferred.reject(error);
 			},
 		);
-		return this._initializePromise;
+		return deferred.promise;
 	}
 
 	private async _initializeInternal(): Promise<void> {
@@ -921,7 +910,7 @@ export default class ECSpresso<
 			unsubscribe();
 		}
 		this._systemEventUnsubscribers.delete(system);
-		return system.onDetach?.(this);
+		return withCleanupScope([this], () => system.onDetach?.(this));
 	}
 
 	private _detachSystemSafely(system: System<Cfg, any, any>): void | Promise<void> {
@@ -973,6 +962,37 @@ export default class ECSpresso<
 		this._pendingSystemDetaches.clear();
 	}
 
+	private _detachPendingSystems(errors: unknown[]): Promise<void> {
+		const finalizers = this._pendingFinalizers;
+		this._pendingFinalizers = [];
+		const pendingDetaches = finalizers.flatMap(finalize => {
+			let system: System<Cfg, any, any>;
+			try {
+				system = finalize();
+			} catch (error) {
+				errors.push(error);
+				return [];
+			}
+
+			try {
+				const result = this._detachSystem(system);
+				if (result instanceof Promise) {
+					return [result.catch((error: unknown) => {
+						errors.push(error);
+					})];
+				}
+				return [];
+			} catch (error) {
+				errors.push(error);
+				return [];
+			} finally {
+				this._forgetSystem(system);
+			}
+		});
+
+		return Promise.all(pendingDetaches).then(() => undefined);
+	}
+
 	private _detachAllSystems(errors: unknown[]): Promise<void> {
 		const systems = [...this._systems];
 		this._systems = [];
@@ -1001,25 +1021,44 @@ export default class ECSpresso<
 		return Promise.all(pendingDetaches).then(() => undefined);
 	}
 
-	private async _runPluginCleanups(errors: unknown[]): Promise<void> {
+	private _runPluginCleanups(errors: unknown[]): void | Promise<void> {
 		const ids = Array.from(this._installedPlugins).reverse();
 		this._installedPlugins.clear();
-		for (const id of ids) {
+		const cleanups = ids.flatMap(id => {
 			const disposers = this._pluginCleanups.get(id);
 			this._pluginCleanups.delete(id);
-			if (!disposers) continue;
-			for (const disposer of [...disposers].reverse()) {
+			return disposers === undefined
+				? []
+				: [...disposers].reverse().map(disposer => ({ id, disposer }));
+		});
+
+		const runRemaining = (startIndex: number): void | Promise<void> => {
+			for (let index = startIndex; index < cleanups.length; index += 1) {
+				const cleanup = cleanups[index];
+				if (!cleanup) continue;
 				try {
-					const result = disposer();
+					const result = withCleanupScope(
+						[this],
+						(): void | Promise<void> => cleanup.disposer(),
+					);
 					if (result instanceof Promise) {
-						await result;
+						return result.then(
+							() => runRemaining(index + 1),
+							(error: unknown) => {
+								console.warn(`Plugin '${cleanup.id}' cleanup threw:`, error);
+								errors.push(error);
+								return runRemaining(index + 1);
+							},
+						);
 					}
 				} catch (error) {
-					console.warn(`Plugin '${id}' cleanup threw:`, error);
+					console.warn(`Plugin '${cleanup.id}' cleanup threw:`, error);
 					errors.push(error);
 				}
 			}
-		}
+		};
+
+		return runRemaining(0);
 	}
 
 	/**
@@ -1208,6 +1247,8 @@ export default class ECSpresso<
 	 * Dispose a single resource, calling its onDispose callback if defined
 	 * @param key The resource key to dispose
 	 * @returns True if the resource existed and was disposed, false if it didn't exist
+	 * External calls wait for an active bulk teardown; cleanup reentry returns
+	 * without waiting on the callback currently being awaited.
 	 */
 	async disposeResource<K extends keyof Cfg['resources']>(key: K): Promise<boolean> {
 		return this._resourceManager.disposeResource(key, this);
@@ -1217,6 +1258,8 @@ export default class ECSpresso<
 	 * Dispose all initialized resources in reverse dependency order.
 	 * Resources that depend on others are disposed first.
 	 * Calls each resource's onDispose callback if defined.
+	 * External concurrent calls share the active teardown and partial disposal
+	 * operations are completed before dependencies are removed.
 	 */
 	async disposeResources(): Promise<void> {
 		return this._resourceManager.disposeResources(this);
@@ -2423,10 +2466,16 @@ export default class ECSpresso<
 	 * promise. The world stops updating and accepting registrations immediately;
 	 * asynchronous system and resource cleanup completes before the promise
 	 * resolves. Uninitialized lazy resources are not created just to dispose them.
+	 * A cleanup callback may reenter disposal after suspension; that nested call
+	 * resolves immediately, while external concurrent callers await the full
+	 * teardown barrier.
 	 */
 	dispose(): Promise<void> {
 		if (this._lifecycleState === 'disposed') return Promise.resolve();
-		if (this._disposePromise) return this._disposePromise;
+		if (this._disposePromise) {
+			if (isCleanupReentry(this)) return Promise.resolve();
+			return this._disposePromise;
+		}
 
 		this._lifecycleState = 'disposing';
 		this._eventBus.close();
@@ -2435,7 +2484,6 @@ export default class ECSpresso<
 		this._resourceManager.close();
 		this._assetManager?.close();
 		this._screenManager?.close();
-		this._pendingFinalizers = [];
 
 		const deferred = createDeferred<void>();
 		this._disposePromise = deferred.promise;
@@ -2460,12 +2508,13 @@ export default class ECSpresso<
 		}
 		await Promise.all(Array.from(this._pendingSystemInitializations));
 		this._pendingSystemInitializations.clear();
+		await this._detachPendingSystems(errors);
 		await this._detachAllSystems(errors);
 		await this._awaitPendingSystemDetaches(errors);
 
 		if (this._screenManager) {
 			try {
-				await this._screenManager.dispose();
+				await withCleanupScope([this], () => this._screenManager?.dispose());
 			} catch (error) {
 				errors.push(error);
 			}
@@ -2478,14 +2527,14 @@ export default class ECSpresso<
 			.map(entity => entity.id);
 		for (const entityId of entityIds) {
 			try {
-				this._entityManager.removeEntity(entityId);
+				withCleanupScope([this], () => this._entityManager.removeEntity(entityId));
 			} catch (error) {
 				errors.push(error);
 			}
 		}
 
 		try {
-			await this._resourceManager.disposeResources(this);
+			await withCleanupScope([this], () => this._resourceManager.disposeResources(this));
 		} catch (error) {
 			errors.push(error);
 		}

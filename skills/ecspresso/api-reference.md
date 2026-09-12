@@ -97,6 +97,12 @@ await ecs.disposeResource('cache');   // single resource
 await ecs.disposeResources();          // all, in reverse dependency order
 ```
 
+Bulk disposal waits for already-started partial resource disposal, including
+async callbacks, before removing dependencies. External concurrent callers wait
+on the active teardown; a callback reentering disposal returns immediately so
+it cannot wait on itself. Failures are surfaced after remaining resource
+cleanup completes.
+
 ## Events
 
 ```typescript
@@ -355,7 +361,10 @@ cleanup callbacks; it does not remove systems or other registrations made by
 the plugin. If a standalone uninstall callback is asynchronous, the library
 observes and reports its rejection but the boolean-returning API does not wait
 for it. `await dispose()` runs all plugin cleanups, detaches all systems,
-removes entities and commands, exits active screens, and disposes initialized
-resources in reverse dependency order. Lazy resources are not created for
-disposal. The promise rejects after remaining cleanup finishes if a disposer
-fails, and repeated or concurrent disposal calls share the teardown.
+including pending builders without initializing them, removes entities and
+commands, exits active screens, and disposes initialized resources in reverse
+dependency order. Lazy resources are not created for disposal. The promise
+rejects after remaining cleanup finishes if a disposer fails. During active
+teardown, external concurrent calls share the completion barrier; a cleanup
+callback may reenter `await dispose()` after suspension and receives an
+immediate no-op result so it can finish. Calls after teardown are no-ops.

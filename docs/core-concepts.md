@@ -185,6 +185,12 @@ entities and their components, discards queued commands, runs plugin cleanups,
 exits active screens, and disposes initialized resources in reverse dependency
 order. Lazy resources are not created just to dispose them. Cleanup continues
 after independent disposer failures; the returned promise rejects after the
-remaining cleanup completes. Repeated or concurrent calls await the same
-teardown. `disposeResource()` and `disposeResources()` remain available for
-partial resource teardown before the world is disposed.
+remaining cleanup completes. External concurrent calls made while teardown is
+active wait on the same completion barrier, while calls made after teardown
+are no-ops. A cleanup callback may call `await world.dispose()` reentrantly;
+that nested call resolves immediately so the callback can finish, and the
+outer disposal remains responsible for the complete teardown result. Resource
+bulk disposal also waits for already-started partial disposal and preserves
+dependencies until each callback finishes. `disposeResource()` and
+`disposeResources()` remain available for partial resource teardown before the
+world is disposed.

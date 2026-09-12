@@ -44,10 +44,12 @@ the check applies to the first plugin in a builder chain, later plugins, and
 direct `world.installPlugin()` calls. Invalid programs should be kept in
 compile-time tests with `@ts-expect-error`; they should not be executed.
 
-Provided overlaps are checked mutually because providers may write or replace
-shared values. Requirements use the safe world-to-requirement direction, so a
-narrower concrete value (such as a literal layer) can satisfy a broader
-dependency contract, while an incompatible or wider value is rejected.
+Provided overlaps and required values are checked mutually because plugin
+install callbacks receive a writable world and may replace shared values.
+Consequently, a narrower concrete value (such as a literal collision layer)
+does not satisfy a broader `string` requirement. When a dependency varies by
+application, expose that variation as a generic contract and instantiate both
+the provider and consumer with the same type.
 
 ## Error Handling
 

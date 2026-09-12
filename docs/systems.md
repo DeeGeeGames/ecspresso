@@ -4,6 +4,11 @@
 
 Systems use a fluent builder API: `world.addSystem().addQuery().setProcess()` — systems are automatically registered via deferred finalization. No explicit termination call is needed.
 
+If `world.dispose()` runs before a pending builder is finalized, the builder is
+not initialized or registered. Its `onDetach` callback still runs through the
+normal detach path and is awaited, so pending application and plugin systems
+can release resources without ever processing an update.
+
 ```typescript
 world.addSystem('physics')
   .addQuery('moving', { with: ['position', 'velocity'] })
@@ -272,9 +277,10 @@ await world.initialize();
 ```
 
 `onDetach` may be asynchronous. Removing one system starts its detach hook
-and logs a rejected promise; `await world.dispose()` detaches every
-registered system and waits for all asynchronous detach hooks before it
-resolves. System event handlers are also removed as part of detachment.
+and logs a rejected promise; `await world.dispose()` detaches every registered
+system and every still-pending builder, without initializing pending builders,
+and waits for all asynchronous detach hooks before it resolves. System event
+handlers are also removed as part of detachment.
 Systems that only declare event handlers are still attached and receive events
 whenever their live group, screen, and asset gates allow it; see
 [Events](./events.md).

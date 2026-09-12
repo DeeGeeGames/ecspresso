@@ -157,6 +157,9 @@ function compareByDistance(a: DetectedEntry, b: DetectedEntry): number {
  * Publishes `detectionGained`/`detectionLost` events on transitions.
  *
  * Requires the spatial-index and transform plugins to be installed.
+ * When the collision plugin uses a typed layer map, pass the same layer union
+ * as the second generic parameter, for example
+ * `createDetectionPlugin<'ai', LayersOf<typeof layers>>()`.
  *
  * @example
  * ```typescript
@@ -172,7 +175,7 @@ function compareByDistance(a: DetectedEntry, b: DetectedEntry): number {
  * const nearest = detected?.entities[0];
  * ```
  */
-export function createDetectionPlugin<G extends string = 'ai'>(
+export function createDetectionPlugin<G extends string = 'ai', L extends string = string>(
 	options?: DetectionPluginOptions<G>,
 ) {
 	const {
@@ -195,7 +198,7 @@ export function createDetectionPlugin<G extends string = 'ai'>(
 		.withGroups<G>()
 		.requires<
 			TransformWorldConfig &
-			ComponentsConfig<Pick<CollisionComponentTypes<string>, 'collisionLayer'>> &
+			ComponentsConfig<Pick<CollisionComponentTypes<L>, 'collisionLayer'>> &
 			ResourcesConfig<SpatialIndexResourceTypes>
 		>()
 		.install((world) => {

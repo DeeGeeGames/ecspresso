@@ -93,7 +93,11 @@ const inputPlugin = definePlugin('input')
 Disposers run in reverse registration order. They may be synchronous or
 return a promise. A failing disposer does not prevent later cleanup from
 running; `await world.dispose()` rejects after the remaining world teardown is
-complete.
+complete. A cleanup callback may call `await world.dispose()` again, including
+after an asynchronous suspension; that nested call resolves immediately so it
+does not wait on the callback that the outer disposal is already awaiting.
+Calls made outside cleanup remain pending on the complete world-teardown
+barrier.
 
 ### Uninstalling plugins at runtime
 
@@ -165,7 +169,15 @@ export const movementPlugin = definePlugin('movement')
   });
 ```
 
-Available helpers are `ComponentsConfig<T>`, `EventsConfig<T>`, `ResourcesConfig<T>`, `AssetsConfig<T>`, and `ScreensConfig<T>`. Use `WorldConfigFrom` directly when a type naturally spans several slots and the positional form is still clearer.
+Available helpers are `ComponentsConfig<T>`, `EventsConfig<T>`,
+`ResourcesConfig<T>`, `AssetsConfig<T>`, and `ScreensConfig<T>`. Requirement
+values are checked for mutual compatibility across all five slots because the
+world passed to `install` is writable. If a dependency has an application-
+specific union (for example, collision layers or input action names), make
+the plugin factory generic and pass the same union to the provider and
+consumer rather than widening the requirement. Use `WorldConfigFrom` directly
+when a type naturally spans several slots and the positional form is still
+clearer.
 
 ## Required Components
 

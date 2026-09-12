@@ -156,14 +156,17 @@ type RequirementSlotSatisfied<
 	Accumulated extends Record<string, any>,
 	Required extends Record<string, any>,
 > = [keyof Required] extends [keyof Accumulated]
-	// A requirement is a contract the accumulated world must satisfy. The
-	// accumulated value may be narrower (for example, a literal collision
-	// layer satisfying a string-valued dependency), but it may not be wider or
-	// otherwise incompatible with the required value.
+	// Requirements are writable through the world passed to a plugin, so the
+	// required values must be exactly the values supplied by the world. Extra
+	// accumulated keys remain valid; only the required key set is compared.
 	? {
 		[K in keyof Required]: Accumulated[K & keyof Accumulated];
-	} extends Required
-		? true
+	} extends infer AccumulatedRequired
+		? [AccumulatedRequired] extends [Required]
+			? [Required] extends [AccumulatedRequired]
+				? true
+				: false
+			: false
 		: false
 	: false;
 
@@ -191,9 +194,10 @@ export type ConfigsAreCompatible<A extends WorldConfig, B extends WorldConfig> =
 /**
  * Check if a Requires config is satisfied by an Accumulated config.
  * Checks all five WorldConfig slots (components, events, resources, assets, screens).
- * Requirement values use world-to-requirement assignability: a narrower
- * accumulated value may satisfy a broader dependency contract, but an
- * incompatible or wider accumulated value does not.
+ * Requirement values use exact mutual compatibility because the world passed
+ * to a plugin exposes writable component, resource, event, asset, and screen
+ * values. A plugin that needs a broader value should declare that broader
+ * value as a generic contract shared by the provider and consumer.
  * When Required is EmptyConfig, all slots have `keyof {} = never`,
  * and `never extends X = true`, so empty requirements are always satisfied.
  */

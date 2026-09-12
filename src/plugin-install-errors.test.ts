@@ -60,6 +60,20 @@ type CompleteWorldCfg = WorldConfigFrom<
 	WorldCfg['assets'],
 	{ menu: ScreenDefinition<{ tab: string }> }
 >;
+type NarrowWritableWorld = WorldConfigFrom<
+	{
+		state: { mode: 'idle' | 'running' };
+		settings: { mode: 'idle' | 'running'; enabled: boolean };
+	},
+	{},
+	{ store: { status: 'open' | 'closed'; version: number } }
+>;
+type BroadWritableRequirement = ComponentsConfig<{
+	state: { mode: string };
+		settings: { mode: 'idle' | 'running' };
+}> & ResourcesConfig<{
+	store: { status: string; version: number };
+}>;
 
 // ==================== Type-level tests: failure messages ====================
 
@@ -113,9 +127,14 @@ test('type-level: union and literal overlaps remain exact for provided slots', (
 	assertType<IsEqual<ConflictingSlot<UnionWorld, LiteralWorld>, 'components' | 'events'>>();
 });
 
-test('type-level: narrower accumulated literals satisfy broader requirements', () => {
-	assertType<IsEqual<MissingRequirementSlot<LiteralWorld, UnionWorld>, never>>();
+test('type-level: requirement values are mutually exact for literal unions', () => {
+	assertType<IsEqual<MissingRequirementSlot<LiteralWorld, UnionWorld>, 'components' | 'events'>>();
 	assertType<IsEqual<MissingRequirementSlot<UnionWorld, LiteralWorld>, 'components' | 'events'>>();
+});
+
+test('type-level: writable broad requirements reject narrower worlds and dropped fields', () => {
+	type Actual = MissingRequirementSlot<NarrowWritableWorld, BroadWritableRequirement>;
+	assertType<IsEqual<Actual, 'components' | 'resources'>>();
 });
 
 test('type-level: missing required component produces named error', () => {
@@ -280,4 +299,23 @@ test('wiring: direct install rejects wrong requirement values in every slot', ()
 	expect(invalidResourceInstall).toBeDefined();
 	expect(invalidAssetInstall).toBeDefined();
 	expect(invalidScreenInstall).toBeDefined();
+});
+
+test('wiring: builder and direct installation reject broad writable requirements', () => {
+	const broadWriter = definePlugin('broad-writer')
+		.requires<BroadWritableRequirement>()
+		.install(() => {});
+
+	const invalidBuilderInstall = () => {
+		// @ts-expect-error - a broad writer can violate the narrow component/resource types
+		ECSpresso.create<NarrowWritableWorld>().withPlugin(broadWriter);
+	};
+	const world = new ECSpresso<NarrowWritableWorld>();
+	const invalidDirectInstall = () => {
+		// @ts-expect-error - direct installation uses the same writable requirement check
+		world.installPlugin(broadWriter);
+	};
+
+	expect(invalidBuilderInstall).toBeDefined();
+	expect(invalidDirectInstall).toBeDefined();
 });

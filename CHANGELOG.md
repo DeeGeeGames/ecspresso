@@ -15,11 +15,20 @@ All notable changes to ECSpresso are documented here. Format loosely follows [Ke
 - Plugin compatibility checks now reject conflicting overlapping types and
   validate required value types across components, events, resources, assets,
   and screens, including the first builder plugin.
+- Plugin requirements now use mutual compatibility for writable shared values;
+  plugins with application-specific collision layers or input action unions
+  can carry those types through their factory generics.
 - `await world.dispose()` is now the complete asynchronous world teardown
   operation. It stops new work, detaches systems, removes entities, runs async
   plugin/resource cleanup, and reports failures after cleanup continues.
   Callers that previously ignored `dispose()` may continue doing so, but code
   that needs teardown completion should await it.
+- Cleanup reentry no longer deadlocks world disposal after an asynchronous
+  suspension. External concurrent callers still await the complete teardown,
+  resource bulk disposal waits for partial resource operations, and failures
+  remain observable after dependencies and remaining cleanup are released.
+- Pending system builders now run asynchronous `onDetach` cleanup during world
+  disposal without being initialized or registered for processing.
 
 ### Internal
 

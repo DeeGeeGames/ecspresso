@@ -24,7 +24,7 @@ import {
 } from '../../src/plugins/rendering/renderer2D';
 import { createInputPlugin } from '../../src/plugins/input/input';
 import { createSpatialIndexPlugin } from '../../src/plugins/spatial/spatial-index';
-import { defineCollisionLayers, createCollisionPlugin, createCircleCollider } from '../../src/plugins/physics/collision';
+import { defineCollisionLayers, createCollisionPlugin, createCircleCollider, type LayersOf } from '../../src/plugins/physics/collision';
 import { createDetectionPlugin, createDetector } from '../../src/plugins/ai/detection';
 import { createSteeringPlugin, createMoveSpeed } from '../../src/plugins/physics/steering';
 import { createDiagnosticsPlugin } from '../../src/plugins/debug/diagnostics';
@@ -115,7 +115,7 @@ const ecs = ECSpresso
 	.withPlugin(createRenderer2DPlugin({ background: '#111118', width: WORLD_W, height: WORLD_H }))
 	.withPlugin(createCollisionPlugin({ layers }))
 	.withPlugin(createSpatialIndexPlugin())
-	.withPlugin(createDetectionPlugin())
+	.withPlugin(createDetectionPlugin<'ai', LayersOf<typeof layers>>())
 	.withPlugin(createSteeringPlugin({ arrivalThreshold: 10 }))
 	.withPlugin(createInputPlugin({
 		actions: {},

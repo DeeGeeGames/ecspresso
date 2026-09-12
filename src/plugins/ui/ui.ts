@@ -407,9 +407,9 @@ interface UIMessageLogRuntime {
 
 // ==================== Plugin Factory ====================
 
-type UIRequires =
+type UIRequires<A extends string = string> =
 	ComponentsConfig<TransformComponentTypes>
-	& ResourcesConfig<BoundsResourceTypes & InputResourceTypes>;
+	& ResourcesConfig<BoundsResourceTypes & InputResourceTypes<A>>;
 
 type UILabels =
 	| 'ui-anchor-resolve'
@@ -428,7 +428,12 @@ export interface UIPluginOptions<G extends string = 'ui'> extends BasePluginOpti
 	renderSyncPriority?: number;
 }
 
-export function createUIPlugin<G extends string = 'ui'>(
+/**
+ * If the input plugin is configured with a literal action-name union, pass
+ * that union as the second generic parameter so the writable input resource
+ * requirement remains exact.
+ */
+export function createUIPlugin<G extends string = 'ui', A extends string = string>(
 	options?: UIPluginOptions<G>,
 ) {
 	const {
@@ -454,7 +459,7 @@ export function createUIPlugin<G extends string = 'ui'>(
 		.withLabels<UILabels>()
 		.withGroups<G>()
 		.withReactiveQueryNames<'ui-labels' | 'ui-panels' | 'ui-progress-bars' | 'ui-message-logs'>()
-		.requires<UIRequires>()
+		.requires<UIRequires<A>>()
 		.install((world) => {
 			world.registerRequired('uiElement', 'localTransform', (): LocalTransform => ({
 				x: DEFAULT_LOCAL_TRANSFORM.x,

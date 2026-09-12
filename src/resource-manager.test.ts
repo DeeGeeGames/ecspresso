@@ -4,6 +4,16 @@ import ResourceManager, { directValue } from './resource-manager';
 import { definePlugin } from './plugin';
 import type { WorldConfigFrom } from './type-utils';
 
+function settleWithin<T>(promise: Promise<T>, timeoutMs = 100): Promise<T> {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const timeout = new Promise<T>((_, reject) => {
+		timer = setTimeout(() => reject(new Error('operation did not settle in time')), timeoutMs);
+	});
+	return Promise.race([promise, timeout]).finally(() => {
+		if (timer !== undefined) clearTimeout(timer);
+	});
+}
+
 interface TestComponents {
 	position: { x: number; y: number };
 	velocity: { x: number; y: number };
@@ -633,6 +643,85 @@ describe('ResourceManager', () => {
 			await rm.disposeResources();
 
 			expect(asyncDisposeCalled).toBe(true);
+		});
+
+		test('concurrent external bulk disposal waits for the shared teardown', async () => {
+			let releaseDisposal: (() => void) | undefined;
+			let disposalStarted: (() => void) | undefined;
+			let disposeCalls = 0;
+			const disposalStart = new Promise<void>(resolve => {
+				disposalStarted = resolve;
+			});
+			const disposalGate = new Promise<void>(resolve => {
+				releaseDisposal = resolve;
+			});
+			const rm = new ResourceManager<{ value: number }>();
+			rm.add('value', {
+				factory: () => 1,
+				onDispose: async () => {
+					disposalStarted?.();
+					await disposalGate;
+					disposeCalls++;
+				},
+			});
+			await rm.initializeResources();
+
+			const first = rm.disposeResources();
+			await disposalStart;
+			let secondCompleted = false;
+			const second = rm.disposeResources().then(() => {
+				secondCompleted = true;
+			});
+			await Promise.resolve();
+			expect(secondCompleted).toBe(false);
+
+			releaseDisposal?.();
+			await settleWithin(first);
+			await settleWithin(second);
+			expect(disposeCalls).toBe(1);
+		});
+
+		test('bulk disposal reports an in-flight partial failure once', async () => {
+			let releaseDisposal: (() => void) | undefined;
+			let disposalStarted: (() => void) | undefined;
+			const disposalStart = new Promise<void>(resolve => {
+				disposalStarted = resolve;
+			});
+			const disposalGate = new Promise<void>(resolve => {
+				releaseDisposal = resolve;
+			});
+			const rm = new ResourceManager<{ value: number }>();
+			rm.add('value', {
+				factory: () => 1,
+				onDispose: async () => {
+					disposalStarted?.();
+					await disposalGate;
+					throw new Error('partial disposal failed');
+				},
+			});
+			await rm.initializeResources();
+
+			const partial = rm.disposeResource('value');
+			await disposalStart;
+			const bulk = rm.disposeResources();
+			releaseDisposal?.();
+
+			let partialFailed = false;
+			try {
+				await settleWithin(partial);
+			} catch (error) {
+				partialFailed = error instanceof Error && error.message === 'partial disposal failed';
+			}
+			let bulkError: unknown;
+			try {
+				await settleWithin(bulk);
+			} catch (error) {
+				bulkError = error;
+			}
+
+			expect(partialFailed).toBe(true);
+			expect(bulkError).toBeInstanceOf(Error);
+			expect(bulkError).not.toBeInstanceOf(AggregateError);
 		});
 
 		test('disposeResources() continues after a disposer fails and is repeat-safe', async () => {

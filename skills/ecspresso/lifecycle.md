@@ -92,4 +92,9 @@ Cleanup runs in reverse registration order when uninstalling the plugin or
 disposing the world. Cleanup functions may return promises. `await ecs.dispose()`
 waits for them and for system/resource teardown. Standalone
 `ecs.uninstallPlugin(id)` remains synchronous and does not remove systems or
-other registrations made by that plugin.
+other registrations made by that plugin. A cleanup callback may call
+`await ecs.dispose()` reentrantly, including after an asynchronous suspension; that
+nested call resolves immediately so the callback can finish instead of waiting
+on itself. External concurrent calls remain pending until the complete teardown
+barrier resolves. Pending system builders are detached without initialization,
+and their asynchronous `onDetach` callbacks are awaited.

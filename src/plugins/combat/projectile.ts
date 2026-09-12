@@ -136,6 +136,9 @@ export function createProjectileDirection(x: number, y: number): Pick<Projectile
  *
  * Provides homing and linear projectile movement systems, plus
  * automatic collision-to-damage integration.
+ * When the collision plugin uses a typed layer map, pass the same layer union
+ * as the second generic parameter, for example
+ * `createProjectilePlugin<'combat', LayersOf<typeof layers>>()`.
  *
  * @example
  * ```typescript
@@ -151,7 +154,7 @@ export function createProjectileDirection(x: number, y: number): Pick<Projectile
  * });
  * ```
  */
-export function createProjectilePlugin<G extends string = 'combat'>(
+export function createProjectilePlugin<G extends string = 'combat', L extends string = string>(
 	options?: ProjectilePluginOptions<G>,
 ) {
 	const {
@@ -168,7 +171,7 @@ export function createProjectilePlugin<G extends string = 'combat'>(
 		.withGroups<G>()
 		.requires<
 			TransformWorldConfig &
-			EventsConfig<CollisionEventTypes<string>>
+			EventsConfig<CollisionEventTypes<L>>
 		>()
 		.install((world) => {
 			// Homing projectiles — track target position each frame

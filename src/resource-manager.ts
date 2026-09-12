@@ -1,3 +1,5 @@
+import { createDeferred, isCleanupReentry, withCleanupScope } from './cleanup-context';
+
 /**
  * Resource factory with declared dependencies and optional disposal callback
  */
@@ -130,12 +132,23 @@ function asError(value: unknown): Error {
 	return value instanceof Error ? value : new Error(String(value));
 }
 
+function isObjectLike(value: unknown): value is object {
+	return (typeof value === 'object' && value !== null) || typeof value === 'function';
+}
+
 function aggregateErrors(errors: readonly unknown[], message: string): Error {
 	if (errors.length === 1) {
 		const error = errors[0];
 		return asError(error);
 	}
 	return new AggregateError(errors, message);
+}
+
+interface ResourceDisposalOperation {
+	readonly promise: Promise<boolean>;
+	error: unknown;
+	hasError: boolean;
+	trackedByBulk: boolean;
 }
 
 export default
@@ -154,12 +167,14 @@ class ResourceManager<
 	private disposingResourceKeys: Set<keyof ResourceTypes> = new Set();
 	/** Shared promise for concurrent disposeResources() calls. */
 	private disposePromise: Promise<void> | undefined;
+	/** In-flight per-resource disposal operations, including partial disposal. */
+	private pendingDisposals: Map<keyof ResourceTypes, ResourceDisposalOperation> = new Map();
+	/** Failed partial disposals that completed before a bulk teardown began. */
+	private completedDisposalErrors: unknown[] = [];
 	/** Prevent new factories from starting or storing values after world teardown begins. */
 	private closed = false;
 	/** Prevent a late factory result from repopulating a manager that was cleared. */
 	private cleared = false;
-	/** Non-zero while an onDispose callback is running. */
-	private disposalCallbackDepth = 0;
 	private _changeSubscribers: Map<keyof ResourceTypes, Set<(newValue: any, oldValue: any) => void>> = new Map();
 	/** Shallow snapshots of observed resources, keyed by resource key */
 	private _observedSnapshots: Map<keyof ResourceTypes, Record<string, unknown>> = new Map();
@@ -362,8 +377,13 @@ class ResourceManager<
 		const factory = this.resourceFactories.get(label);
 		if (!factory) return;
 		const context = args[0] as Context;
-		const initialization = this.initializeResourceValue(label, factory, context);
+		const deferred = createDeferred<void>();
+		const initialization = deferred.promise;
 		this.pendingInitializations.set(label, initialization);
+		void this.initializeResourceValue(label, factory, context).then(
+			deferred.resolve,
+			deferred.reject,
+		);
 		try {
 			await initialization;
 		} finally {
@@ -432,8 +452,68 @@ class ResourceManager<
 	 * @param label The resource key to dispose
 	 * @param context Context to pass to the onDispose callback
 	 * @returns True if the resource existed and was disposed, false if it didn't exist
+	 * External calls wait for an active bulk teardown; cleanup reentry returns
+	 * without waiting on the callback currently being awaited.
 	 */
 	async disposeResource<K extends keyof ResourceTypes>(
+		label: K,
+		...args: ContextArgs<Context>
+	): Promise<boolean> {
+		const pending = this.pendingInitializations.get(label);
+		if (pending) {
+			await pending;
+		}
+		const pendingDisposal = this.pendingDisposals.get(label);
+		if (pendingDisposal) {
+			if (isCleanupReentry(this)) return false;
+			return pendingDisposal.promise;
+		}
+		if (this.disposePromise) {
+			if (isCleanupReentry(this)) return false;
+			await this.disposePromise;
+			return false;
+		}
+		if (this.closed) return false;
+
+		const deferred = createDeferred<boolean>();
+		const disposal = deferred.promise;
+		const operation: ResourceDisposalOperation = {
+			promise: disposal,
+			error: undefined,
+			hasError: false,
+			trackedByBulk: false,
+		};
+		this.pendingDisposals.set(label, operation);
+		void this.disposeResourceValue(label, args, deferred, operation);
+		return disposal;
+	}
+
+	private async disposeResourceValue<K extends keyof ResourceTypes>(
+		label: K,
+		args: ContextArgs<Context>,
+		deferred: {
+			resolve: (value: boolean | PromiseLike<boolean>) => void;
+			reject: (reason?: unknown) => void;
+		},
+		operation: ResourceDisposalOperation,
+	): Promise<void> {
+		try {
+			const result = await this.disposeResourceInternal(label, ...args);
+			deferred.resolve(result);
+		} catch (error) {
+			operation.error = error;
+			operation.hasError = true;
+			deferred.reject(error);
+		} finally {
+			if (this.pendingDisposals.get(label) !== operation) return;
+			this.pendingDisposals.delete(label);
+			if (operation.hasError && !operation.trackedByBulk) {
+				this.completedDisposalErrors.push(operation.error);
+			}
+		}
+	}
+
+	private async disposeResourceInternal<K extends keyof ResourceTypes>(
 		label: K,
 		...args: ContextArgs<Context>
 	): Promise<boolean> {
@@ -455,12 +535,8 @@ class ResourceManager<
 				const resource = this.resources.get(label);
 				if (disposer && this.resources.has(label)) {
 					const context = args[0] as Context;
-					this.disposalCallbackDepth++;
-					try {
-						await disposer(resource, context);
-					} finally {
-						this.disposalCallbackDepth--;
-					}
+					const owners = isObjectLike(context) ? [this, context] : [this];
+					await withCleanupScope(owners, () => disposer(resource, context));
 				}
 			}
 
@@ -575,17 +651,20 @@ class ResourceManager<
 	 * Dispose all initialized resources in reverse dependency order.
 	 * Resources that depend on others are disposed first.
 	 * @param context Context to pass to onDispose callbacks
+	 * External concurrent calls share the active teardown, and already-started
+	 * partial disposal operations finish before dependencies are removed.
 	 */
 	async disposeResources(
 		...args: ContextArgs<Context>
 	): Promise<void> {
-		if (this.disposalCallbackDepth > 0) return;
+		if (isCleanupReentry(this)) return;
 		if (this.disposePromise) {
 			await this.disposePromise;
 			return;
 		}
 
-		const disposal = this.disposeResourcesInternal(...args);
+		const deferred = createDeferred<void>();
+		const disposal = deferred.promise;
 		this.disposePromise = disposal;
 		disposal.then(
 			() => {
@@ -595,23 +674,35 @@ class ResourceManager<
 				if (this.disposePromise === disposal) this.disposePromise = undefined;
 			},
 		);
-		try {
-			await disposal;
-		} finally {
-			if (this.disposePromise === disposal) {
-				this.disposePromise = undefined;
-			}
-		}
+		void this.disposeResourcesInternal(...args).then(
+			deferred.resolve,
+			deferred.reject,
+		);
+		await disposal;
 	}
 
 	private async disposeResourcesInternal(
 		...args: ContextArgs<Context>
 	): Promise<void> {
+		const activeDisposals = Array.from(this.pendingDisposals.values());
+		activeDisposals.forEach(operation => {
+			operation.trackedByBulk = true;
+		});
+		const disposalResults = await Promise.allSettled(activeDisposals.map(operation => operation.promise));
+		const errors = disposalResults.flatMap((result, index) => {
+			if (result.status !== 'rejected') return [];
+			const operation = activeDisposals[index];
+			if (!operation) return [];
+			return [result.reason];
+		});
+		errors.push(...this.completedDisposalErrors);
+		this.completedDisposalErrors = [];
+
 		const pending = Array.from(this.pendingInitializations.values());
 		const initializationResults = await Promise.allSettled(pending);
-		const errors = initializationResults
+		errors.push(...initializationResults
 			.filter((result): result is PromiseRejectedResult => result.status === 'rejected')
-			.map(result => result.reason);
+			.map(result => result.reason));
 
 		// Get only initialized resource keys after pending factories have settled.
 		const initializedKeys = Array.from(this.initializedResourceKeys);
@@ -623,7 +714,7 @@ class ResourceManager<
 		// Dispose in reverse dependency order and continue after individual failures.
 		for (const key of sortedKeys) {
 			try {
-				await this.disposeResource(key, ...args);
+				await this.disposeResourceInternal(key, ...args);
 			} catch (error) {
 				errors.push(error);
 			}
@@ -650,6 +741,8 @@ class ResourceManager<
 		this.initializedResourceKeys.clear();
 		this.pendingInitializations.clear();
 		this.disposingResourceKeys.clear();
+		this.pendingDisposals.clear();
+		this.completedDisposalErrors = [];
 		this._changeSubscribers.clear();
 		this._observedSnapshots.clear();
 	}

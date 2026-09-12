@@ -63,6 +63,12 @@ The builder mirrors `ECSpresso.create()`:
 - `.setSystemDefaults({ phase?, priority?, inScreens?, excludeScreens? })` — defaults applied to every `world.addSystem(...)` called inside `install`. Per-system builder calls (`.inPhase`, `.setPriority`, `.inScreens`, `.excludeScreens`) override. Calling again replaces wholesale.
 - `.install(fn)` — terminal, returns the finalized `Plugin` object
 
+Requirements are checked for mutual compatibility across components, events,
+resources, assets, and screens because the world passed to `install` is
+writable. If a dependency varies by an application's union (such as collision
+layers or input action names), make the plugin factory generic and pass the
+same union to the provider and consumer instead of widening the requirement.
+
 ### Plugin-level system defaults
 
 When every system in a plugin shares the same gating, hoist it onto the plugin instead of repeating it per system:

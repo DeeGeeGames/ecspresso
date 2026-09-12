@@ -2,7 +2,7 @@ import ECSpresso, { type SystemRegistrarOf } from '../../src';
 import { createDetectionPlugin } from '../../src/plugins/ai/detection';
 import { createHealthPlugin } from '../../src/plugins/combat/health';
 import { createProjectilePlugin } from '../../src/plugins/combat/projectile';
-import { createCollisionPlugin } from '../../src/plugins/physics/collision';
+import { createCollisionPlugin, type LayersOf } from '../../src/plugins/physics/collision';
 import { createSteeringPlugin } from '../../src/plugins/physics/steering';
 import { createRenderer2DPlugin } from '../../src/plugins/rendering/renderer2D';
 import { createTimerPlugin } from '../../src/plugins/scripting/timers';
@@ -31,9 +31,9 @@ export const game = ECSpresso.create()
 	.withPlugin(createCollisionPlugin({ layers: collisionLayers, priority: 50 }))
 	.withPlugin(createSpatialIndexPlugin())
 	.withPlugin(createSteeringPlugin())
-	.withPlugin(createDetectionPlugin())
+	.withPlugin(createDetectionPlugin<'ai', LayersOf<typeof collisionLayers>>())
 	.withPlugin(createHealthPlugin())
-	.withPlugin(createProjectilePlugin())
+	.withPlugin(createProjectilePlugin<'combat', LayersOf<typeof collisionLayers>>())
 	.withComponentTypes<{
 		turret: true;
 		enemy: {

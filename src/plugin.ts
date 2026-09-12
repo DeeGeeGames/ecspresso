@@ -313,7 +313,8 @@ export class PluginBuilder<
 	 * Declare dependencies this plugin requires from other plugins.
 	 * Accepts a pre-built `WorldConfig` type (typically a named alias like
 	 * `TransformWorldConfig`). The install callback will see these types
-	 * merged into its world parameter.
+	 * merged into its world parameter. Since that world is writable, required
+	 * overlapping values must be mutually compatible with the installed world.
 	 * Pure type-level operation with no runtime cost.
 	 */
 	requires<R extends WorldConfig>(): PluginBuilder<

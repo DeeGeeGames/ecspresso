@@ -62,9 +62,9 @@ export type SelectionWorldConfig =
 
 // ==================== Dependency Types ====================
 
-type SelectionRequires =
+type SelectionRequires<A extends string = string> =
 	ComponentsConfig<Renderer2DComponentTypes>
-	& ResourcesConfig<InputResourceTypes & Renderer2DResourceTypes>;
+	& ResourcesConfig<InputResourceTypes<A> & Renderer2DResourceTypes>;
 
 // ==================== Plugin Options ====================
 
@@ -120,6 +120,10 @@ export function createSelectable(): Pick<SelectionComponentTypes, 'selectable'> 
  * - Selection box overlay (rendered as a PixiJS Graphics entity)
  * - Automatic camera-awareness when cameraState resource is present
  *
+ * If the input plugin is configured with a literal action-name union, pass
+ * that union as the second generic parameter so the writable input resource
+ * requirement remains exact.
+ *
  * Requires the input plugin and renderer2D plugin to be installed.
  *
  * @example
@@ -139,7 +143,7 @@ export function createSelectable(): Pick<SelectionComponentTypes, 'selectable'> 
  * });
  * ```
  */
-export function createSelectionPlugin<G extends string = 'selection'>(
+export function createSelectionPlugin<G extends string = 'selection', A extends string = string>(
 	options?: SelectionPluginOptions<G>
 ) {
 	const {
@@ -164,7 +168,7 @@ export function createSelectionPlugin<G extends string = 'selection'>(
 		.withResourceTypes<SelectionResourceTypes>()
 		.withLabels<'selection-input' | 'selection-visual'>()
 		.withGroups<G>()
-		.requires<SelectionRequires>()
+		.requires<SelectionRequires<A>>()
 		.install((world) => {
 			world.addResource('selectionState', {
 				dragStart: { x: 0, y: 0 },

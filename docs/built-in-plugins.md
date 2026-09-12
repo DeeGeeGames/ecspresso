@@ -399,6 +399,17 @@ ecs.eventBus.subscribe('collision', (data) => onCollide({ data, ecs }));
 
 `collision` events carry `entityA`, `entityB`, `layerA`, `layerB`, and flat contact fields `normalX` / `normalY` / `depth`. The normal points from A toward B. Declaring `"a:b"` in a pair handler automatically also handles `(layerA=b, layerB=a)` with the entity arguments swapped so the declared key order holds.
 
+Plugins that consume typed collision data, such as detection and projectile,
+must use the same layer union as the collision provider because plugin
+requirements are writable and checked mutually. Pass `LayersOf<typeof layers>`
+as the consumer factory's layer type when the layer map is narrower than
+`string`:
+
+```typescript
+.withPlugin(createDetectionPlugin<'ai', LayersOf<typeof layers>>())
+.withPlugin(createProjectilePlugin<'combat', LayersOf<typeof layers>>())
+```
+
 Collider positions are read from `worldTransform`, so hierarchical parents and offsets work correctly. Optional `offsetX` / `offsetY` on the collider itself shifts the collision shape relative to the entity's transform.
 
 Without a spatial index installed, the collision system uses O(N²) brute-force pair testing. Install `createSpatialIndexPlugin()` for broadphase acceleration — see the Spatial Index section below.
