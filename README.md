@@ -1,5 +1,11 @@
 # ECSpresso
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="./assets/brand/ecspresso-master-dark-transparent.svg">
+  <source media="(prefers-color-scheme: light)" srcset="./assets/brand/ecspresso-master-light-transparent.svg">
+  <img src="./assets/brand/ecspresso-master-light-transparent.svg" alt="ECSpresso logo: a coffee cup with ECS in the steam and the preso wordmark" width="360">
+</picture>
+
 *(pronounced "ex-presso")*
 
 A type-safe, modular, and extensible Entity Component System (ECS) framework for TypeScript and JavaScript.
@@ -98,6 +104,14 @@ in [`.claude-plugin/`](./.claude-plugin/) and
 instead follow [`AGENTS.md`](./AGENTS.md),
 [`docs/maintainer-workflow.md`](./docs/maintainer-workflow.md), and the
 repository-local `ecspresso-maintainer` skill.
+
+## Brand assets
+
+The [brand pack](./assets/brand/) includes the full logo, the cup with ECS steam,
+and the cup icon in SVG and PNG formats, with light, dark, and transparent
+versions. See the [brand notes](./assets/brand/BRAND.md) for palettes and usage
+details, or the [contact sheet](./assets/brand/contact-sheet.png) to preview all
+marks.
 
 ## License
 
