@@ -139,34 +139,36 @@ await Bun.write(
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<title>ECSpresso Examples</title>
+	<link rel="stylesheet" href="../showcase/site.css">
+	<script type="module" src="../showcase/theme-page.js"></script>
 	<link rel="stylesheet" href="./styles.css">
 	<style>
 		body {
 			overflow: auto;
-			background: #1e1e2e;
-			color: #cdd6f4;
+			background: var(--bg);
+			color: var(--ink);
 			font-family: 'Segoe UI', system-ui, sans-serif;
 			padding: 40px;
 		}
-		h1 { color: #cba6f7; margin-bottom: 8px; }
-		.subtitle { color: #6c7086; margin-bottom: 24px; }
-		.subtitle a { color: #89b4fa; }
+		h1 { color: var(--ink); margin-bottom: 8px; }
+		.subtitle { color: var(--muted); margin-bottom: 24px; }
+		.subtitle a { color: var(--accent); }
 		ul { list-style: none; padding: 0; max-width: 600px; }
 		li { margin: 0; }
 		li a {
 			display: block;
 			padding: 12px 16px;
-			color: #89b4fa;
+			color: var(--accent);
 			text-decoration: none;
 			border-radius: 6px;
 			transition: background 0.15s;
 		}
-		li a:hover { background: #313244; }
+		li a:hover { background: var(--soft); }
 	</style>
 </head>
 <body>
 	<h1>ECSpresso Examples</h1>
-	<p class="subtitle">Interactive demos &mdash; <a href="../api/">API Documentation</a></p>
+	<p class="subtitle"><a href="../">&larr; Documentation home</a> &middot; Interactive demos &middot; <a href="../api/">API Reference</a></p>
 	<ul>
 ${exampleLinks}
 	</ul>

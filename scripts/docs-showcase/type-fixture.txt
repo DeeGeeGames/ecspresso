@@ -1,0 +1,32 @@
+import ECSpresso from 'ecspresso';
+
+type Components = {
+	position: { x: number; y: number };
+	velocity: { x: number; y: number };
+	health: { current: number };
+};
+
+const world = ECSpresso.create()
+	.withComponentTypes<Components>()
+	.withResource('settings', { speed: 2, label: 'movement' })
+	.build();
+
+world.addSystem('move')
+	.addQuery('moving', {
+		with: ['position', 'velocity'],
+		mutates: ['position'],
+	})
+	.withResources(['settings'])
+	.setProcess(({ queries, resources, dt }) => {
+		queries.moving.forEach(entity => {
+			entity.components.position.x += entity.components.velocity.x * resources.settings.speed * dt;
+			// Intentionally invalid: another required component is readonly.
+			entity.components.velocity.x = 3;
+			// Health is absent from with, but its optional value is still accessible.
+			console.log(entity.components.health);
+		});
+	});
+
+world.addSystem('inspect')
+	.addQuery('invalid', { with: ['unknown'] })
+	.setProcess(({ dt }) => { console.log(dt); });

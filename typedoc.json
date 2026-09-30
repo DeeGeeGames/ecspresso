@@ -56,7 +56,10 @@
 		"docs/performance.md"
 	],
 	"out": "docs/api",
-	"tsconfig": "tsconfig.json",
+	"customCss": "scripts/docs-showcase/typedoc.css",
+	"customJs": "docs/showcase/typedoc.js",
+	"favicon": "assets/brand/ecspresso-icon-light.svg",
+	"tsconfig": "tsconfig.docs.json",
 	"excludePrivate": true,
 	"excludeInternal": true,
 	"excludeNotDocumented": false,

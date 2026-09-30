@@ -1,0 +1,71 @@
+:root {
+	--light-color-background: #fff6ea;
+	--light-color-background-secondary: #fffaf3;
+	--light-color-background-active: #f3dcc1;
+	--light-color-accent: #dfccb5;
+	--light-color-text: #3c2516;
+	--light-color-contrast-text: #3c2516;
+	--light-color-text-aside: #76604d;
+	--light-color-link: #8b5334;
+	--light-color-focus-outline: #8b5334;
+	--dark-color-background: #1e1410;
+	--dark-color-background-secondary: #211812;
+	--dark-color-background-active: #6b4a33;
+	--dark-color-accent: #604530;
+	--dark-color-text: #f5e6d3;
+	--dark-color-contrast-text: #f5e6d3;
+	--dark-color-text-aside: #c2a58b;
+	--dark-color-link: #deb28c;
+	--dark-color-focus-outline: #deb28c;
+}
+body {
+	font-family:
+		system-ui,
+		-apple-system,
+		BlinkMacSystemFont,
+		"Segoe UI",
+		sans-serif;
+}
+.tsd-page-toolbar {
+	border-bottom-color: var(--color-accent);
+}
+.tsd-page-toolbar .title {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+}
+.tsd-page-toolbar .title::before {
+	content: "";
+	display: inline-block;
+	width: 30px;
+	height: 30px;
+	background: url("../../brand/ecspresso-icon-light-transparent.svg")
+		center/contain no-repeat;
+}
+html[data-theme="dark"] .tsd-page-toolbar .title::before {
+	background-image: url("../../brand/ecspresso-icon-dark-transparent.svg");
+}
+@media (prefers-color-scheme: dark) {
+	html:not([data-theme="light"]) .tsd-page-toolbar .title::before {
+		background-image: url("../../brand/ecspresso-icon-dark-transparent.svg");
+	}
+}
+.docs-home {
+	font-size: 12px;
+	padding-inline: 14px;
+	white-space: nowrap;
+}
+.tsd-page-title h1 {
+	font-family: Georgia, serif;
+	letter-spacing: -0.035em;
+	font-weight: 400;
+}
+.tsd-typography {
+	line-height: 1.75;
+}
+.tsd-typography pre {
+	border-radius: 8px;
+}
+.tsd-navigation a.current {
+	border-radius: 5px;
+}

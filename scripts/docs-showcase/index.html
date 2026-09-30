@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width,initial-scale=1">
+	<meta name="description" content="Build games with ECSpresso, a type-safe Entity Component System for TypeScript. Play a game, edit its systems, and explore real autocomplete.">
+	<meta name="theme-color" content="#fff6ea">
+	<title>ECSpresso — Strong types. Small ingredients.</title>
+	<link rel="icon" href="./brand/ecspresso-icon-light.svg" type="image/svg+xml">
+	<link rel="stylesheet" href="./showcase/site.css">
+	<script type="module" src="./showcase/main.js"></script>
+</head>
+<body>
+	<a class="skip" href="#main">Skip to content</a>
+	<header class="site-header shell">
+		<a class="brand" href="./" aria-label="ECSpresso home"><img src="./brand/ecspresso-icon-light-transparent.svg" class="mark light-mark" alt="" width="40" height="40"><img src="./brand/ecspresso-icon-dark-transparent.svg" class="mark dark-mark" alt="" width="40" height="40"><span>ECSpresso</span></a>
+		<nav aria-label="Main navigation"><a href="./api/documents/getting-started.html">Guides</a><a href="./api/">API</a><a href="./examples/">Examples</a><a href="https://github.com/DeeGeeGames/ecspresso">GitHub <span aria-hidden="true">↗</span></a></nav>
+		<button class="theme-button" id="theme-toggle" type="button">Dark mode</button>
+	</header>
+	<main id="main">
+		<section class="hero shell" aria-labelledby="hero-heading">
+			<div class="hero-copy"><p class="eyebrow"><span class="status-dot"></span> An ECS for TypeScript <span class="version">v{{VERSION}}</span></p>
+				<h1 id="hero-heading">Strong types.<br> <em>Small ingredients.</em></h1>
+				<p class="intro">A type-safe Entity Component System for TypeScript games.<br> Compose gameplay from plain data and small systems,<br class="desktop-break"> with autocomplete and component types inferred from your queries.</p>
+				<div class="hero-actions"><a class="button primary" href="#playground">Play & explore <span aria-hidden="true">↓</span></a><a class="text-link" href="./api/documents/getting-started.html">Get started <span aria-hidden="true">↗</span></a></div>
+				<p class="hero-note">Play, edit, and run TypeScript in your browser. No setup required.<br>Zero core runtime dependencies. Optional plugins for input, rendering, physics, and more.</p>
+			</div>
+			<div class="hero-brand"><img class="light-mark" src="./brand/ecspresso-master-light-transparent.svg" alt="ECSpresso: ECS steam rising from a coffee cup beside the preso wordmark" width="310" height="224"><img class="dark-mark" src="./brand/ecspresso-master-dark-transparent.svg" alt="ECSpresso: ECS steam rising from a coffee cup beside the preso wordmark" width="310" height="224"><span class="brand-rule"></span></div>
+		</section>
+		<section class="playground shell" id="playground" aria-labelledby="play-heading">
+			<div class="section-heading"><div><p class="eyebrow">The interactive quick start</p><h2 id="play-heading">Play a game. Change a system.</h2></div><p>Change movement speed, explore component types,<br>and run your changes.</p></div>
+			<div class="playground-grid">
+				<section class="game-panel" aria-labelledby="game-title">
+					<div class="panel-heading"><div><span class="eyebrow">01 / The game</span><h3 id="game-title">Bean Run</h3></div><span class="live-badge">Collect & dodge</span></div>
+					<div class="scorebar"><span><strong id="score">0 / 8</strong> beans</span><span id="lives">3 lives</span></div>
+					<canvas id="game-canvas" width="640" height="360" tabindex="0" aria-label="Bean Run. Collect eight brown beans and avoid orange sparks. Focus the game and use arrow keys or W A S D to move. On touch, use the direction buttons below.">Your browser needs canvas support to play Bean Run.</canvas>
+					<div class="game-actions"><button class="button primary" id="play-game" type="button">Play / restart <span aria-hidden="true">↻</span></button><button class="button subtle" id="stop-game" type="button">Stop</button><span class="key-hint">Move with <kbd>WASD</kbd> or <kbd>↑ ↓ ← →</kbd></span></div>
+					<div class="touch-controls" role="group" aria-label="Game direction controls"><button data-direction="left" aria-label="Move left">←</button><button data-direction="up" aria-label="Move up">↑</button><button data-direction="down" aria-label="Move down">↓</button><button data-direction="right" aria-label="Move right">→</button></div>
+					<p class="game-status" id="game-status" role="status">Collect 8 beans. Dodge the sparks. Press Play to begin.</p>
+					<p id="runtime-errors" class="game-status" hidden role="alert"></p>
+					<div id="simulation-host" hidden></div>
+					<div class="game-legend"><span><i class="bean-dot"></i> Pick up beans</span><span><i class="spark-dot"></i> Avoid hot sparks</span><span>Three lives. One cup.</span></div>
+				</section>
+				<section class="code-panel" aria-labelledby="code-title">
+					<div class="panel-heading"><div><span class="eyebrow">02 / The code</span><h3 id="code-title">Typed by design.</h3></div><span class="ts-badge">TS</span></div>
+					<div class="filebar"><span>movement.ts</span><span class="file-note" id="editor-version">Loading TypeScript…</span></div>
+					<div id="editor-placeholder"><pre class="code-preview" id="code-preview"><code>{{CODE}}</code></pre><div class="editor-invitation"><p>Loading the editor…<br><span>You can edit the game here shortly.</span></p><button class="button primary" id="load-editor" type="button">Loading TypeScript editor…</button></div></div>
+					<div id="editor-workspace" hidden><div id="editor"></div><div class="editor-toolbar"><button class="button primary" id="run-code" type="button">Run changes</button><button class="button subtle" id="reset-code" type="button">Reset code</button><button class="button subtle" id="show-suggestions" type="button">Suggestions</button><button class="button subtle" id="show-types" type="button">Inspect type</button></div><p class="editor-status" id="editor-status" role="status">Edit the code, then Run changes. Ctrl / ⌘ Enter also runs.</p><p class="type-explanation" id="type-explanation" aria-live="polite">Inspect a type to see what TypeScript knows.</p><details id="diagnostic-details"><summary id="diagnostic-count">Types check out</summary><pre id="diagnostics">No TypeScript errors.</pre></details></div>
+				</section>
+			</div>
+			<div class="activities" role="group" aria-label="Guided TypeScript activities"><button type="button" data-task="movement" aria-pressed="true"><span>01</span><div><strong>Make it move</strong><small>Autocomplete & inferred types</small></div><span aria-hidden="true">↗</span></button><button type="button" data-task="health" aria-pressed="false"><span>02</span><div><strong>Choose your components</strong><small>Required, optional & excluded</small></div><span aria-hidden="true">↗</span></button><button type="button" data-task="mutation" aria-pressed="false"><span>03</span><div><strong>Declare your writes</strong><small>Writable & readonly components</small></div><span aria-hidden="true">↗</span></button></div>
+			<p class="task-description" id="task-description" aria-live="polite">Change speed: 160 to 240. Run, focus the game, and feel the difference. Explore suggestions inside the query and hover over position.</p>
+		</section>
+		<section class="next-section shell" aria-labelledby="next-heading"><div class="install-card"><p class="eyebrow">Take it into your project</p><h2 id="next-heading">Build your own game.</h2><p>Zero core runtime dependencies.<br>Add rendering, input, and other plugins as you need them.</p><div class="install-command"><code>npm install ecspresso</code><button id="copy-install" type="button" aria-label="Copy npm install ecspresso">Copy</button></div><a class="text-link" href="./api/documents/getting-started.html">Read the getting-started guide <span aria-hidden="true">↗</span></a></div><div class="learning-links"><a href="./api/documents/core-concepts.html"><span class="eyebrow">Learn</span><h3>Understand the core concepts <span aria-hidden="true">↗</span></h3><p>Entities, components, systems. A clear mental model.</p></a><a href="./api/documents/built-in-plugins.html"><span class="eyebrow">Compose</span><h3>Find your next plugin <span aria-hidden="true">↗</span></h3><p>Input, rendering, physics, and behaviours that fit together.</p></a><a href="./api/"><span class="eyebrow">Reference</span><h3>Get straight to the API <span aria-hidden="true">↗</span></h3><p>Signatures, types, and details for the work at hand.</p></a></div></section>
+		<section class="examples-section shell" aria-labelledby="examples-heading"><div class="section-heading"><div><p class="eyebrow">Keep exploring</p><h2 id="examples-heading">From a system to a game.</h2></div><a class="text-link" href="./examples/">All examples <span aria-hidden="true">↗</span></a></div><div class="example-grid"><a href="./examples/player-input/"><span class="example-number">01 / Foundations</span><h3>Movement & input <span aria-hidden="true">↗</span></h3><p>Connect player controls to typed systems.</p><span class="example-tags">Components · Queries · Input</span></a><a href="./examples/patrol-chase/"><span class="example-number">02 / Behaviours</span><h3>Patrol & chase <span aria-hidden="true">↗</span></h3><p>Compose detection, movement, and changing states.</p><span class="example-tags">State machines · Steering</span></a><a href="./examples/space-invaders/"><span class="example-number">03 / A complete game</span><h3>Space Invaders <span aria-hidden="true">↗</span></h3><p>See small systems add up to something playable.</p><span class="example-tags">Gameplay · Rendering · Events</span></a></div></section>
+	</main>
+	<footer class="site-footer shell"><a class="brand" href="./">ECSpresso <span class="pronunciation">/ ex-presso /</span></a><p>Made for TypeScript game developers.</p><div><a href="./changelog/">What's new · v{{VERSION}}</a><a href="https://github.com/DeeGeeGames/ecspresso">Source ↗</a></div></footer>
+</body>
+</html>

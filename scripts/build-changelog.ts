@@ -19,37 +19,39 @@ await Bun.write(
 	<meta charset="UTF-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<title>ECSpresso Changelog</title>
+	<link rel="stylesheet" href="../showcase/site.css">
+	<script type="module" src="../showcase/theme-page.js"></script>
 	<style>
 		* { margin: 0; padding: 0; box-sizing: border-box; }
 		body {
-			background: #1e1e2e;
-			color: #cdd6f4;
+			background: var(--bg);
+			color: var(--ink);
 			font-family: 'Segoe UI', system-ui, sans-serif;
 			min-height: 100vh;
 			padding: 60px 20px;
 			line-height: 1.6;
 		}
 		.container { max-width: 760px; margin: 0 auto; }
-		.back { color: #89b4fa; text-decoration: none; font-size: 14px; }
+		.back { color: var(--accent); text-decoration: none; font-size: 14px; }
 		.back:hover { text-decoration: underline; }
-		.version { color: #6c7086; font-size: 13px; font-family: 'JetBrains Mono', 'Fira Code', monospace; margin: 24px 0 8px; }
-		h1 { font-size: 36px; color: #cba6f7; margin-bottom: 32px; }
-		h2 { font-size: 22px; color: #cba6f7; margin: 40px 0 12px; border-bottom: 1px solid #45475a; padding-bottom: 6px; }
-		h3 { font-size: 16px; color: #f9e2af; margin: 20px 0 8px; }
-		p { margin: 8px 0; color: #cdd6f4; }
+		.version { color: var(--muted); font-size: 13px; font-family: 'JetBrains Mono', 'Fira Code', monospace; margin: 24px 0 8px; }
+		h1 { font-size: 36px; color: var(--ink); margin-bottom: 32px; }
+		h2 { font-size: 22px; color: var(--ink); margin: 40px 0 12px; border-bottom: 1px solid var(--line); padding-bottom: 6px; }
+		h3 { font-size: 16px; color: var(--ink); margin: 20px 0 8px; }
+		p { margin: 8px 0; color: var(--ink); }
 		ul { margin: 8px 0 16px 24px; }
 		li { margin: 6px 0; }
-		a { color: #89b4fa; text-decoration: none; }
+		a { color: var(--accent); text-decoration: none; }
 		a:hover { text-decoration: underline; }
 		code {
-			background: #181825;
-			color: #a6e3a1;
+			background: var(--soft);
+			color: var(--ink);
 			padding: 2px 6px;
 			border-radius: 4px;
 			font-family: 'JetBrains Mono', 'Fira Code', monospace;
 			font-size: 13px;
 		}
-		strong { color: #f9e2af; }
+		strong { color: var(--ink); }
 	</style>
 </head>
 <body>

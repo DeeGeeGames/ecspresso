@@ -38,3 +38,7 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .cursorignore
 .specstory
 *.mdc
+# Generated documentation and design context
+docs/showcase
+docs/brand
+.superdesign
