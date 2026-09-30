@@ -11,7 +11,7 @@ const TARGET_WASM = join(
 );
 const PKG_DIR = join(BEVY_DIR, 'pkg');
 
-await $`cargo build --target wasm32-unknown-unknown --release`.cwd(BEVY_DIR);
+await $`cargo build --locked --target wasm32-unknown-unknown --release`.cwd(BEVY_DIR);
 await $`wasm-bindgen --target web --out-dir ${PKG_DIR} --no-typescript ${TARGET_WASM}`;
 
 const wasmFile = Bun.file(join(PKG_DIR, 'bevy_stress_test_bg.wasm'));

@@ -16,18 +16,17 @@
  */
 
 import { Graphics } from 'pixi.js';
-import ECSpresso from '../../src';
-import type { Vector2D } from '../../src/utils/math';
+import ECSpresso from 'ecspresso';
 import {
 	createRenderer2DPlugin,
 	createGraphicsComponents,
-} from '../../src/plugins/rendering/renderer2D';
-import { createInputPlugin } from '../../src/plugins/input/input';
-import { createSpatialIndexPlugin } from '../../src/plugins/spatial/spatial-index';
-import { defineCollisionLayers, createCollisionPlugin, createCircleCollider, type LayersOf } from '../../src/plugins/physics/collision';
-import { createDetectionPlugin, createDetector } from '../../src/plugins/ai/detection';
-import { createSteeringPlugin, createMoveSpeed } from '../../src/plugins/physics/steering';
-import { createDiagnosticsPlugin } from '../../src/plugins/debug/diagnostics';
+} from 'ecspresso/plugins/rendering/renderer2D';
+import { createInputPlugin } from 'ecspresso/plugins/input/input';
+import { createSpatialIndexPlugin } from 'ecspresso/plugins/spatial/spatial-index';
+import { defineCollisionLayers, createCollisionPlugin, createCircleCollider, type LayersOf } from 'ecspresso/plugins/physics/collision';
+import { createDetectionPlugin, createDetector } from 'ecspresso/plugins/ai/detection';
+import { createSteeringPlugin, createMoveSpeed } from 'ecspresso/plugins/physics/steering';
+import { createDiagnosticsPlugin } from 'ecspresso/plugins/debug/diagnostics';
 import {
 	NodeStatus,
 	createBehaviorTreePlugin,
@@ -35,7 +34,7 @@ import {
 	createBehaviorTree,
 	selector,
 	sequence,
-} from '../../src/plugins/ai/behavior-tree';
+} from 'ecspresso/plugins/ai/behavior-tree';
 
 // ==================== Constants ====================
 
@@ -86,6 +85,34 @@ interface VillagerBB {
 	activeState: 'idle' | 'flee' | 'eat' | 'gather' | 'explore';
 	/** Bitset tracking which map cells this villager has visited. */
 	visitedCells: Uint8Array;
+}
+
+interface Vector2D {
+	x: number;
+	y: number;
+}
+
+function isVillagerBlackboard(value: unknown): value is VillagerBB {
+	return value !== null
+		&& typeof value === 'object'
+		&& 'hunger' in value && typeof value.hunger === 'number'
+		&& 'carried' in value && typeof value.carried === 'number'
+		&& 'targetEntityId' in value
+		&& (typeof value.targetEntityId === 'number' || value.targetEntityId === null)
+		&& 'harvestTimer' in value && typeof value.harvestTimer === 'number'
+		&& 'wanderTarget' in value
+		&& (value.wanderTarget === null
+			|| (typeof value.wanderTarget === 'object'
+				&& 'x' in value.wanderTarget && typeof value.wanderTarget.x === 'number'
+				&& 'y' in value.wanderTarget && typeof value.wanderTarget.y === 'number'))
+		&& 'activeState' in value
+		&& (value.activeState === 'idle'
+			|| value.activeState === 'flee'
+			|| value.activeState === 'eat'
+			|| value.activeState === 'gather'
+			|| value.activeState === 'explore')
+		&& 'visitedCells' in value
+		&& value.visitedCells instanceof Uint8Array;
 }
 
 interface AppComponents {
@@ -148,29 +175,15 @@ function findNearest<K extends 'resource' | 'food' | 'base'>(
 
 	const entities = world.getEntitiesWithQuery([componentName, 'worldTransform'] as const);
 
-	let bestId = -1;
-	let bestDist = Infinity;
-	let bestX = 0;
-	let bestY = 0;
-
-	for (const entity of entities) {
-		// Skip depleted resources
-		if (componentName === 'resource') {
-			const res = world.getComponent(entity.id, 'resource');
-			if (res && res.supply <= 0) continue;
-		}
-		const wt = entity.components.worldTransform;
-		const d = distSq(fromWt.x, fromWt.y, wt.x, wt.y);
-		if (d < bestDist) {
-			bestDist = d;
-			bestId = entity.id;
-			bestX = wt.x;
-			bestY = wt.y;
-		}
-	}
-
-	if (bestId === -1) return null;
-	return { entityId: bestId, x: bestX, y: bestY };
+	const nearest = entities.reduce<{ entityId: number; x: number; y: number; distance: number } | null>(function selectNearest(current, entity) {
+		const resource = componentName === 'resource' ? world.getComponent(entity.id, 'resource') : undefined;
+		if (resource && resource.supply <= 0) return current;
+		const { x, y } = entity.components.worldTransform;
+		const distance = distSq(fromWt.x, fromWt.y, x, y);
+		if (current && distance >= current.distance) return current;
+		return { entityId: entity.id, x, y, distance };
+	}, null);
+	return nearest ? { entityId: nearest.entityId, x: nearest.x, y: nearest.y } : null;
 }
 
 function setMoveTarget(world: ECS, entityId: number, x: number, y: number): void {
@@ -225,18 +238,12 @@ function cellCenter(cellIndex: number): Vector2D {
 
 /** Find the nearest unvisited cell from a world position. Returns cell index or -1. */
 function findNearestUnvisited(visited: Uint8Array, fromX: number, fromY: number): number {
-	let bestIndex = -1;
-	let bestDist = Infinity;
-	for (let i = 0; i < EXPLORE_TOTAL; i++) {
-		if (visited[i]) continue;
-		const center = cellCenter(i);
-		const d = distSq(fromX, fromY, center.x, center.y);
-		if (d < bestDist) {
-			bestDist = d;
-			bestIndex = i;
-		}
-	}
-	return bestIndex;
+	return visited.reduce(function selectNearest(current, explored, index) {
+		if (explored) return current;
+		const center = cellCenter(index);
+		const distance = distSq(fromX, fromY, center.x, center.y);
+		return distance < current.distance ? { index, distance } : current;
+	}, { index: -1, distance: Infinity }).index;
 }
 
 /** Shared fog cell graphics — drawn once after initialize, updated as villagers explore. */
@@ -487,8 +494,9 @@ ecs
 	.addQuery('villagers', { with: ['villager', 'behaviorTree'] })
 	.setProcess(({ queries, dt }) => {
 		for (const entity of queries.villagers) {
-			const bb = entity.components.behaviorTree.blackboard as unknown as VillagerBB;
-			bb.hunger = Math.max(0, bb.hunger - HUNGER_RATE * dt);
+			const blackboard = entity.components.behaviorTree.blackboard;
+			if (!isVillagerBlackboard(blackboard)) continue;
+			blackboard.hunger = Math.max(0, blackboard.hunger - HUNGER_RATE * dt);
 		}
 	});
 
@@ -500,7 +508,8 @@ ecs
 	.addQuery('villagers', { with: ['villager', 'behaviorTree', 'hungerBar'] })
 	.setProcess(({ queries }) => {
 		for (const entity of queries.villagers) {
-			const bb = entity.components.behaviorTree.blackboard as unknown as VillagerBB;
+			const bb = entity.components.behaviorTree.blackboard;
+			if (!isVillagerBlackboard(bb)) continue;
 			const bar = entity.components.hungerBar;
 			const pct = bb.hunger / 100;
 			const barW = 20;
@@ -575,28 +584,28 @@ const resourcePositions: Vector2D[] = [
 	{ x: 500, y: 530 }, { x: 720, y: 300 },
 ];
 
-for (const pos of resourcePositions) {
+resourcePositions.forEach(function spawnResource(pos) {
 	const gfx = new Graphics().rect(-10, -10, 20, 20).fill(COLORS.resource);
 	ecs.spawn({
 		...createGraphicsComponents(gfx, pos),
 		...layers.resource(),
 		resource: { supply: 5 },
 	});
-}
+});
 
 // Spawn food sources
 const foodPositions: Vector2D[] = [
 	{ x: 200, y: 300 }, { x: 600, y: 200 }, { x: 400, y: 500 },
 ];
 
-for (const pos of foodPositions) {
+foodPositions.forEach(function spawnFood(pos) {
 	const gfx = new Graphics().circle(0, 0, 10).fill(COLORS.food);
 	ecs.spawn({
 		...createGraphicsComponents(gfx, pos),
 		...layers.food(),
 		food: true,
 	});
-}
+});
 
 // Spawn threat (follows mouse)
 const threatGfx = new Graphics()
@@ -612,7 +621,7 @@ ecs.spawn({
 });
 
 // Spawn villagers
-for (let i = 0; i < VILLAGER_COUNT; i++) {
+Array.from({ length: VILLAGER_COUNT }).forEach(function spawnVillager(_value, i) {
 	const angle = (i / VILLAGER_COUNT) * Math.PI * 2;
 	const spawnR = 80;
 	const x = WORLD_W / 2 + Math.cos(angle) * spawnR;
@@ -635,9 +644,12 @@ for (let i = 0; i < VILLAGER_COUNT; i++) {
 		...createCircleCollider(VILLAGER_RADIUS),
 		...createDetector(THREAT_RADIUS + 20, ['threat']),
 		...createMoveSpeed(VILLAGER_SPEED),
-		...createBehaviorTree(villagerTree, { hunger: 60 + Math.random() * 40 }),
+		...createBehaviorTree(villagerTree, {
+			hunger: 60 + Math.random() * 40,
+			visitedCells: new Uint8Array(EXPLORE_TOTAL),
+		}),
 		villager: true,
 		hungerBar,
 		stateIndicator,
 	});
-}
+});

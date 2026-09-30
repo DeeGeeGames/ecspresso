@@ -1,4 +1,4 @@
-import { createRepeatingTimer } from '../../../src/plugins/scripting/timers';
+import { createRepeatingTimer } from 'ecspresso/plugins/scripting/timers';
 import type { GameSystemRegistrar, World } from '../types';
 import type { EnemyType } from '../utils';
 import { spawnEnemy } from '../utils';
@@ -93,8 +93,10 @@ export default function registerEnemySystems(
 				// Fisher-Yates shuffle
 				for (let i = spawnQueue.length - 1; i > 0; i--) {
 					const j = Math.floor(Math.random() * (i + 1));
-					const temp = spawnQueue[i] as EnemyType;
-					spawnQueue[i] = spawnQueue[j] as EnemyType;
+					const temp = spawnQueue[i];
+					const replacement = spawnQueue[j];
+					if (!temp || !replacement) throw new Error('Invalid enemy shuffle index');
+					spawnQueue[i] = replacement;
 					spawnQueue[j] = temp;
 				}
 
@@ -115,12 +117,9 @@ export default function registerEnemySystems(
 			({ entity, ecs }) => {
 				if (!entity.components.timers['spawn']?.justFinished) return;
 
-				if (spawnQueue.length > 0) {
-					const type = spawnQueue.pop() as EnemyType;
-					spawnEnemy(ecs, type);
-				} else {
-					ecs.commands.removeEntity(entity.id);
-				}
+				const type = spawnQueue.pop();
+				if (!type) return ecs.commands.removeEntity(entity.id);
+				spawnEnemy(ecs, type);
 			},
 		);
 

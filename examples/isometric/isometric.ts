@@ -11,25 +11,25 @@
  */
 
 import { Graphics } from 'pixi.js';
-import ECSpresso from '../../src';
+import ECSpresso from 'ecspresso';
 import {
 	createRenderer2DPlugin,
 	createGraphicsComponents,
-} from '../../src/plugins/rendering/renderer2D';
+} from 'ecspresso/plugins/rendering/renderer2D';
 import {
 	createPhysics2DPlugin,
 	createRigidBody,
-} from '../../src/plugins/physics/physics2D';
-import { createInputPlugin } from '../../src/plugins/input/input';
+} from 'ecspresso/plugins/physics/physics2D';
+import { createInputPlugin } from 'ecspresso/plugins/input/input';
 import {
 	createCameraPlugin,
 	screenToWorld,
-} from '../../src/plugins/spatial/camera';
+} from 'ecspresso/plugins/spatial/camera';
 import {
 	createIsoProjectionPlugin,
 	isoToWorld,
-} from '../../src/plugins/isometric/projection';
-import { createIsoDepthSortPlugin } from '../../src/plugins/isometric/depth-sort';
+} from 'ecspresso/plugins/isometric/projection';
+import { createIsoDepthSortPlugin } from 'ecspresso/plugins/isometric/depth-sort';
 
 // ==================== Constants ====================
 

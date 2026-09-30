@@ -1,5 +1,5 @@
 import { Text, TextStyle } from 'pixi.js';
-import { createLocalTransform } from '../../../src/plugins/rendering/renderer2D';
+import { createLocalTransform } from 'ecspresso/plugins/rendering/renderer2D';
 import { SCREEN_WIDTH, type GameSystemRegistrar } from '../types';
 
 const LABEL_STYLE = new TextStyle({

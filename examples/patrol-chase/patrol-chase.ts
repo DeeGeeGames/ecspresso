@@ -13,24 +13,28 @@
  */
 
 import { Graphics } from 'pixi.js';
-import ECSpresso from '../../src';
-import type { Vector2D } from '../../src/utils/math';
+import ECSpresso from 'ecspresso';
 import {
 	createRenderer2DPlugin,
 	createGraphicsComponents,
-} from '../../src/plugins/rendering/renderer2D';
-import { createInputPlugin } from '../../src/plugins/input/input';
-import { defineCollisionLayers, createCollisionPlugin, createCircleCollider, type LayersOf } from '../../src/plugins/physics/collision';
-import { createSpatialIndexPlugin } from '../../src/plugins/spatial/spatial-index';
-import { createDetectionPlugin, createDetector, hasDetectedTargets } from '../../src/plugins/ai/detection';
+} from 'ecspresso/plugins/rendering/renderer2D';
+import { createInputPlugin } from 'ecspresso/plugins/input/input';
+import { defineCollisionLayers, createCollisionPlugin, createCircleCollider, type LayersOf } from 'ecspresso/plugins/physics/collision';
+import { createSpatialIndexPlugin } from 'ecspresso/plugins/spatial/spatial-index';
+import { createDetectionPlugin, createDetector, hasDetectedTargets } from 'ecspresso/plugins/ai/detection';
 import {
 	createStateMachinePlugin,
 	createStateMachine,
 	createStateMachineHelpers,
-} from '../../src/plugins/scripting/state-machine';
-import { createSteeringPlugin, createMoveSpeed } from '../../src/plugins/physics/steering';
+} from 'ecspresso/plugins/scripting/state-machine';
+import { createSteeringPlugin, createMoveSpeed } from 'ecspresso/plugins/physics/steering';
 
 // ==================== Types ====================
+
+interface Vector2D {
+	x: number;
+	y: number;
+}
 
 interface AppComponents {
 	player: true;
@@ -101,8 +105,8 @@ function setGuardVisual(world: ECS, entityId: number, color: number): void {
 	if (!gfx) return;
 	gfx.clear().circle(0, 0, GUARD_RADIUS).fill(color);
 	// Range ring is a child of the guard graphic — redraw it too
-	const ring = gfx.children[0] as Graphics | undefined;
-	if (!ring) return;
+	const ring = gfx.children[0];
+	if (!(ring instanceof Graphics)) return;
 	ring.clear().circle(0, 0, DETECTION_RANGE).stroke({ color, alpha: 0.15, width: 1 });
 }
 

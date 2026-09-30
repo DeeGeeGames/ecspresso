@@ -1,4 +1,4 @@
-import { createTimer } from '../../../src/plugins/scripting/timers';
+import { createTimer } from 'ecspresso/plugins/scripting/timers';
 import type { Game } from '../game';
 import type { AppEvents } from '../types';
 import { spawnEnemyFormation } from '../utils';
@@ -32,6 +32,7 @@ export default function registerGameLogic(world: Game): void {
 				gameState.status = 'ready';
 				gameState.level = 1;
 				gameState.lives = 3;
+				gameState.playerDeathPending = false;
 				score.value = 0;
 
 				ecs.eventBus.publish('updateScore', { points: 0 });

@@ -9,17 +9,17 @@
  */
 
 import { Graphics } from 'pixi.js';
-import ECSpresso from '../../src';
+import ECSpresso from 'ecspresso';
 import {
 	createRenderer2DPlugin,
 	createGraphicsComponents,
-} from '../../src/plugins/rendering/renderer2D';
-import { createPhysics2DPlugin, createRigidBody, applyForce } from '../../src/plugins/physics/physics2D';
-import { createCollisionPlugin, createCircleCollider } from '../../src/plugins/physics/collision';
-import { createSpatialIndexPlugin } from '../../src/plugins/spatial/spatial-index';
-import { createBoundsPlugin, createWrapAtBounds } from '../../src/plugins/spatial/bounds';
-import { createFlockingPlugin, createFlockingAgent } from '../../src/plugins/ai/flocking';
-import { createDiagnosticsPlugin } from '../../src/plugins/debug/diagnostics';
+} from 'ecspresso/plugins/rendering/renderer2D';
+import { createPhysics2DPlugin, createRigidBody, applyForce } from 'ecspresso/plugins/physics/physics2D';
+import { createCollisionPlugin, createCircleCollider } from 'ecspresso/plugins/physics/collision';
+import { createSpatialIndexPlugin } from 'ecspresso/plugins/spatial/spatial-index';
+import { createBoundsPlugin, createWrapAtBounds } from 'ecspresso/plugins/spatial/bounds';
+import { createFlockingPlugin, createFlockingAgent } from 'ecspresso/plugins/ai/flocking';
+import { createDiagnosticsPlugin } from 'ecspresso/plugins/debug/diagnostics';
 
 // ==================== Constants ====================
 

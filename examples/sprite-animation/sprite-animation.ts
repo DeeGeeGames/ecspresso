@@ -13,11 +13,12 @@
  */
 
 import { Graphics, Sprite, Text, TextStyle, Texture, type Renderer } from 'pixi.js';
-import ECSpresso from '../../src';
+import ECSpresso from 'ecspresso';
+import { firstOf } from '../utils';
 import {
 	createRenderer2DPlugin,
 	createSpriteComponents,
-} from '../../src/plugins/rendering/renderer2D';
+} from 'ecspresso/plugins/rendering/renderer2D';
 import {
 	createSpriteAnimationPlugin,
 	defineSpriteAnimation,
@@ -28,7 +29,7 @@ import {
 	resumeAnimation,
 	type SpriteAnimationEventData,
 	type SpriteAnimationComponentTypes,
-} from '../../src/plugins/rendering/sprite-animation';
+} from 'ecspresso/plugins/rendering/sprite-animation';
 
 // ==================== Constants ====================
 
@@ -194,7 +195,7 @@ const loopSet = defineSpriteAnimation('pulse-loop', {
 
 spawnSmallLabel('loop', 90, 70);
 ecs.spawn({
-	...createSpriteComponents(new Sprite(loopFrames[0]!), { x: 100, y: 90 }),
+	...createSpriteComponents(new Sprite(firstOf(loopFrames)), { x: 100, y: 90 }),
 	...createSpriteAnimation(loopSet),
 });
 
@@ -208,7 +209,7 @@ const ppSet = defineSpriteAnimation('spin-pp', {
 
 spawnSmallLabel('pingPong', 220, 70);
 ecs.spawn({
-	...createSpriteComponents(new Sprite(ppFrames[0]!), { x: 240, y: 90 }),
+	...createSpriteComponents(new Sprite(firstOf(ppFrames)), { x: 240, y: 90 }),
 	...createSpriteAnimation(ppSet),
 });
 
@@ -222,7 +223,7 @@ const explosionSet = defineSpriteAnimation('explosion', {
 
 spawnSmallLabel('once (click to replay)', 350, 70);
 const explosionEntity = ecs.spawn({
-	...createSpriteComponents(new Sprite(explosionFrames[0]!), { x: 400, y: 90 }),
+	...createSpriteComponents(new Sprite(firstOf(explosionFrames)), { x: 400, y: 90 }),
 	...createSpriteAnimation(explosionSet, { onComplete: (data) => ecs.eventBus.publish('explosionDone', data) }),
 });
 
@@ -258,11 +259,10 @@ const characterSet = defineSpriteAnimations('character', {
 });
 
 const animationNames = ['idle', 'walk', 'run'] as const;
-type AnimName = (typeof animationNames)[number];
 let currentAnimIndex = 0;
 
 const characterEntity = ecs.spawn({
-	...createSpriteComponents(new Sprite(idleFrames[0]!), { x: 100, y: 210 }, { scale: 2 }),
+	...createSpriteComponents(new Sprite(firstOf(idleFrames)), { x: 100, y: 210 }, { scale: 2 }),
 	...createSpriteAnimation(characterSet, { initial: 'idle' }),
 });
 
@@ -291,7 +291,8 @@ pixiApp.canvas.addEventListener('click', (e) => {
 	// Check if click is near the character area
 	if (x > 40 && x < 260 && y > 180 && y < 300) {
 		currentAnimIndex = (currentAnimIndex + 1) % animationNames.length;
-		const nextAnim = animationNames[currentAnimIndex] as AnimName;
+		const nextAnim = animationNames[currentAnimIndex];
+		if (!nextAnim) throw new Error('Invalid animation index');
 		playAnimation(ecs, characterEntity.id, nextAnim);
 
 		// Update indicator
@@ -317,7 +318,7 @@ speeds.forEach((speed, i) => {
 	const x = 520 + i * 70;
 	spawnSmallLabel(`${speed}x`, x + 10, 200);
 	ecs.spawn({
-		...createSpriteComponents(new Sprite(speedFrames[0]!), { x: x + 15, y: 220 }),
+		...createSpriteComponents(new Sprite(firstOf(speedFrames)), { x: x + 15, y: 220 }),
 		...createSpriteAnimation(speedSet, { speed }),
 	});
 });
@@ -340,7 +341,7 @@ finiteLoopCounts.forEach((count, i) => {
 	const x = 60 + i * 120;
 	spawnSmallLabel(`${count} loop${count > 1 ? 's' : ''}`, x - 10, 370);
 	const entity = ecs.spawn({
-		...createSpriteComponents(new Sprite(loopCountFrames[0]!), { x, y: 400 }),
+		...createSpriteComponents(new Sprite(firstOf(loopCountFrames)), { x, y: 400 }),
 		...createSpriteAnimation(loopCountSet, { totalLoops: count }),
 	});
 	finiteEntities.push(entity.id);
@@ -375,7 +376,7 @@ const pauseSet = defineSpriteAnimation('pause-demo', {
 });
 
 const pauseEntity = ecs.spawn({
-	...createSpriteComponents(new Sprite(pauseFrames[0]!), { x: 620, y: 400 }, { scale: 2 }),
+	...createSpriteComponents(new Sprite(firstOf(pauseFrames)), { x: 620, y: 400 }, { scale: 2 }),
 	...createSpriteAnimation(pauseSet),
 });
 

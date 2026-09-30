@@ -2,25 +2,26 @@
 
 | Plugin | Import | Default Phase | Description |
 |--------|--------|---------------|-------------|
-| **Input** | `ecspresso/plugins/input` | `preUpdate` | Frame-accurate keyboard/pointer input with action mapping |
-| **Timers** | `ecspresso/plugins/timers` | `preUpdate` | ECS-native timers as pure data with named slots and caller-owned despawn |
-| **Coroutine** | `ecspresso/plugins/coroutine` | `update` | Generator-based coroutines for sequenced logic |
-| **State Machine** | `ecspresso/plugins/state-machine` | `update` | Per-entity finite state machines |
-| **Tween** | `ecspresso/plugins/tween` | `update` | Declarative property animation with easing, sequences, and loops |
-| **Physics2D** | `ecspresso/plugins/physics2D` | `fixedUpdate` | ECS-native 2D arcade physics |
-| **Transform** | `ecspresso/plugins/transform` | `postUpdate` | Hierarchical transform propagation (local/world transforms) |
-| **Bounds** | `ecspresso/plugins/bounds` | `postUpdate` | Screen bounds enforcement (destroy, clamp, wrap) |
-| **Collision** | `ecspresso/plugins/collision` | `postUpdate` | Layer-based AABB/circle collision detection with events |
-| **Spatial Index** | `ecspresso/plugins/spatial-index` | `fixedUpdate + postUpdate` | Spatial hashing for efficient proximity queries |
-| **Camera** | `ecspresso/plugins/camera` | `postUpdate` | Camera follow, shake, and bounds |
-| **Particles** | `ecspresso/plugins/particles` | `update + render` | Pooled particle system with PixiJS ParticleContainer rendering |
+| **Input** | `ecspresso/plugins/input/input` | `preUpdate` | Frame-accurate keyboard/pointer input with action mapping |
+| **Timers** | `ecspresso/plugins/scripting/timers` | `preUpdate` | ECS-native timers as pure data with named slots and caller-owned despawn |
+| **Coroutine** | `ecspresso/plugins/scripting/coroutine` | `update` | Generator-based coroutines for sequenced logic |
+| **State Machine** | `ecspresso/plugins/scripting/state-machine` | `update` | Per-entity finite state machines |
+| **Tween** | `ecspresso/plugins/scripting/tween` | `update` | Declarative property animation with easing, sequences, and loops |
+| **Physics2D** | `ecspresso/plugins/physics/physics2D` | `fixedUpdate` | ECS-native 2D arcade physics |
+| **Transform** | `ecspresso/plugins/spatial/transform` | `postUpdate` | Hierarchical transform propagation (local/world transforms) |
+| **Bounds** | `ecspresso/plugins/spatial/bounds` | `postUpdate` | Screen bounds enforcement (destroy, clamp, wrap) |
+| **Collision** | `ecspresso/plugins/physics/collision` | `postUpdate` | Layer-based AABB/circle collision detection with events |
+| **Spatial Index** | `ecspresso/plugins/spatial/spatial-index` | `fixedUpdate + postUpdate` | Spatial hashing for efficient proximity queries |
+| **Camera** | `ecspresso/plugins/spatial/camera` | `postUpdate` | Camera follow, shake, and bounds |
+| **Particles** | `ecspresso/plugins/rendering/particles` | `update + render` | Pooled particle system with PixiJS ParticleContainer rendering |
 | **Sprite Animation** | `ecspresso/plugins/rendering/sprite-animation` | `update` | Frame-based sprite animation with spritesheet helpers (`spritesheetLoader`, `clipFromSheet`, `animationSetFromSheet`, `clipFromGrid`) for PixiJS atlases |
-| **Audio** | `ecspresso/plugins/audio` | `update` | Howler.js audio integration |
+| **Audio** | `ecspresso/plugins/audio/audio` | `update` | Howler.js audio integration |
 | **Behavior Tree** | `ecspresso/plugins/ai/behavior-tree` | `update` | Composable priority-driven AI via behavior trees with typed blackboards and bound helpers for app-world leaf callbacks |
-| **Diagnostics** | `ecspresso/plugins/diagnostics` | `render` | Performance monitoring and debug overlay |
-| **2D Renderer** | `ecspresso/plugins/renderers/renderer2D` | `render` | Automated PixiJS scene graph wiring |
+| **Diagnostics** | `ecspresso/plugins/debug/diagnostics` | `render` | Performance monitoring and debug overlay |
+| **2D Renderer** | `ecspresso/plugins/rendering/renderer2D` | `render` | Automated PixiJS scene graph wiring |
 
 Each plugin accepts a `phase` option to override its default.
+The tween entry point also exports the standard easing functions and `EasingFn` type for use in tween and sequence options.
 
 ## Behavior Tree Plugin
 
@@ -48,6 +49,8 @@ const tree = defineBehaviorTree('enemy-ai', {
 });
 ```
 
+`createBehaviorTree` copies the top-level blackboard object for each entity. Nested arrays and objects from the definition remain shared by reference unless the spawn call overrides them with fresh values. Create per-entity mutable nested state at each spawn.
+
 ## Input Plugin
 
 The input plugin provides frame-accurate keyboard, pointer (mouse + touch via PointerEvent), gamepad, and named action mapping. It's a resource-only plugin — input is polled via the `inputState` resource. DOM events are accumulated between frames and snapshotted once per frame; gamepads are polled once per frame via `navigator.getGamepads()`. All systems see consistent state within a frame.
@@ -57,7 +60,7 @@ import {
   createInputPlugin,
   gamepadButtonsOn, gamepadAxisOn,
   type InputResourceTypes, type KeyCode
-} from 'ecspresso/plugins/input';
+} from 'ecspresso/plugins/input/input';
 
 const world = ECSpresso.create()
   .withPlugin(createInputPlugin({
@@ -150,10 +153,10 @@ Register a player at runtime with `input.definePlayer(id, map)`; remove with `in
 By default `inputState.pointer.position` reports raw `clientX` / `clientY` from the DOM event — viewport-relative, not canvas-relative, and not aware of any renderer scaling. Pass `coordinateTransform` to convert pointer coordinates into whatever space your systems expect. The option is renderer-agnostic: wire it to `clientToLogical(...)` from renderer2D when using `screenScale`, or to an equivalent helper from another renderer.
 
 ```typescript
-import { createInputPlugin } from 'ecspresso/plugins/input';
+import { createInputPlugin } from 'ecspresso/plugins/input/input';
 import {
   createRenderer2DPlugin, clientToLogical, type ViewportScale,
-} from 'ecspresso/plugins/renderers/renderer2D';
+} from 'ecspresso/plugins/rendering/renderer2D';
 
 // The renderer's canvas and viewportScale resource only exist after initialize().
 // The closure captures these lazily — pointer events don't fire until after init.
@@ -208,7 +211,7 @@ createInputPlugin({
 
 ## 2D Renderer Plugin
 
-The 2D renderer plugin wires a PixiJS `Application` to the ECS scene graph: transforms propagate from ECS components to PixiJS display objects, entity hierarchy mirrors into the scene graph, and a render sync system updates visuals each frame. Full option surface lives in `src/plugins/renderers/renderer2D.ts`; this section covers screen scaling, which is what most examples need to opt into a fixed design resolution.
+The 2D renderer plugin wires a PixiJS `Application` to the ECS scene graph: transforms propagate from ECS components to PixiJS display objects, entity hierarchy mirrors into the scene graph, and a render sync system updates visuals each frame. Full option surface lives in `src/plugins/rendering/renderer2D.ts`; this section covers screen scaling, which is what most examples need to opt into a fixed design resolution.
 
 ### Screen scaling
 
@@ -219,7 +222,7 @@ Set `screenScale` to pin a logical design resolution. The renderer wraps its roo
 - `stretch` — non-uniform scale, always fills, distorts aspect ratio
 
 ```typescript
-import { createRenderer2DPlugin } from 'ecspresso/plugins/renderers/renderer2D';
+import { createRenderer2DPlugin } from 'ecspresso/plugins/rendering/renderer2D';
 
 const ecs = ECSpresso.create()
   .withPlugin(createRenderer2DPlugin({
@@ -242,7 +245,7 @@ When `screenScale` is set, the plugin also installs a `viewportScale` resource c
 The `mode` field on `viewportScale` is mutable. To switch modes at runtime, assign a new mode and call `reapplyViewportScale(pixiApp)` to recompute and apply immediately without waiting for a window resize:
 
 ```typescript
-import { reapplyViewportScale } from 'ecspresso/plugins/renderers/renderer2D';
+import { reapplyViewportScale } from 'ecspresso/plugins/rendering/renderer2D';
 
 const viewport = ecs.getResource('viewportScale');
 const pixiApp = ecs.getResource('pixiApp');
@@ -259,7 +262,7 @@ The timer plugin provides ECS-native timers as pure data. Each entity carries a 
 import {
   createTimerPlugin, createTimer, createRepeatingTimer,
   type TimerComponentTypes, type TimerEventData
-} from 'ecspresso/plugins/timers';
+} from 'ecspresso/plugins/scripting/timers';
 
 const world = ECSpresso
   .create()
@@ -357,8 +360,8 @@ import {
   createAABBCollider, createCircleCollider,
   defineCollisionLayers, createCollisionPairHandler,
   type LayersOf,
-} from 'ecspresso/plugins/collision';
-import { createTransformPlugin, createTransform } from 'ecspresso/plugins/transform';
+} from 'ecspresso/plugins/physics/collision';
+import { createTransformPlugin, createTransform } from 'ecspresso/plugins/spatial/transform';
 
 const layers = defineCollisionLayers({
   player: ['enemy', 'pickup'],
@@ -421,11 +424,11 @@ The physics2D plugin provides ECS-native 2D arcade physics: gravity, forces, dra
 ```typescript
 import {
   createPhysics2DPlugin, createRigidBody, applyForce, applyImpulse,
-} from 'ecspresso/plugins/physics2D';
+} from 'ecspresso/plugins/physics/physics2D';
 import {
   createAABBCollider, defineCollisionLayers,
-} from 'ecspresso/plugins/collision';
-import { createTransformPlugin, createTransform } from 'ecspresso/plugins/transform';
+} from 'ecspresso/plugins/physics/collision';
+import { createTransformPlugin, createTransform } from 'ecspresso/plugins/spatial/transform';
 
 const layers = defineCollisionLayers({
   ball: ['ball', 'wall'],
@@ -473,7 +476,7 @@ The collision system can be placed in an additional group via `collisionSystemGr
 The spatial index plugin provides a uniform-grid spatial hash that accelerates collision detection and proximity queries. Installing it alongside `createCollisionPlugin()` or `createPhysics2DPlugin()` automatically switches them from O(N²) brute-force to a broadphase + narrowphase pipeline — no other code changes required.
 
 ```typescript
-import { createSpatialIndexPlugin } from 'ecspresso/plugins/spatial-index';
+import { createSpatialIndexPlugin } from 'ecspresso/plugins/spatial/spatial-index';
 
 const ecs = ECSpresso.create()
   .withPlugin(createTransformPlugin())

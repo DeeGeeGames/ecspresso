@@ -295,7 +295,10 @@ const defDefaultBB = new WeakMap<BehaviorTreeDefinition<object>, object>();
  * Define a behavior tree with a typed blackboard.
  *
  * The `blackboard` value serves as both the type source and the default
- * initial state cloned for each entity via `createBehaviorTree`.
+ * initial state shallow-copied for each entity via `createBehaviorTree`.
+ * Nested objects and arrays remain shared unless an entity-specific override
+ * replaces them; provide fresh mutable nested values when entities need
+ * independent state.
  *
  * @param id     - Unique identifier for this tree definition
  * @param config - `{ blackboard, root }` — default blackboard + root node
@@ -410,7 +413,9 @@ export type BehaviorTreeWorldConfig =
  * Create a `behaviorTree` component from a definition.
  *
  * @param definition - Shared tree definition
- * @param blackboard - Optional partial overrides for the default blackboard
+ * @param blackboard - Optional partial overrides for the default blackboard.
+ *   The top-level object is copied; nested object values are shared by reference
+ *   unless replaced with entity-specific overrides.
  * @returns Component object suitable for spreading into spawn()
  *
  * @example

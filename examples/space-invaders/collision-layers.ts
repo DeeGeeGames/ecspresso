@@ -1,4 +1,4 @@
-import { defineCollisionLayers } from "../../src/plugins/physics/collision";
+import { defineCollisionLayers } from "ecspresso/plugins/physics/collision";
 
 /**
  * Collision layer definitions for Space Invaders.

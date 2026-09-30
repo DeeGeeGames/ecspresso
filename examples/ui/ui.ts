@@ -1,6 +1,6 @@
-import ECSpresso from '../../src';
-import { createRenderer2DPlugin } from '../../src/plugins/rendering/renderer2D';
-import { createInputPlugin } from '../../src/plugins/input/input';
+import ECSpresso from 'ecspresso';
+import { createRenderer2DPlugin } from 'ecspresso/plugins/rendering/renderer2D';
+import { createInputPlugin } from 'ecspresso/plugins/input/input';
 import {
 	createUIPlugin,
 	createUIElement,
@@ -13,7 +13,7 @@ import {
 	appendLogLine,
 	type AnchorPreset,
 	type UIInteractionState,
-} from '../../src/plugins/ui/ui';
+} from 'ecspresso/plugins/ui/ui';
 
 const SCREEN_W = 900;
 const SCREEN_H = 600;

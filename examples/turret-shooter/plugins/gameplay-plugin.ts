@@ -1,5 +1,5 @@
-import { createTimer } from '../../../src/plugins/scripting/timers';
-import { createCollisionPairHandler } from '../../../src/plugins/physics/collision3D';
+import { createTimer } from 'ecspresso/plugins/scripting/timers';
+import { createCollisionPairHandler } from 'ecspresso/plugins/physics/collision3D';
 import type {
 	CollisionLayerName,
 	GameSystemRegistrar,

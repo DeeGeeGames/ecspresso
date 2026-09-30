@@ -6,21 +6,21 @@ import {
 	DirectionalLight,
 	PerspectiveCamera,
 } from 'three';
-import ECSpresso from '../../src';
+import ECSpresso from 'ecspresso';
 import {
 	createRenderer3DPlugin,
 	createMeshComponents,
-} from '../../src/plugins/rendering/renderer3D';
+} from 'ecspresso/plugins/rendering/renderer3D';
 import {
 	createPhysics3DPlugin,
 	createRigidBody3D,
-} from '../../src/plugins/physics/physics3D';
-import { createInputPlugin } from '../../src/plugins/input/input';
+} from 'ecspresso/plugins/physics/physics3D';
+import { createInputPlugin } from 'ecspresso/plugins/input/input';
 import {
 	defineCollisionLayers,
 	createAABB3DCollider,
-} from '../../src/plugins/physics/collision3D';
-import { createTimerPlugin, createTimer, type Timer } from '../../src/plugins/scripting/timers';
+} from 'ecspresso/plugins/physics/collision3D';
+import { createTimerPlugin, createTimer, type Timer } from 'ecspresso/plugins/scripting/timers';
 
 const MOVE_SPEED = 300;
 const JUMP_VELOCITY = 450;

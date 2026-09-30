@@ -1,12 +1,12 @@
 import { Graphics, Sprite, type Texture } from 'pixi.js';
-import { createLocalTransform } from '../../src/plugins/rendering/renderer2D';
-import { createCircleCollider } from '../../src/plugins/physics/collision';
-import { createMoveTarget, createMoveSpeed } from '../../src/plugins/physics/steering';
-import { createDetector } from '../../src/plugins/ai/detection';
-import { createHealth } from '../../src/plugins/combat/health';
-import { createProjectile, createProjectileTarget } from '../../src/plugins/combat/projectile';
-import { createRepeatingTimer } from '../../src/plugins/scripting/timers';
-import { createDestroyOutOfBounds } from '../../src/plugins/spatial/bounds';
+import { createLocalTransform } from 'ecspresso/plugins/rendering/renderer2D';
+import { createCircleCollider } from 'ecspresso/plugins/physics/collision';
+import { createMoveTarget, createMoveSpeed } from 'ecspresso/plugins/physics/steering';
+import { createDetector } from 'ecspresso/plugins/ai/detection';
+import { createHealth } from 'ecspresso/plugins/combat/health';
+import { createProjectile, createProjectileTarget } from 'ecspresso/plugins/combat/projectile';
+import { createRepeatingTimer } from 'ecspresso/plugins/scripting/timers';
+import { createDestroyOutOfBounds } from 'ecspresso/plugins/spatial/bounds';
 import collisionLayers from './collision-layers';
 import { CENTER_X, CENTER_Y, type World } from './types';
 

@@ -1,10 +1,10 @@
 import { Graphics } from 'pixi.js';
-import ECSpresso from "../../src";
+import ECSpresso from "ecspresso";
 import {
 	createRenderer2DPlugin,
 	createGraphicsComponents,
-} from "../../src/plugins/rendering/renderer2D";
-import { createInputPlugin } from "../../src/plugins/input/input";
+} from "ecspresso/plugins/rendering/renderer2D";
+import { createInputPlugin } from "ecspresso/plugins/input/input";
 
 // ==================== Solar System Data ====================
 

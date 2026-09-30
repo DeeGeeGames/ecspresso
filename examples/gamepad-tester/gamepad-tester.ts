@@ -1,5 +1,5 @@
-import ECSpresso from "../../src";
-import { createInputPlugin } from "../../src/plugins/input/input";
+import ECSpresso from "ecspresso";
+import { createInputPlugin } from "ecspresso/plugins/input/input";
 
 const BUTTONS = [
 	{ label: 'A',     color: '#4caf50' },
@@ -37,21 +37,21 @@ interface PadUI {
 	rightDot: HTMLDivElement;
 }
 
-function makeEl<T extends HTMLElement>(tag: string, className?: string): T {
-	const e = document.createElement(tag) as T;
+function makeEl<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string): HTMLElementTagNameMap[K] {
+	const e = document.createElement(tag);
 	if (className) e.className = className;
 	return e;
 }
 
 function createStickViz(label: string): { root: HTMLDivElement; dot: HTMLDivElement } {
-	const root = makeEl<HTMLDivElement>('div', 'stick-container');
-	const lbl = makeEl<HTMLDivElement>('div', 'stick-label');
+	const root = makeEl('div', 'stick-container');
+	const lbl = makeEl('div', 'stick-label');
 	lbl.textContent = label;
 
-	const zone = makeEl<HTMLDivElement>('div', 'stick-zone');
-	const crossH = makeEl<HTMLDivElement>('div', 'crosshair crosshair-h');
-	const crossV = makeEl<HTMLDivElement>('div', 'crosshair crosshair-v');
-	const dot = makeEl<HTMLDivElement>('div', 'stick-dot');
+	const zone = makeEl('div', 'stick-zone');
+	const crossH = makeEl('div', 'crosshair crosshair-h');
+	const crossV = makeEl('div', 'crosshair crosshair-v');
+	const dot = makeEl('div', 'stick-dot');
 
 	zone.append(crossH, crossV, dot);
 	root.append(lbl, zone);
@@ -60,12 +60,12 @@ function createStickViz(label: string): { root: HTMLDivElement; dot: HTMLDivElem
 }
 
 function createTriggerBar(label: string): { root: HTMLDivElement; fill: HTMLDivElement } {
-	const root = makeEl<HTMLDivElement>('div', 'trigger-container');
-	const lbl = makeEl<HTMLSpanElement>('span', 'trigger-label');
+	const root = makeEl('div', 'trigger-container');
+	const lbl = makeEl('span', 'trigger-label');
 	lbl.textContent = label;
 
-	const track = makeEl<HTMLDivElement>('div', 'trigger-track');
-	const fill = makeEl<HTMLDivElement>('div', 'trigger-fill');
+	const track = makeEl('div', 'trigger-track');
+	const fill = makeEl('div', 'trigger-fill');
 
 	track.appendChild(fill);
 	root.append(lbl, track);
@@ -74,28 +74,28 @@ function createTriggerBar(label: string): { root: HTMLDivElement; fill: HTMLDivE
 }
 
 function createPadPanel(app: HTMLElement, index: number): PadUI {
-	const panel = makeEl<HTMLDivElement>('div', 'pad-panel');
+	const panel = makeEl('div', 'pad-panel');
 
-	const header = makeEl<HTMLDivElement>('div', 'pad-header');
-	const statusDot = makeEl<HTMLSpanElement>('span', 'status-dot');
-	const idText = makeEl<HTMLSpanElement>('span', 'pad-id');
+	const header = makeEl('div', 'pad-header');
+	const statusDot = makeEl('span', 'status-dot');
+	const idText = makeEl('span', 'pad-id');
 	idText.textContent = `Gamepad ${index + 1} — Not connected`;
 	header.append(statusDot, idText);
 
-	const triggersRow = makeEl<HTMLDivElement>('div', 'triggers-row');
+	const triggersRow = makeEl('div', 'triggers-row');
 	const lt = createTriggerBar('LT');
 	const rt = createTriggerBar('RT');
 	triggersRow.append(lt.root, rt.root);
 
-	const buttonsGrid = makeEl<HTMLDivElement>('div', 'buttons-grid');
+	const buttonsGrid = makeEl('div', 'buttons-grid');
 	const buttons = BUTTONS.map(({ label }) => {
-		const btn = makeEl<HTMLDivElement>('div', 'btn-indicator');
+		const btn = makeEl('div', 'btn-indicator');
 		btn.textContent = label;
 		buttonsGrid.appendChild(btn);
 		return btn;
 	});
 
-	const sticksRow = makeEl<HTMLDivElement>('div', 'sticks-row');
+	const sticksRow = makeEl('div', 'sticks-row');
 	const leftStick = createStickViz('Left Stick');
 	const rightStick = createStickViz('Right Stick');
 	sticksRow.append(leftStick.root, rightStick.root);

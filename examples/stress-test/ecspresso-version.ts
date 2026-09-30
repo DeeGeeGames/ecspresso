@@ -1,26 +1,26 @@
 import { Graphics, Sprite } from 'pixi.js';
-import ECSpresso from "../../src";
+import ECSpresso from "ecspresso";
 import {
 	createRenderer2DPlugin,
 	createSpriteComponents,
 	clientToLogical,
 	type ViewportScale,
-} from "../../src/plugins/rendering/renderer2D";
+} from "ecspresso/plugins/rendering/renderer2D";
 import {
 	createPhysics2DPlugin,
 	createRigidBody,
-} from "../../src/plugins/physics/physics2D";
+} from "ecspresso/plugins/physics/physics2D";
 import {
 	defineCollisionLayers,
 	createCircleCollider,
-} from "../../src/plugins/physics/collision";
-import { createSpatialIndexPlugin } from "../../src/plugins/spatial/spatial-index";
+} from "ecspresso/plugins/physics/collision";
+import { createSpatialIndexPlugin } from "ecspresso/plugins/spatial/spatial-index";
 import {
 	createDiagnosticsPlugin,
 	createDiagnosticsOverlay,
-} from "../../src/plugins/debug/diagnostics";
-import { createCameraPlugin, screenToWorld } from '../../src/plugins/spatial/camera';
-import { createInputPlugin } from '../../src/plugins/input/input';
+} from "ecspresso/plugins/debug/diagnostics";
+import { createCameraPlugin, screenToWorld } from 'ecspresso/plugins/spatial/camera';
+import { createInputPlugin } from 'ecspresso/plugins/input/input';
 
 import {
 	SCREEN_W,
@@ -126,8 +126,10 @@ export async function startECSpresso(options: StartOptions): Promise<() => Promi
 
 	function spawnBall(x: number, y: number) {
 		const colorIndex = Math.floor(Math.random() * COLORS.length);
-		const color = COLORS[colorIndex]!;
-		const sprite = new Sprite(ballTextures[colorIndex]);
+		const color = COLORS[colorIndex];
+		const texture = ballTextures[colorIndex];
+		if (color === undefined || !texture) throw new Error('Ball palette is empty');
+		const sprite = new Sprite(texture);
 
 		ecs.spawn({
 			...createSpriteComponents(sprite, { x, y }, { anchor: { x: 0.5, y: 0.5 } }),
@@ -203,6 +205,5 @@ export async function startECSpresso(options: StartOptions): Promise<() => Promi
 		cleanupToggle();
 		await ecs.dispose();
 		ballTextures.forEach(t => t.destroy(true));
-		pixiApp.destroy(true, { children: true, texture: true });
 	};
 }

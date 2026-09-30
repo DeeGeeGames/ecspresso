@@ -134,7 +134,7 @@ describe('Behavior Tree Plugin', () => {
 			expect((behaviorTree.blackboard as unknown as TestBB).log).toEqual([]);
 		});
 
-		test('each entity gets independent blackboard', () => {
+		test('copies the blackboard shell and shares nested defaults', () => {
 			const tree = tDefine('test', {
 				blackboard: { counter: 0, log: [] } as TestBB,
 				root: tAction('a', () => NodeStatus.Success),
@@ -144,6 +144,19 @@ describe('Behavior Tree Plugin', () => {
 			const b = createBehaviorTree(tree);
 			(a.behaviorTree.blackboard as TestBB).counter = 10;
 			expect((b.behaviorTree.blackboard as TestBB).counter).toBe(0);
+			expect(a.behaviorTree.blackboard).not.toBe(b.behaviorTree.blackboard);
+			expect((a.behaviorTree.blackboard as TestBB).log).toBe((b.behaviorTree.blackboard as TestBB).log);
+		});
+
+		test('accepts fresh nested values for per-entity mutable state', () => {
+			const tree = tDefine('test', {
+				blackboard: { counter: 0, log: [] },
+				root: tAction('a', () => NodeStatus.Success),
+			});
+
+			const a = createBehaviorTree(tree, { log: [] });
+			const b = createBehaviorTree(tree, { log: [] });
+			expect((a.behaviorTree.blackboard as TestBB).log).not.toBe((b.behaviorTree.blackboard as TestBB).log);
 		});
 	});
 

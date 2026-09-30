@@ -1,9 +1,9 @@
 import { Graphics, Sprite } from 'pixi.js';
-import ECSpresso from "../../src";
+import ECSpresso from "ecspresso";
 import {
 	createRenderer2DPlugin,
 	createLocalTransform,
-} from "../../src/plugins/rendering/renderer2D";
+} from "ecspresso/plugins/rendering/renderer2D";
 
 // -- Build the world --
 // Building on the movement example, we add custom event types for inter-system communication.

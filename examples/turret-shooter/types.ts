@@ -1,13 +1,13 @@
 import { Vector3, type Object3D } from 'three';
-import ECSpresso, { type SystemRegistrarOf } from '../../src';
+import ECSpresso, { type SystemRegistrarOf } from 'ecspresso';
 import {
 	createCollision3DPlugin,
 	defineCollisionLayers,
 	type LayersOf,
-} from '../../src/plugins/physics/collision3D';
-import { createRenderer3DPlugin } from '../../src/plugins/rendering/renderer3D';
-import { createTimerPlugin } from '../../src/plugins/scripting/timers';
-import { createSpatialIndex3DPlugin } from '../../src/plugins/spatial/spatial-index3D';
+} from 'ecspresso/plugins/physics/collision3D';
+import { createRenderer3DPlugin } from 'ecspresso/plugins/rendering/renderer3D';
+import { createTimerPlugin } from 'ecspresso/plugins/scripting/timers';
+import { createSpatialIndex3DPlugin } from 'ecspresso/plugins/spatial/spatial-index3D';
 
 export const collisionLayers = defineCollisionLayers({
 	player: ['enemy'],

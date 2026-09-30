@@ -1,14 +1,14 @@
-import ECSpresso, { type SystemRegistrarOf } from '../../src';
-import { createDetectionPlugin } from '../../src/plugins/ai/detection';
-import { createHealthPlugin } from '../../src/plugins/combat/health';
-import { createProjectilePlugin } from '../../src/plugins/combat/projectile';
-import { createCollisionPlugin, type LayersOf } from '../../src/plugins/physics/collision';
-import { createSteeringPlugin } from '../../src/plugins/physics/steering';
-import { createRenderer2DPlugin } from '../../src/plugins/rendering/renderer2D';
-import { createTimerPlugin } from '../../src/plugins/scripting/timers';
-import { createBoundsPlugin } from '../../src/plugins/spatial/bounds';
-import { createSpatialIndexPlugin } from '../../src/plugins/spatial/spatial-index';
-import { createTransformPlugin } from '../../src/plugins/spatial/transform';
+import ECSpresso, { type SystemRegistrarOf } from 'ecspresso';
+import { createDetectionPlugin } from 'ecspresso/plugins/ai/detection';
+import { createHealthPlugin } from 'ecspresso/plugins/combat/health';
+import { createProjectilePlugin } from 'ecspresso/plugins/combat/projectile';
+import { createCollisionPlugin, type LayersOf } from 'ecspresso/plugins/physics/collision';
+import { createSteeringPlugin } from 'ecspresso/plugins/physics/steering';
+import { createRenderer2DPlugin } from 'ecspresso/plugins/rendering/renderer2D';
+import { createTimerPlugin } from 'ecspresso/plugins/scripting/timers';
+import { createBoundsPlugin } from 'ecspresso/plugins/spatial/bounds';
+import { createSpatialIndexPlugin } from 'ecspresso/plugins/spatial/spatial-index';
+import { createTransformPlugin } from 'ecspresso/plugins/spatial/transform';
 import collisionLayers from './collision-layers';
 
 export const SCREEN_WIDTH = 800;
@@ -19,7 +19,7 @@ export const CENTER_Y = SCREEN_HEIGHT / 2;
 export type TimerSlot = 'spawn' | 'fire';
 
 export const game = ECSpresso.create()
-	.withPlugin(createTimerPlugin<TimerSlot>())
+	.withPlugin(createTimerPlugin<TimerSlot, 'gameplay'>({ systemGroup: 'gameplay' }))
 	.withPlugin(createRenderer2DPlugin({
 		background: '#111122',
 		container: '#game-container',
@@ -27,13 +27,13 @@ export const game = ECSpresso.create()
 		screenScale: { width: SCREEN_WIDTH, height: SCREEN_HEIGHT },
 	}))
 	.withPlugin(createTransformPlugin())
-	.withPlugin(createBoundsPlugin())
-	.withPlugin(createCollisionPlugin({ layers: collisionLayers, priority: 50 }))
-	.withPlugin(createSpatialIndexPlugin())
-	.withPlugin(createSteeringPlugin())
-	.withPlugin(createDetectionPlugin<'ai', LayersOf<typeof collisionLayers>>())
-	.withPlugin(createHealthPlugin())
-	.withPlugin(createProjectilePlugin<'combat', LayersOf<typeof collisionLayers>>())
+	.withPlugin(createBoundsPlugin({ systemGroup: 'gameplay' }))
+	.withPlugin(createCollisionPlugin<LayersOf<typeof collisionLayers>, 'gameplay'>({ layers: collisionLayers, priority: 50, systemGroup: 'gameplay' }))
+	.withPlugin(createSpatialIndexPlugin<'gameplay'>({ systemGroup: 'gameplay' }))
+	.withPlugin(createSteeringPlugin<'gameplay'>({ systemGroup: 'gameplay' }))
+	.withPlugin(createDetectionPlugin<'gameplay', LayersOf<typeof collisionLayers>>({ systemGroup: 'gameplay' }))
+	.withPlugin(createHealthPlugin<'gameplay'>({ systemGroup: 'gameplay' }))
+	.withPlugin(createProjectilePlugin<'gameplay', LayersOf<typeof collisionLayers>>({ systemGroup: 'gameplay' }))
 	.withComponentTypes<{
 		turret: true;
 		enemy: {

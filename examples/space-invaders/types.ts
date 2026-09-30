@@ -1,6 +1,6 @@
 import type { Container, Text } from 'pixi.js';
 
-export type TimerSlot = 'levelTransition' | 'descent' | 'respawn' | 'hide';
+export type TimerSlot = 'levelTransition' | 'descent' | 'respawn';
 
 export interface AppComponents {
 	player: boolean;
@@ -33,6 +33,7 @@ export interface AppResources {
 		status: 'ready' | 'playing' | 'paused' | 'gameOver';
 		level: number;
 		lives: number;
+		playerDeathPending: boolean;
 	};
 	config: {
 		playerSpeed: number;
@@ -52,5 +53,8 @@ export interface AppResources {
 		scoreText: Text;
 		livesText: Text;
 		messageText: Text;
+	};
+	uiState: {
+		messageHideRemaining: number;
 	};
 }

@@ -11,7 +11,8 @@
  * - Event-driven playback (playSound, stopMusic, soundEnded)
  */
 
-import ECSpresso, { type WorldConfigFrom } from '../../src';
+import ECSpresso, { type WorldConfigFrom } from 'ecspresso';
+import { requireElement } from '../utils';
 import {
 	defineAudioChannels,
 	createAudioPlugin,
@@ -22,7 +23,7 @@ import {
 	type AudioEventTypes,
 	type AudioResourceTypes,
 	type SoundEndedEvent,
-} from '../../src/plugins/audio/audio';
+} from 'ecspresso/plugins/audio/audio';
 
 // ==================== Channel Definition ====================
 
@@ -46,10 +47,10 @@ interface Resources extends AudioResourceTypes<Ch> {}
 const ecs = ECSpresso
 	.create<WorldConfigFrom<Components, Events, Resources>>()
 	.withAssets(a => a
-		.add('click', loadSound('/audio/assets/click.wav'))
-		.add('coin', loadSound('/audio/assets/coin.wav'))
-		.add('explosion', loadSound('/audio/assets/explosion.wav'))
-		.add('bgm', loadSound('/audio/assets/bgm.wav'))
+		.add('click', loadSound(new URL('./assets/click.wav', document.baseURI).href))
+		.add('coin', loadSound(new URL('./assets/coin.wav', document.baseURI).href))
+		.add('explosion', loadSound(new URL('./assets/explosion.wav', document.baseURI).href))
+		.add('bgm', loadSound(new URL('./assets/bgm.wav', document.baseURI).href))
 	)
 	.withPlugin(createAudioPlugin({ channels }))
 	.build();
@@ -60,7 +61,7 @@ const audio = ecs.getResource('audioState');
 
 // ==================== Logging ====================
 
-const logEl = document.getElementById('log')!;
+const logEl = requireElement('log', HTMLElement);
 
 function log(message: string, category: 'sfx' | 'music' | 'event' | 'volume' = 'event') {
 	const entry = document.createElement('div');
@@ -139,9 +140,9 @@ bindButton('btn-stop-music', () => {
 // ==================== Volume Controls ====================
 
 function bindSlider(sliderId: string, valueId: string, handler: (value: number) => void) {
-	const slider = document.getElementById(sliderId) as HTMLInputElement;
-	const valueEl = document.getElementById(valueId)!;
-	slider?.addEventListener('input', () => {
+	const slider = requireElement(sliderId, HTMLInputElement);
+	const valueEl = requireElement(valueId, HTMLElement);
+	slider.addEventListener('input', () => {
 		const value = parseInt(slider.value, 10);
 		valueEl.textContent = String(value);
 		handler(value / 100);
@@ -164,7 +165,7 @@ bindSlider('vol-music', 'val-music', (vol) => {
 });
 
 // Mute toggle
-const muteBtn = document.getElementById('btn-mute')!;
+const muteBtn = requireElement('btn-mute', HTMLButtonElement);
 muteBtn.addEventListener('click', () => {
 	audio.toggleMute();
 	const muted = audio.isMuted();
@@ -176,3 +177,15 @@ muteBtn.addEventListener('click', () => {
 // ==================== Ready ====================
 
 log('Audio plugin initialized. Click buttons to play sounds.');
+
+const timing = { previousUpdateTime: performance.now() };
+const updateIntervalId = window.setInterval(() => {
+	const time = performance.now();
+	ecs.update((time - timing.previousUpdateTime) / 1_000);
+	timing.previousUpdateTime = time;
+}, 1000 / 60);
+
+window.addEventListener('pagehide', () => {
+	window.clearInterval(updateIntervalId);
+	void ecs.dispose();
+}, { once: true });

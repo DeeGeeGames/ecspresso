@@ -423,6 +423,11 @@ export function reapplyViewportScale(pixiApp: Application): void {
  * - Render sync system (updates PixiJS objects from ECS components)
  * - Scene graph management (mirrors ECS hierarchy in PixiJS scene graph)
  *
+ * Managed mode owns and destroys its PixiJS application when the world is
+ * disposed. With a supplied application, the caller retains application
+ * ownership. Display objects and their textures remain caller-owned in both
+ * modes; the plugin detaches them without destroying shared GPU assets.
+ *
  * @example Pre-initialized mode
  * ```typescript
  * const app = new Application();
@@ -490,7 +495,21 @@ export function createRenderer2DPlugin<G extends string = 'renderer2d'>(
 
 	// Render layer name -> PixiJS Container mapping
 	const layerContainers = new Map<string, Container>();
+	const pluginContainers = new Set<Container>();
 	const screenSpaceLayerSet = new Set(screenSpaceLayers);
+	let detachRendererHooks = () => {};
+	let detachSceneGraphEvents = () => {};
+
+	function disposePluginContainers(): void {
+		Array.from(pluginContainers).reverse().forEach((container) => {
+			container.removeFromParent();
+			container.destroy({ children: false });
+		});
+		pluginContainers.clear();
+		layerContainers.clear();
+		entityToPixiObject.clear();
+		screenSpaceParent = null;
+	}
 
 	// Container constructor captured during initialization via dynamic import
 	// Used by getOrCreateLayerContainer for lazy layer creation
@@ -511,6 +530,7 @@ export function createRenderer2DPlugin<G extends string = 'renderer2d'>(
 
 		// Lazy-create for undeclared layers, appended to end
 		const cont = createLayerContainer(`layer:${layerName}`);
+		pluginContainers.add(cont);
 		layerContainers.set(layerName, cont);
 		const parent = (screenSpaceParent && screenSpaceLayerSet.has(layerName))
 			? screenSpaceParent
@@ -614,16 +634,23 @@ export function createRenderer2DPlugin<G extends string = 'renderer2d'>(
 					...(shouldDefaultResizeTo && { resizeTo: containerEl }),
 				};
 
-				world.addResource('pixiApp', async () => {
-					const app = await createPixiApplication(finalInitOptions);
+				world.addResource('pixiApp', {
+					factory: async () => {
+						const app = await createPixiApplication(finalInitOptions);
 
-					if (containerEl) {
-						containerEl.appendChild(app.canvas);
-					} else if (typeof containerOption === 'string') {
-						console.warn(`Renderer2D plugin: container selector "${containerOption}" not found`);
-					}
+						if (containerEl) {
+							containerEl.appendChild(app.canvas);
+						} else if (typeof containerOption === 'string') {
+							console.warn(`Renderer2D plugin: container selector "${containerOption}" not found`);
+						}
 
-					return app;
+						return app;
+					},
+					onDispose: (app) => {
+						detachRendererHooks();
+						disposePluginContainers();
+						app.destroy({ removeView: true }, { children: false });
+					},
 				});
 
 				world.addResource('rootContainer', {
@@ -651,7 +678,13 @@ export function createRenderer2DPlugin<G extends string = 'renderer2d'>(
 				}
 			} else {
 				const app = (options as Renderer2DPluginAppOptions<G>).app;
-				world.addResource('pixiApp', app);
+				world.addResource('pixiApp', {
+					factory: () => app,
+					onDispose: () => {
+						detachRendererHooks();
+						disposePluginContainers();
+					},
+				});
 				world.addResource('rootContainer', customRootContainer ?? app.stage);
 				world.addResource('bounds', hasScreenScale
 					? createBounds(designWidth, designHeight)
@@ -742,12 +775,14 @@ export function createRenderer2DPlugin<G extends string = 'renderer2d'>(
 					createLayerContainer = (label: string) => {
 						const cont = new ContainerClass();
 						cont.label = label;
+						pluginContainers.add(cont);
 						return cont;
 					};
 
 					let viewportContainer: Container | undefined;
 					if (hasScreenScale) {
 						viewportContainer = new ContainerClass();
+						pluginContainers.add(viewportContainer);
 						viewportContainer.label = 'viewportContainer';
 
 						const vs = ecs.tryGetResource('viewportScale');
@@ -756,6 +791,7 @@ export function createRenderer2DPlugin<G extends string = 'renderer2d'>(
 						viewportContainer.scale.set(vs.scaleX, vs.scaleY);
 
 						const newRoot = new ContainerClass();
+						pluginContainers.add(newRoot);
 						newRoot.label = 'rootContainer';
 
 						pixiApp.stage.addChild(viewportContainer);
@@ -770,6 +806,7 @@ export function createRenderer2DPlugin<G extends string = 'renderer2d'>(
 					if (camera && screenSpaceLayerSet.size > 0) {
 						if (rootCont === pixiApp.stage) {
 							const worldContainer = new ContainerClass();
+							pluginContainers.add(worldContainer);
 							worldContainer.label = 'rootContainer';
 							pixiApp.stage.addChild(worldContainer);
 							ecs.updateResource('rootContainer', () => worldContainer);
@@ -819,17 +856,22 @@ export function createRenderer2DPlugin<G extends string = 'renderer2d'>(
 						},
 					});
 
-					ecs.on('hierarchyChanged', ({ entityId }) => {
+					const unsubscribeHierarchy = ecs.on('hierarchyChanged', ({ entityId }) => {
 						updateSceneGraphParent(entityId, ecs);
 					});
 
-					ecs.onComponentAdded('renderLayer', ({ entity }) => {
+					const unsubscribeRenderLayerAdded = ecs.onComponentAdded('renderLayer', ({ entity }) => {
 						updateSceneGraphParent(entity.id, ecs);
 					});
 
-					ecs.onComponentRemoved('renderLayer', ({ entity }) => {
+					const unsubscribeRenderLayerRemoved = ecs.onComponentRemoved('renderLayer', ({ entity }) => {
 						updateSceneGraphParent(entity.id, ecs);
 					});
+					detachSceneGraphEvents = () => {
+						unsubscribeHierarchy();
+						unsubscribeRenderLayerAdded();
+						unsubscribeRenderLayerRemoved();
+					};
 
 					if (camera) {
 						const cameraState = ecs.tryGetResource<CameraState>('cameraState');
@@ -838,7 +880,7 @@ export function createRenderer2DPlugin<G extends string = 'renderer2d'>(
 						cameraState.viewportHeight = hasScreenScale ? designHeight : pixiApp.screen.height;
 					}
 
-					pixiApp.renderer.on('resize', (width: number, height: number) => {
+					const resizeHandler = (width: number, height: number) => {
 						if (hasScreenScale) {
 							const vpResource = ecs.tryGetResource('viewportScale');
 							if (!vpResource) throw new Error('renderer2D: viewportScale resource not found');
@@ -866,13 +908,24 @@ export function createRenderer2DPlugin<G extends string = 'renderer2d'>(
 								cameraState.viewportHeight = height;
 							}
 						}
-					});
+					};
+					pixiApp.renderer.on('resize', resizeHandler);
+					const updateFromTicker = (ticker: { deltaMS: number }) => {
+						ecs.update(ticker.deltaMS / 1_000);
+					};
 
 					if (startLoop) {
-						pixiApp.ticker.add((ticker) => {
-							ecs.update(ticker.deltaMS / 1_000);
-						});
+						pixiApp.ticker.add(updateFromTicker);
 					}
+					detachRendererHooks = () => {
+						pixiApp.renderer.off('resize', resizeHandler);
+						if (startLoop) pixiApp.ticker.remove(updateFromTicker);
+					};
+				})
+
+				.setOnDetach(() => {
+					detachRendererHooks();
+					detachSceneGraphEvents();
 				});
 
 			// ==================== Camera Sync System (opt-in) ====================

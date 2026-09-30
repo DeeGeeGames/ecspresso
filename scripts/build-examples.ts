@@ -53,6 +53,19 @@ await Bun.write(
 	Bun.file(join(EXAMPLES_DIR, 'styles.css')),
 );
 
+const bevyFrameDir = join(OUT_DIR, 'stress-test');
+await mkdir(bevyFrameDir, { recursive: true });
+const bevyFrameBuild = await Bun.build({
+	entrypoints: [join(EXAMPLES_DIR, 'stress-test', 'bevy-frame.ts')],
+	outdir: bevyFrameDir,
+	target: 'browser',
+	minify: true,
+	naming: 'bevy-frame.js',
+});
+if (!bevyFrameBuild.success) throw new AggregateError(bevyFrameBuild.logs, 'Failed to build Bevy frame');
+const bevyFrameHtml = await Bun.file(join(EXAMPLES_DIR, 'stress-test', 'bevy-frame.html')).text();
+await Bun.write(join(bevyFrameDir, 'bevy-frame.html'), bevyFrameHtml.replace('./bevy-frame.ts', './bevy-frame.js'));
+
 // Build each example
 const results = await Promise.all(
 	examples.map(async (example) => {

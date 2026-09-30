@@ -13,11 +13,11 @@
  */
 
 import { Graphics, Sprite, Text, TextStyle, Texture, type Renderer } from 'pixi.js';
-import ECSpresso from '../../src';
+import ECSpresso from 'ecspresso';
 import {
 	createRenderer2DPlugin,
 	createSpriteComponents,
-} from '../../src/plugins/rendering/renderer2D';
+} from 'ecspresso/plugins/rendering/renderer2D';
 import {
 	createParticlePlugin,
 	defineParticleEffect,
@@ -27,7 +27,7 @@ import {
 	resumeEmitter,
 	particlePresets,
 	type ParticleComponentTypes,
-} from '../../src/plugins/rendering/particles';
+} from 'ecspresso/plugins/rendering/particles';
 
 // ==================== Constants ====================
 
@@ -166,6 +166,9 @@ pixiApp.canvas.addEventListener('click', (e) => {
 	if (clickY > 30 && clickY < 170) {
 		presetEntities.forEach(({ id, x, config }) => {
 			if (Math.abs(clickX - x) < 60) {
+				if (burstParticles(ecs, id, config.burstCount || 10)) return;
+
+				ecs.addComponent(id, 'particleEmitter', createParticleEmitter(config).particleEmitter);
 				burstParticles(ecs, id, config.burstCount || 10);
 			}
 		});
@@ -282,7 +285,9 @@ pixiApp.canvas.addEventListener('click', (e) => {
 	// Spawn explosion in the right-side area
 	if (clickX > 510 && clickY > 200) {
 		const entity = ecs.spawn({
-			...createParticleEmitter(burstConfig),
+			...createParticleEmitter(burstConfig, {
+				onComplete: ({ entityId }) => ecs.commands.removeEntity(entityId),
+			}),
 			localTransform: { x: clickX, y: clickY, rotation: 0, scaleX: 1, scaleY: 1 },
 			worldTransform: { x: clickX, y: clickY, rotation: 0, scaleX: 1, scaleY: 1 },
 		});
@@ -324,31 +329,25 @@ const indicatorStyle = new TextStyle({
 
 const indicatorText = new Text({ text: 'playing', style: indicatorStyle });
 const indicatorSprite = new Sprite(renderer.generateTexture(indicatorText));
-const indicatorEntity = ecs.spawn(
+ecs.spawn(
 	createSpriteComponents(indicatorSprite, { x: 60, y: 555 }),
 );
 
-let paused = false;
 pixiApp.canvas.addEventListener('click', (e) => {
 	const rect = pixiApp.canvas.getBoundingClientRect();
 	const clickX = e.clientX - rect.left;
 	const clickY = e.clientY - rect.top;
 
-	if (clickX < 250 && clickY > 420) {
-		paused = !paused;
-		if (paused) {
-			stopEmitter(ecs, pauseEntity.id);
-		} else {
-			resumeEmitter(ecs, pauseEntity.id);
-		}
-
-		const newText = new Text({
-			text: paused ? 'paused' : 'playing',
-			style: indicatorStyle,
-		});
-		const newSprite = new Sprite(renderer.generateTexture(newText));
-		ecs.addComponent(indicatorEntity.id, 'sprite', newSprite);
-	}
+	if (clickX >= 250 || clickY <= 420) return;
+	const emitter = ecs.getComponent(pauseEntity.id, 'particleEmitter');
+	if (!emitter) return;
+	const paused = emitter.playing;
+	const toggleEmitter = paused ? stopEmitter : resumeEmitter;
+	toggleEmitter(ecs, pauseEntity.id);
+	indicatorText.text = paused ? 'paused' : 'playing';
+	const previousTexture = indicatorSprite.texture;
+	indicatorSprite.texture = renderer.generateTexture(indicatorText);
+	previousTexture.destroy(true);
 });
 
 // ==================== Info ====================

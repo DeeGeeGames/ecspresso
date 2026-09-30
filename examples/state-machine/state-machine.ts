@@ -11,23 +11,23 @@
  */
 
 import { Graphics, Sprite } from 'pixi.js';
-import ECSpresso from '../../src';
+import ECSpresso from 'ecspresso';
 import {
 	createRenderer2DPlugin,
 	createSpriteComponents,
-} from '../../src/plugins/rendering/renderer2D';
+} from 'ecspresso/plugins/rendering/renderer2D';
 import {
 	createPhysics2DPlugin,
 	createRigidBody,
 	setVelocity,
-} from '../../src/plugins/physics/physics2D';
-import { createInputPlugin } from '../../src/plugins/input/input';
+} from 'ecspresso/plugins/physics/physics2D';
+import { createInputPlugin } from 'ecspresso/plugins/input/input';
 import {
 	createStateMachinePlugin,
 	createStateMachine,
 	createStateMachineHelpers,
 	getStateMachineState,
-} from '../../src/plugins/scripting/state-machine';
+} from 'ecspresso/plugins/scripting/state-machine';
 
 // ==================== Types ====================
 

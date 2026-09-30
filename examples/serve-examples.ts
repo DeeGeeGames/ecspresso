@@ -14,6 +14,8 @@ import stateMachine from './state-machine/state-machine.html';
 import tweens from './tweens/tweens.html';
 import screens from './screens/screens.html';
 import stressTest from './stress-test/stress-test.html';
+import bevyFrame from './stress-test/bevy-frame.html';
+import benchmarkLifecycle from '../browser-tests/benchmark-lifecycle.html';
 import stressTest3D from './stress-test-3D/stress-test-3D.html';
 import audio from './audio/audio.html';
 import coroutines from './coroutines/coroutines.html';
@@ -57,6 +59,8 @@ const server = serve({
 		'/tweens/': tweens,
 		'/screens/': screens,
 		'/stress-test/': stressTest,
+		'/stress-test/bevy-frame.html': bevyFrame,
+		'/stress-test/lifecycle.html': benchmarkLifecycle,
 		'/stress-test-3D/': stressTest3D,
 		'/audio/': audio,
 		'/coroutines/': coroutines,

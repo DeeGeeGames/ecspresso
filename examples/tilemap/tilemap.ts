@@ -14,20 +14,20 @@
  */
 
 import { Assets, Graphics, Rectangle, RenderTexture, Sprite, Texture } from 'pixi.js';
-import ECSpresso from '../../src';
+import ECSpresso from 'ecspresso';
 import {
 	createRenderer2DPlugin,
 	createLocalTransform,
 	createTransform,
-} from '../../src/plugins/rendering/renderer2D';
-import { createTilemapPlugin } from '../../src/plugins/rendering/tilemap';
+} from 'ecspresso/plugins/rendering/renderer2D';
+import { createTilemapPlugin } from 'ecspresso/plugins/rendering/tilemap';
 import {
 	createCollisionPlugin,
 	createAABBCollider,
 	defineCollisionLayers,
-} from '../../src/plugins/physics/collision';
-import { createInputPlugin } from '../../src/plugins/input/input';
-import { createCameraPlugin } from '../../src/plugins/spatial/camera';
+} from 'ecspresso/plugins/physics/collision';
+import { createInputPlugin } from 'ecspresso/plugins/input/input';
+import { createCameraPlugin } from 'ecspresso/plugins/spatial/camera';
 
 // ==================== Constants ====================
 

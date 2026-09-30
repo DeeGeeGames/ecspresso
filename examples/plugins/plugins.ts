@@ -1,11 +1,11 @@
 import { Graphics, Sprite } from 'pixi.js';
-import ECSpresso, { definePlugin } from "../../src";
+import ECSpresso, { definePlugin } from "ecspresso";
 import {
 	createRenderer2DPlugin,
 	createLocalTransform,
 	type TransformComponentTypes,
 	type BoundsRect,
-} from "../../src/plugins/rendering/renderer2D";
+} from "ecspresso/plugins/rendering/renderer2D";
 
 // -- Custom plugin --
 // A plugin packages related components, events, and systems into a reusable unit.

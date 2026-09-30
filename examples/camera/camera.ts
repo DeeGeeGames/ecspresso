@@ -10,21 +10,21 @@
  */
 
 import { Graphics, Container, Text, TextStyle } from 'pixi.js';
-import ECSpresso from '../../src';
+import ECSpresso from 'ecspresso';
 import {
 	createRenderer2DPlugin,
 	createGraphicsComponents,
 	createContainerComponents,
-} from '../../src/plugins/rendering/renderer2D';
+} from 'ecspresso/plugins/rendering/renderer2D';
 import {
 	createPhysics2DPlugin,
 	createRigidBody,
-} from '../../src/plugins/physics/physics2D';
-import { createInputPlugin } from '../../src/plugins/input/input';
+} from 'ecspresso/plugins/physics/physics2D';
+import { createInputPlugin } from 'ecspresso/plugins/input/input';
 import {
 	createCameraPlugin,
 	screenToWorld,
-} from '../../src/plugins/spatial/camera';
+} from 'ecspresso/plugins/spatial/camera';
 
 // ==================== Constants ====================
 

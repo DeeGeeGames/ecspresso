@@ -1,4 +1,4 @@
-import { defineCollisionLayers } from "../../src/plugins/physics/collision";
+import { defineCollisionLayers } from "ecspresso/plugins/physics/collision";
 
 const collisionLayers = defineCollisionLayers({
 	turretProjectile: ['enemy'],

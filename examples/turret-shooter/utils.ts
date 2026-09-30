@@ -375,8 +375,7 @@ export function createExplosion(scene: Scene, position: Vector3) {
 	const explosionGroup = new Group();
 	explosionGroup.position.copy(position);
 
-	// Create multiple particles for the explosion
-	for (let i = 0; i < 20; i++) {
+	const particles = Array.from({ length: 20 }, function createParticle() {
 		const size = 0.5 + Math.random() * 1.5;
 		const geometry = new SphereGeometry(size, 8, 8);
 		const material = new MeshBasicMaterial({
@@ -405,65 +404,43 @@ export function createExplosion(scene: Scene, position: Vector3) {
 			particle.position.z
 		).normalize();
 
-		// Fix userData property access with brackets
-		particle.userData['velocity'] = direction.multiplyScalar(speed);
-		particle.userData['drag'] = 0.9 + Math.random() * 0.1;
-		particle.userData['lifetime'] = 1 + Math.random();
-
 		explosionGroup.add(particle);
-	}
+		return {
+			mesh: particle,
+			velocity: direction.multiplyScalar(speed),
+			drag: 0.9 + Math.random() * 0.1,
+			lifetime: 1 + Math.random(),
+		};
+	});
 
 	scene.add(explosionGroup);
 
-	// Create animation
-	let elapsed = 0;
-	let lastTime = performance.now();
+	const timing = { elapsed: 0, lastTime: performance.now() };
 
 	function animateExplosion() {
 		const currentTime = performance.now();
-		const deltaTime = (currentTime - lastTime) / 1000; // Convert to seconds
-		lastTime = currentTime;
+		const deltaTime = (currentTime - timing.lastTime) / 1000;
+		timing.lastTime = currentTime;
+		timing.elapsed += deltaTime;
 
-		// Only update if the game isn't paused
-		// We can't directly access ECS here, so particles will continue regardless of pause
-		// but we'll use a smaller time delta to make the effect last longer
-
-		elapsed += deltaTime;
-
-		// Update all particles
-		let allDone = true;
-
-		explosionGroup.children.forEach((child: any) => {
-			if (child.userData['lifetime'] > 0) {
-				// Update position based on velocity
-				child.position.x += child.userData['velocity'].x * deltaTime;
-				child.position.y += child.userData['velocity'].y * deltaTime;
-				child.position.z += child.userData['velocity'].z * deltaTime;
-
-				// Apply drag to slow down
-				child.userData['velocity'].multiplyScalar(child.userData['drag']);
-
-				// Reduce lifetime
-				child.userData['lifetime'] -= deltaTime;
-
-				// Fade out
-				if (child.material && child.material.opacity) {
-					child.material.opacity = Math.max(0, child.userData['lifetime'] / 1.0);
-				}
-
-				allDone = false;
-			}
+		particles.forEach(function updateParticle(particle) {
+			if (particle.lifetime <= 0) return;
+			particle.mesh.position.addScaledVector(particle.velocity, deltaTime);
+			particle.velocity.multiplyScalar(particle.drag);
+			particle.lifetime -= deltaTime;
+			particle.mesh.material.opacity = Math.max(0, particle.lifetime);
 		});
 
-		// Remove the explosion when all particles are done
-		if (allDone || elapsed > 2) {
+		if (particles.every(particle => particle.lifetime <= 0) || timing.elapsed > 2) {
 			scene.remove(explosionGroup);
+			particles.forEach(({ mesh }) => {
+				mesh.geometry.dispose();
+				mesh.material.dispose();
+			});
 			return;
 		}
-
 		requestAnimationFrame(animateExplosion);
 	}
 
-	// Start animation
 	animateExplosion();
 }

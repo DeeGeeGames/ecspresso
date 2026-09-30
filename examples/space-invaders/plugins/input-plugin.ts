@@ -1,4 +1,4 @@
-import { createInputPlugin as createLibInputPlugin } from '../../../src/plugins/input/input';
+import { createInputPlugin as createLibInputPlugin } from 'ecspresso/plugins/input/input';
 import type { Game } from '../game';
 
 /**

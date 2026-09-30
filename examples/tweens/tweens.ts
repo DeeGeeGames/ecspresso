@@ -1,9 +1,9 @@
 import { Graphics, Sprite, Text, TextStyle } from 'pixi.js';
-import ECSpresso from "../../src";
+import ECSpresso from "ecspresso";
 import {
 	createRenderer2DPlugin,
 	createSpriteComponents,
-} from "../../src/plugins/rendering/renderer2D";
+} from "ecspresso/plugins/rendering/renderer2D";
 import {
 	linear,
 	easeInQuad,
@@ -12,13 +12,11 @@ import {
 	easeOutBounce,
 	easeInOutElastic,
 	easeOutBack,
-} from "../../src/utils/easing";
-import {
 	createTweenPlugin,
 	createTween,
 	createTweenSequence,
 	type LoopMode,
-} from "../../src/plugins/scripting/tween";
+} from 'ecspresso/plugins/scripting/tween';
 
 // -- Layout constants --
 
@@ -144,7 +142,13 @@ function createBallSprite(color: number): Sprite {
 	return new Sprite(pixiApp.renderer.generateTexture(gfx));
 }
 
-const defaultLoop = dropdown.value as LoopMode;
+function readLoopMode(): LoopMode {
+	const value = dropdown.value;
+	if (value !== 'once' && value !== 'loop' && value !== 'yoyo') throw new Error(`Unknown loop mode: ${value}`);
+	return value;
+}
+
+const defaultLoop = readLoopMode();
 
 const ballEntityIds = demos.map((demo, i) => {
 	const y = 50 + i * ROW_H;
@@ -170,7 +174,7 @@ const ballEntityIds = demos.map((demo, i) => {
 // -- Dropdown change handler --
 
 dropdown.addEventListener('change', () => {
-	const loop = dropdown.value as LoopMode;
+	const loop = readLoopMode();
 	ballEntityIds.forEach((id, i) => {
 		const demo = demos[i];
 		if (!demo) return;

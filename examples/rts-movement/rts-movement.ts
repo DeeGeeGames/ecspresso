@@ -1,13 +1,13 @@
 import { Graphics, Sprite } from 'pixi.js';
-import ECSpresso from '../../src';
+import ECSpresso from 'ecspresso';
 import {
 	createRenderer2DPlugin,
 	createLocalTransform,
-} from '../../src/plugins/rendering/renderer2D';
-import { createInputPlugin } from '../../src/plugins/input/input';
-import { createCameraPlugin, screenToWorld } from '../../src/plugins/spatial/camera';
-import { createSelectionPlugin, createSelectable } from '../../src/plugins/input/selection';
-import { createSteeringPlugin, createMoveSpeed } from '../../src/plugins/physics/steering';
+} from 'ecspresso/plugins/rendering/renderer2D';
+import { createInputPlugin } from 'ecspresso/plugins/input/input';
+import { createCameraPlugin, screenToWorld } from 'ecspresso/plugins/spatial/camera';
+import { createSelectionPlugin, createSelectable } from 'ecspresso/plugins/input/selection';
+import { createSteeringPlugin, createMoveSpeed } from 'ecspresso/plugins/physics/steering';
 
 const ecs = ECSpresso.create()
 	.withPlugin(createRenderer2DPlugin({

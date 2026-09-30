@@ -23,17 +23,17 @@ import {
 	AmbientLight,
 	DirectionalLight,
 } from 'three';
-import ECSpresso from '../../src';
+import ECSpresso from 'ecspresso';
 import {
 	createRenderer3DPlugin,
 	createMeshComponents,
-} from '../../src/plugins/rendering/renderer3D';
+} from 'ecspresso/plugins/rendering/renderer3D';
 import {
 	createPhysics3DPlugin,
 	createRigidBody3D,
-} from '../../src/plugins/physics/physics3D';
-import { createCamera3DPlugin } from '../../src/plugins/spatial/camera3D';
-import { createInputPlugin } from '../../src/plugins/input/input';
+} from 'ecspresso/plugins/physics/physics3D';
+import { createCamera3DPlugin } from 'ecspresso/plugins/spatial/camera3D';
+import { createInputPlugin } from 'ecspresso/plugins/input/input';
 
 // ==================== Constants ====================
 

@@ -9,25 +9,25 @@ import {
 	LineSegments,
 	LineBasicMaterial,
 } from 'three';
-import ECSpresso from '../../src';
+import ECSpresso from 'ecspresso';
 import {
 	createRenderer3DPlugin,
 	createMeshComponents,
-} from '../../src/plugins/rendering/renderer3D';
+} from 'ecspresso/plugins/rendering/renderer3D';
 import {
 	createPhysics3DPlugin,
 	createRigidBody3D,
-} from '../../src/plugins/physics/physics3D';
+} from 'ecspresso/plugins/physics/physics3D';
 import {
 	defineCollisionLayers,
 	createSphereCollider,
-} from '../../src/plugins/physics/collision3D';
-import { createSpatialIndex3DPlugin } from '../../src/plugins/spatial/spatial-index3D';
-import { createCamera3DPlugin } from '../../src/plugins/spatial/camera3D';
+} from 'ecspresso/plugins/physics/collision3D';
+import { createSpatialIndex3DPlugin } from 'ecspresso/plugins/spatial/spatial-index3D';
+import { createCamera3DPlugin } from 'ecspresso/plugins/spatial/camera3D';
 import {
 	createDiagnosticsPlugin,
 	createDiagnosticsOverlay,
-} from '../../src/plugins/debug/diagnostics';
+} from 'ecspresso/plugins/debug/diagnostics';
 
 // -- Constants --
 
@@ -70,42 +70,39 @@ const ecs = ECSpresso.create()
 	.withComponentTypes<{ radius: number }>()
 	.build();
 
-// Bounce system — reflects velocity off all 6 faces of the bounding box.
+function bounceAxis(position: number, velocity: number, min: number, max: number): readonly [number, number] {
+	if (position < min) return [min, Math.abs(velocity)];
+	if (position > max) return [max, -Math.abs(velocity)];
+	return [position, velocity];
+}
+
+// Clamp the authoritative local position after integration and before 3D collision.
+// Transform propagation publishes this position to worldTransform3D in postUpdate.
 ecs
 	.addSystem('bounce')
-	.inPhase('postUpdate')
+	.inPhase('fixedUpdate')
+	.setPriority(950)
 	.addQuery('balls', {
-		with: ['worldTransform3D', 'velocity3D', 'radius'],
+		with: ['localTransform3D', 'velocity3D', 'radius'],
 	})
-	.setProcess(({ queries }) => {
+	.setProcess(({ queries, ecs }) => {
 		for (const entity of queries.balls) {
-			const { worldTransform3D, velocity3D, radius } = entity.components;
+			const { localTransform3D, velocity3D, radius } = entity.components;
 			const min = -BOX_HALF + radius;
 			const max = BOX_HALF - radius;
 
-			if (worldTransform3D.x < min) {
-				worldTransform3D.x = min;
-				velocity3D.x = Math.abs(velocity3D.x);
-			} else if (worldTransform3D.x > max) {
-				worldTransform3D.x = max;
-				velocity3D.x = -Math.abs(velocity3D.x);
-			}
+			const [x, vx] = bounceAxis(localTransform3D.x, velocity3D.x, min, max);
+			const [y, vy] = bounceAxis(localTransform3D.y, velocity3D.y, min, max);
+			const [z, vz] = bounceAxis(localTransform3D.z, velocity3D.z, min, max);
+			if (x === localTransform3D.x && y === localTransform3D.y && z === localTransform3D.z) continue;
 
-			if (worldTransform3D.y < min) {
-				worldTransform3D.y = min;
-				velocity3D.y = Math.abs(velocity3D.y);
-			} else if (worldTransform3D.y > max) {
-				worldTransform3D.y = max;
-				velocity3D.y = -Math.abs(velocity3D.y);
-			}
-
-			if (worldTransform3D.z < min) {
-				worldTransform3D.z = min;
-				velocity3D.z = Math.abs(velocity3D.z);
-			} else if (worldTransform3D.z > max) {
-				worldTransform3D.z = max;
-				velocity3D.z = -Math.abs(velocity3D.z);
-			}
+			localTransform3D.x = x;
+			localTransform3D.y = y;
+			localTransform3D.z = z;
+			velocity3D.x = vx;
+			velocity3D.y = vy;
+			velocity3D.z = vz;
+			ecs.markChanged(entity.id, 'localTransform3D');
 		}
 	});
 

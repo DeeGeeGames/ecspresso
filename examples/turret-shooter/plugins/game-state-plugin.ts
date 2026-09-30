@@ -1,4 +1,4 @@
-import { createTimer, createRepeatingTimer } from '../../../src/plugins/scripting/timers';
+import { createTimer, createRepeatingTimer } from 'ecspresso/plugins/scripting/timers';
 import type { GameSystemRegistrar } from '../types';
 import { updateUI } from '../utils';
 
@@ -65,7 +65,7 @@ export default function registerGameStateSystems(
 				ecs.disableSystemGroup('gameplay');
 
 				// Explicitly pause radar sweep
-				const radarSweep = document.getElementById('radar-sweep') as HTMLDivElement;
+				const radarSweep = document.getElementById('radar-sweep');
 				if (radarSweep) {
 					radarSweep.style.animationPlayState = 'paused';
 				}
@@ -88,7 +88,7 @@ export default function registerGameStateSystems(
 				ecs.enableSystemGroup('gameplay');
 
 				// Explicitly resume radar sweep
-				const radarSweep = document.getElementById('radar-sweep') as HTMLDivElement;
+				const radarSweep = document.getElementById('radar-sweep');
 				if (radarSweep) {
 					radarSweep.style.animationPlayState = 'running';
 				}
@@ -187,7 +187,7 @@ export default function registerGameStateSystems(
 				ecs.disableSystemGroup('gameplay');
 
 				// Pause radar sweep
-				const radarSweep = document.getElementById('radar-sweep') as HTMLDivElement;
+				const radarSweep = document.getElementById('radar-sweep');
 				if (radarSweep) {
 					radarSweep.style.animationPlayState = 'paused';
 				}

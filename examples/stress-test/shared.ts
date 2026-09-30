@@ -34,7 +34,7 @@ export function createEntityCountInput(control: EntityCountControl): () => void 
 	wrap.appendChild(btn);
 	document.body.appendChild(wrap);
 
-	const apply = () => {
+	function apply() {
 		const target = Math.max(0, Math.floor(Number(input.value)));
 		if (!Number.isFinite(target)) return;
 		const current = control.getCount();
@@ -48,18 +48,16 @@ export function createEntityCountInput(control: EntityCountControl): () => void 
 		} else if (target < current) {
 			control.removeMany(current - target);
 		}
-		const finalCount = control.getCount();
-		input.value = String(finalCount);
-		control.onChange?.(finalCount);
-	};
+		input.value = String(target);
+		control.onChange?.(target);
+	}
 
 	btn.addEventListener('click', apply);
 	input.addEventListener('keydown', (e) => { if (e.key === 'Enter') apply(); });
 
 	const refreshTimer = setInterval(() => {
-		if (document.activeElement !== input) {
-			input.value = String(control.getCount());
-		}
+		if (document.activeElement === input) return;
+		input.value = String(control.getCount());
 	}, 500);
 
 	return () => {
@@ -73,35 +71,34 @@ export function createFpsOverlay(formatLines: (fps: number) => string): () => vo
 	el.style.cssText = 'position:fixed;top:12px;right:12px;z-index:999999;padding:6px 10px;font:12px/1.4 monospace;background:rgba(0,0,0,0.6);color:#0f0;border:1px solid #333;border-radius:4px;pointer-events:none;min-width:140px;white-space:pre';
 	document.body.appendChild(el);
 
-	let lastTime = performance.now();
-	let frames = 0;
-	let rafId = 0;
-	const loop = () => {
-		frames++;
+	const sampling = { lastTime: performance.now(), frames: 0, rafId: 0 };
+	function loop() {
+		sampling.frames++;
 		const now = performance.now();
-		if (now - lastTime >= 500) {
-			const fps = Math.round((frames * 1000) / (now - lastTime));
-			frames = 0;
-			lastTime = now;
+		if (now - sampling.lastTime >= 500) {
+			const fps = Math.round((sampling.frames * 1000) / (now - sampling.lastTime));
+			sampling.frames = 0;
+			sampling.lastTime = now;
 			el.textContent = formatLines(fps);
 		}
-		rafId = requestAnimationFrame(loop);
-	};
-	rafId = requestAnimationFrame(loop);
+		sampling.rafId = requestAnimationFrame(loop);
+	}
+	sampling.rafId = requestAnimationFrame(loop);
 
 	return () => {
-		cancelAnimationFrame(rafId);
+		cancelAnimationFrame(sampling.rafId);
 		el.remove();
 	};
 }
 
 export function createCollisionToggle(setEnabled: (enabled: boolean) => void): () => void {
-	let enabled = true;
 	const btn = document.createElement('button');
+	btn.setAttribute('aria-pressed', 'true');
 	btn.textContent = 'Collision: ON';
 	btn.style.cssText = 'position:fixed;bottom:12px;right:12px;z-index:999999;padding:6px 14px;font:13px/1 monospace;background:#2a2a3e;color:#0f0;border:1px solid #555;border-radius:4px;cursor:pointer';
 	btn.addEventListener('click', () => {
-		enabled = !enabled;
+		const enabled = btn.getAttribute('aria-pressed') !== 'true';
+		btn.setAttribute('aria-pressed', String(enabled));
 		setEnabled(enabled);
 		btn.textContent = `Collision: ${enabled ? 'ON' : 'OFF'}`;
 		btn.style.color = enabled ? '#0f0' : '#f55';

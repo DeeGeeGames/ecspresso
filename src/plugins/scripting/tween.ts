@@ -8,6 +8,7 @@
 import { definePlugin, type BasePluginOptions } from 'ecspresso';
 import type { ComponentsOfWorld, AnyECSpresso } from 'ecspresso';
 import { linear, type EasingFn } from '../../utils/easing';
+export * from '../../utils/easing';
 
 // ==================== Event Types ====================
 

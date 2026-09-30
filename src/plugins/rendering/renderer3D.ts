@@ -366,6 +366,11 @@ type Renderer3DWorldConfig =
  * - Scene graph management (auto-adds/removes Three.js objects)
  * - Render call (renderer.render(scene, camera) each frame)
  * - Optional requestAnimationFrame loop
+ *
+ * Managed mode owns and disposes its WebGLRenderer when the world is disposed.
+ * With supplied Three.js objects, the caller retains renderer ownership. Meshes,
+ * geometries, and materials remain caller-owned in both modes; the plugin
+ * detaches objects without destroying shared GPU assets.
  */
 export function createRenderer3DPlugin<G extends string = 'renderer3d'>(
 	options: Renderer3DPluginOptions<G>,
@@ -384,6 +389,8 @@ export function createRenderer3DPlugin<G extends string = 'renderer3d'>(
 	let cachedRenderer: WebGLRenderer | null = null;
 	let cachedScene: Scene | null = null;
 	let cachedCamera: Camera | null = null;
+	let detachRendererHooks = () => {};
+	let detachSceneGraphEvents = () => {};
 
 	// Preallocated math temporaries for syncObject3D, allocated during scene-graph init.
 	let tmpPos: Vector3 | null = null;
@@ -421,36 +428,46 @@ export function createRenderer3DPlugin<G extends string = 'renderer3d'>(
 				} = managedOptions;
 				const containerOption = managedOptions.container ?? document.body;
 
-				world.addResource('threeRenderer', async () => {
-					const { WebGLRenderer: WebGLRendererClass } = await import('three');
+				world.addResource('threeRenderer', {
+					factory: async () => {
+						const { WebGLRenderer: WebGLRendererClass } = await import('three');
 
-					const containerEl: HTMLElement | null = typeof containerOption === 'string'
-						? document.querySelector<HTMLElement>(containerOption)
-						: containerOption;
+						const containerEl: HTMLElement | null = typeof containerOption === 'string'
+							? document.querySelector<HTMLElement>(containerOption)
+							: containerOption;
 
-					const rendererParams: WebGLRendererParameters = {
-						antialias,
-						powerPreference: 'high-performance',
-						...threeInit,
-					};
+						const rendererParams: WebGLRendererParameters = {
+							antialias,
+							powerPreference: 'high-performance',
+							...threeInit,
+						};
 
-					const renderer = new WebGLRendererClass(rendererParams);
+						const renderer = new WebGLRendererClass(rendererParams);
 
-					if (shadows) {
-						renderer.shadowMap.enabled = true;
-					}
+						if (shadows) {
+							renderer.shadowMap.enabled = true;
+						}
 
-					const w = width ?? containerEl?.clientWidth ?? window.innerWidth;
-					const h = height ?? containerEl?.clientHeight ?? window.innerHeight;
-					renderer.setSize(w, h);
+						const w = width ?? containerEl?.clientWidth ?? window.innerWidth;
+						const h = height ?? containerEl?.clientHeight ?? window.innerHeight;
+						renderer.setSize(w, h);
 
-					if (containerEl) {
-						containerEl.appendChild(renderer.domElement);
-					} else if (typeof containerOption === 'string') {
-						console.warn(`Renderer3D plugin: container selector "${containerOption}" not found`);
-					}
+						if (containerEl) {
+							containerEl.appendChild(renderer.domElement);
+						} else if (typeof containerOption === 'string') {
+							console.warn(`Renderer3D plugin: container selector "${containerOption}" not found`);
+						}
 
-					return renderer;
+						return renderer;
+					},
+					onDispose: (renderer) => {
+						detachRendererHooks();
+						detachSceneGraphEvents();
+						entityToThreeObject.clear();
+						renderer.setAnimationLoop(null);
+						renderer.dispose();
+						renderer.domElement.remove();
+					},
 				});
 
 				world.addResource('scene', {
@@ -509,7 +526,14 @@ export function createRenderer3DPlugin<G extends string = 'renderer3d'>(
 				});
 			} else {
 				const preInit = options as Renderer3DPluginPreInitOptions<G>;
-				world.addResource('threeRenderer', preInit.renderer);
+				world.addResource('threeRenderer', {
+					factory: () => preInit.renderer,
+					onDispose: () => {
+						detachRendererHooks();
+						detachSceneGraphEvents();
+						entityToThreeObject.clear();
+					},
+				});
 				world.addResource('scene', preInit.scene);
 				world.addResource('camera', preInit.camera);
 			}
@@ -636,17 +660,7 @@ export function createRenderer3DPlugin<G extends string = 'renderer3d'>(
 						},
 					});
 
-					ecs.on('hierarchyChanged', ({ entityId }) => {
-						const obj = entityToThreeObject.get(entityId);
-						if (!obj) return;
-						// Scene graph stays flat — all objects are children of scene directly.
-						// Re-add to scene if somehow removed.
-						if (obj.parent !== scene) {
-							scene.add(obj);
-						}
-					});
-
-					// Resize handler
+						// Resize handler
 					const resizeHandler = () => {
 						const w = threeRenderer.domElement.parentElement?.clientWidth ?? window.innerWidth;
 						const h = threeRenderer.domElement.parentElement?.clientHeight ?? window.innerHeight;
@@ -667,19 +681,45 @@ export function createRenderer3DPlugin<G extends string = 'renderer3d'>(
 						}
 					};
 					window.addEventListener('resize', resizeHandler);
+					let animationFrameId: number | null = null;
 
 					// Animation loop
 					if (startLoop) {
 						let lastTime = 0;
 						const animate = (time: number) => {
-							requestAnimationFrame(animate);
+							animationFrameId = requestAnimationFrame(animate);
 							const dt = lastTime === 0 ? 0 : (time - lastTime) / 1000;
 							lastTime = time;
 							ecs.update(dt);
 						};
-						requestAnimationFrame(animate);
+						animationFrameId = requestAnimationFrame(animate);
 					}
-				});
+					detachRendererHooks = () => {
+						window.removeEventListener('resize', resizeHandler);
+						if (animationFrameId !== null) cancelAnimationFrame(animationFrameId);
+					};
+
+					const unsubscribeHierarchy = ecs.on('hierarchyChanged', ({ entityId }) => {
+						const obj = entityToThreeObject.get(entityId);
+						if (!obj) return;
+						// Scene graph stays flat — all objects are children of scene directly.
+						// Re-add to scene if somehow removed.
+						if (obj.parent !== scene) scene.add(obj);
+					});
+					detachSceneGraphEvents = unsubscribeHierarchy;
+					})
+
+					.setOnDetach(() => {
+						detachRendererHooks();
+						detachSceneGraphEvents();
+						cachedRenderer = null;
+						cachedScene = null;
+						cachedCamera = null;
+						tmpPos = null;
+						tmpEuler = null;
+						tmpQuat = null;
+						tmpScale = null;
+					});
 
 			// ==================== Render System ====================
 			world

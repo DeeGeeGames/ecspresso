@@ -1,5 +1,5 @@
-import { createTimer } from '../../../src/plugins/scripting/timers';
-import { createCollisionPairHandler } from '../../../src/plugins/physics/collision';
+import { createTimer } from 'ecspresso/plugins/scripting/timers';
+import { createCollisionPairHandler } from 'ecspresso/plugins/physics/collision';
 import type { Game } from '../game';
 import type collisionLayers from '../collision-layers';
 
@@ -18,30 +18,31 @@ export default function registerCombat(world: Game): void {
 					ecs.commands.removeEntity(projectileId);
 
 					const enemyData = ecs.getComponent(enemyId, 'enemy');
-					if (!enemyData) return;
+					if (!enemyData || enemyData.health <= 0) return;
 
 					enemyData.health -= 1;
+					if (enemyData.health > 0) return;
 
-					if (enemyData.health <= 0) {
-						ecs.commands.removeEntity(enemyId);
+					ecs.commands.removeEntity(enemyId);
 
-						const score = ecs.getResource('score');
-						score.value += enemyData.points;
-						ecs.eventBus.publish('updateScore', { points: score.value });
+					const score = ecs.getResource('score');
+					score.value += enemyData.points;
+					ecs.eventBus.publish('updateScore', { points: score.value });
 
-						const enemies = ecs.getEntitiesWithQuery(['enemy']);
-						if (enemies.length === 1) {
-							const gameState = ecs.getResource('gameState');
-							if (gameState.status === 'playing') {
-								ecs.eventBus.publish('levelComplete', {
-									level: gameState.level,
-								});
-							}
-						}
-					}
+					const livingEnemies = ecs
+						.getEntitiesWithQuery(['enemy'])
+						.filter(({ components }) => components.enemy.health > 0);
+					if (livingEnemies.length !== 0) return;
+
+					const gameState = ecs.getResource('gameState');
+					if (gameState.status !== 'playing') return;
+
+					ecs.eventBus.publish('levelComplete', { level: gameState.level });
 				},
 				'enemyProjectile:player': (projectileId, playerId, ecs) => {
 					ecs.commands.removeEntity(projectileId);
+					if (ecs.getResource('gameState').playerDeathPending) return;
+
 					ecs.commands.removeEntity(playerId);
 					ecs.eventBus.publish('playerDeath', {});
 				},
@@ -49,6 +50,9 @@ export default function registerCombat(world: Game): void {
 
 			playerDeath({ ecs }) {
 				const gameState = ecs.getResource('gameState');
+				if (gameState.playerDeathPending) return;
+
+				gameState.playerDeathPending = true;
 				gameState.lives -= 1;
 				ecs.eventBus.publish('updateLives', { lives: gameState.lives });
 
@@ -57,18 +61,20 @@ export default function registerCombat(world: Game): void {
 						win: false,
 						score: ecs.getResource('score').value,
 					});
-				} else {
-					ecs.spawn({
-						timers: {
-							respawn: createTimer(1.0, {
-								onComplete: ({ entityId }) => {
-									ecs.eventBus.publish('playerRespawn');
-									ecs.commands.removeEntity(entityId);
-								},
-							}),
-						},
-					});
+					return;
 				}
+
+				ecs.spawn({
+					timers: {
+						respawn: createTimer(1.0, {
+							onComplete: ({ entityId }) => {
+								gameState.playerDeathPending = false;
+								ecs.eventBus.publish('playerRespawn');
+								ecs.commands.removeEntity(entityId);
+							},
+						}),
+					},
+				});
 			},
 		});
 }

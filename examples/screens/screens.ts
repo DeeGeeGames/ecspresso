@@ -1,10 +1,11 @@
 import { Graphics, Text, TextStyle, Container, Sprite } from 'pixi.js';
-import ECSpresso from "../../src";
+import ECSpresso from "ecspresso";
+import { randomFrom } from '../utils';
 import {
 	createRenderer2DPlugin,
 	createSpriteComponents,
-} from "../../src/plugins/rendering/renderer2D";
-import { createTimerPlugin, createTimer } from "../../src/plugins/scripting/timers";
+} from "ecspresso/plugins/rendering/renderer2D";
+import { createTimerPlugin, createTimer } from "ecspresso/plugins/scripting/timers";
 
 // -- Constants --
 
@@ -118,7 +119,7 @@ gameOverContainer.addChild(
 
 function spawnDot() {
 	const radius = 14 + Math.random() * 14;
-	const color = DOT_COLORS[Math.floor(Math.random() * DOT_COLORS.length)]!;
+	const color = randomFrom(DOT_COLORS);
 	const x = radius + Math.random() * (SCREEN_W - radius * 2);
 	const speed = 60 + Math.random() * 120;
 	const lifetime = (SCREEN_H + radius * 2) / speed;

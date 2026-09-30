@@ -30,23 +30,20 @@ type SceneState = {
 	pointerDown: boolean;
 };
 
-class StressScene extends Phaser.Scene {
-	state: SceneState | null = null;
-	worldPoint = new Phaser.Math.Vector2();
-	initialCount = 50;
+function createStressScene(initialCount: number) {
+	const state: { value: SceneState | null } = { value: null };
+	const worldPoint = new Phaser.Math.Vector2();
+	const scene = new Phaser.Scene('stress');
+	Object.assign(scene, { preload, create, update });
 
-	constructor() {
-		super('stress');
+	function getState(): SceneState {
+		if (!state.value) throw new Error('StressScene not initialized');
+		return state.value;
 	}
 
-	getState(): SceneState {
-		if (!this.state) throw new Error('StressScene not initialized');
-		return this.state;
-	}
-
-	preload() {
+	function preload() {
 		COLORS.forEach((color, i) => {
-			const g = this.make.graphics({ x: 0, y: 0 }, false);
+			const g = scene.make.graphics({ x: 0, y: 0 }, false);
 			g.fillStyle(color, 1);
 			g.fillCircle(BALL_RADIUS, BALL_RADIUS, BALL_RADIUS);
 			g.generateTexture(`ball-${i}`, BALL_RADIUS * 2, BALL_RADIUS * 2);
@@ -54,21 +51,21 @@ class StressScene extends Phaser.Scene {
 		});
 	}
 
-	create() {
-		this.physics.world.setBounds(0, 0, WORLD_W, WORLD_H);
+	function create() {
+		scene.physics.world.setBounds(0, 0, WORLD_W, WORLD_H);
 
-		const cam = this.cameras.main;
+		const cam = scene.cameras.main;
 		cam.setBounds(0, 0, WORLD_W, WORLD_H);
 		cam.setZoom(1);
 		cam.centerOn(SCREEN_W, SCREEN_H);
 
-		const balls = this.physics.add.group({
+		const balls = scene.physics.add.group({
 			classType: Phaser.Physics.Arcade.Image,
 			runChildUpdate: false,
 		});
-		const collider = this.physics.add.collider(balls, balls);
+		const collider = scene.physics.add.collider(balls, balls);
 
-		const kb = this.input.keyboard;
+		const kb = scene.input.keyboard;
 		if (!kb) throw new Error('Keyboard input not available');
 		const KC = Phaser.Input.Keyboard.KeyCodes;
 		const keys = {
@@ -82,26 +79,26 @@ class StressScene extends Phaser.Scene {
 			RIGHT: kb.addKey(KC.RIGHT),
 		};
 
-		const state: SceneState = {
+		const createdState: SceneState = {
 			balls,
 			collider,
 			keys,
 			pointer: null,
 			pointerDown: false,
 		};
-		this.state = state;
+		state.value = createdState;
 
-		this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
-			state.pointerDown = true;
-			state.pointer = p;
+		scene.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
+			createdState.pointerDown = true;
+			createdState.pointer = p;
 		});
-		this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
-			state.pointer = p;
+		scene.input.on('pointermove', (p: Phaser.Input.Pointer) => {
+			createdState.pointer = p;
 		});
-		this.input.on('pointerup', () => { state.pointerDown = false; });
-		this.input.on('pointerupoutside', () => { state.pointerDown = false; });
+		scene.input.on('pointerup', () => { createdState.pointerDown = false; });
+		scene.input.on('pointerupoutside', () => { createdState.pointerDown = false; });
 
-		this.input.on('wheel', (
+		scene.input.on('wheel', (
 			_p: Phaser.Input.Pointer,
 			_over: unknown,
 			_dx: number,
@@ -111,19 +108,21 @@ class StressScene extends Phaser.Scene {
 			cam.setZoom(next);
 		});
 
-		for (let i = 0; i < this.initialCount; i++) {
-			this.spawnBall(
+		for (let i = 0; i < initialCount; i++) {
+			spawnBall(
 				BALL_RADIUS + Math.random() * (WORLD_W - BALL_RADIUS * 2),
 				BALL_RADIUS + Math.random() * (WORLD_H - BALL_RADIUS * 2),
 			);
 		}
 	}
 
-	spawnBall(x: number, y: number) {
-		const state = this.getState();
+	function spawnBall(x: number, y: number) {
+		const current = getState();
 		const idx = Math.floor(Math.random() * COLORS.length);
-		const ball = state.balls.create(x, y, `ball-${idx}`) as Phaser.Physics.Arcade.Image;
-		const body = ball.body as Phaser.Physics.Arcade.Body;
+		const ball: unknown = current.balls.create(x, y, `ball-${idx}`);
+		if (!(ball instanceof Phaser.Physics.Arcade.Image)) throw new Error('Expected an arcade image');
+		const body = ball.body;
+		if (!(body instanceof Phaser.Physics.Arcade.Body)) throw new Error('Expected an arcade body');
 		body.setCircle(BALL_RADIUS);
 		body.setBounce(1.01, 1.01);
 		body.setDamping(true);
@@ -135,10 +134,10 @@ class StressScene extends Phaser.Scene {
 		);
 	}
 
-	update() {
-		if (!this.state) return;
-		const { keys, pointer, pointerDown } = this.state;
-		const cam = this.cameras.main;
+	function update() {
+		if (!state.value) return;
+		const { keys, pointer, pointerDown } = state.value;
+		const cam = scene.cameras.main;
 		const speed = 5 / cam.zoom;
 		if (keys.W.isDown || keys.UP.isDown) cam.scrollY -= speed;
 		if (keys.S.isDown || keys.DOWN.isDown) cam.scrollY += speed;
@@ -146,9 +145,9 @@ class StressScene extends Phaser.Scene {
 		if (keys.D.isDown || keys.RIGHT.isDown) cam.scrollX += speed;
 
 		if (pointerDown && pointer) {
-			const wp = cam.getWorldPoint(pointer.x, pointer.y, this.worldPoint);
+			const wp = cam.getWorldPoint(pointer.x, pointer.y, worldPoint);
 			for (let i = 0; i < SPAWN_RATE; i++) {
-				this.spawnBall(
+				spawnBall(
 					wp.x + (Math.random() - 0.5) * 40,
 					wp.y + (Math.random() - 0.5) * 40,
 				);
@@ -156,29 +155,29 @@ class StressScene extends Phaser.Scene {
 		}
 	}
 
-	setCollisionEnabled(enabled: boolean) {
-		this.getState().collider.active = enabled;
+	function setCollisionEnabled(enabled: boolean) {
+		getState().collider.active = enabled;
 	}
 
-	ballCount(): number {
-		return this.state ? this.state.balls.getLength() : 0;
+	function ballCount(): number {
+		return state.value ? state.value.balls.getLength() : 0;
 	}
 
-	removeBalls(count: number) {
-		if (!this.state) return;
-		const balls = this.state.balls;
+	function removeBalls(count: number) {
+		if (!state.value) return;
+		const balls = state.value.balls;
 		balls.getChildren().slice(-count).forEach(b => balls.remove(b, true, true));
 	}
-}
 
+	return { scene, spawnBall, setCollisionEnabled, ballCount, removeBalls };
+}
 export type StartOptions = {
 	initialCount: number;
 	onCountChange: (count: number) => void;
 };
 
-export function startPhaser(options: StartOptions): () => void {
-	const scene = new StressScene();
-	scene.initialCount = options.initialCount;
+export async function startPhaser(options: StartOptions): Promise<() => void> {
+	const simulation = createStressScene(options.initialCount);
 	const game = new Phaser.Game({
 		type: Phaser.AUTO,
 		width: SCREEN_W,
@@ -192,28 +191,27 @@ export function startPhaser(options: StartOptions): () => void {
 			default: 'arcade',
 			arcade: { gravity: { x: 0, y: 0 } },
 		},
-		scene,
+		scene: simulation.scene,
 		banner: false,
 	});
-
-	const getScene = (): StressScene | null => {
-		const s = game.scene.getScene('stress');
-		return s instanceof StressScene ? s : null;
-	};
+	await new Promise<void>(resolve => {
+		if (game.isRunning) return resolve();
+		game.events.once(Phaser.Core.Events.READY, resolve);
+	});
 
 	const cleanupToggle = createCollisionToggle((enabled) => {
-		getScene()?.setCollisionEnabled(enabled);
+		simulation.setCollisionEnabled(enabled);
 	});
 
 	const cleanupCountInput = createEntityCountInput({
-		getCount: () => getScene()?.ballCount() ?? 0,
-		spawnAt: (x, y) => { getScene()?.spawnBall(x, y); },
-		removeMany: (count) => { getScene()?.removeBalls(count); },
+		getCount: () => simulation.ballCount(),
+		spawnAt: (x, y) => { simulation.spawnBall(x, y); },
+		removeMany: (count) => { simulation.removeBalls(count); },
 		onChange: options.onCountChange,
 	});
 
 	const cleanupOverlay = createFpsOverlay(
-		(fps) => `Phaser ${Phaser.VERSION}\nFPS: ${fps}\nBalls: ${getScene()?.ballCount() ?? 0}`,
+		(fps) => `Phaser ${Phaser.VERSION}\nFPS: ${fps}\nBalls: ${simulation.ballCount()}`,
 	);
 
 	return function destroy() {
@@ -221,5 +219,7 @@ export function startPhaser(options: StartOptions): () => void {
 		cleanupCountInput();
 		cleanupToggle();
 		game.destroy(true);
+		// Destruction normally waits for another frame, which a hidden demo may never receive.
+		game.step(performance.now(), 0);
 	};
 }

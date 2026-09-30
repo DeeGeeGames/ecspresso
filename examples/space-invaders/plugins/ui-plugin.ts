@@ -1,5 +1,4 @@
 import { Container, Text, TextStyle } from 'pixi.js';
-import { createTimer } from '../../../src/plugins/scripting/timers';
 import type { Game } from '../game';
 
 interface MessageBounds {
@@ -15,6 +14,14 @@ function showMessage(messageText: Text, bounds: MessageBounds, text: string): vo
 }
 
 export default function registerUI(world: Game): void {
+	world.addSystem('ui-message-timer')
+		.withResources(['uiState'])
+		.setProcess(({ dt, ecs, resources: { uiState } }) => {
+			if (uiState.messageHideRemaining <= 0) return;
+			uiState.messageHideRemaining = Math.max(0, uiState.messageHideRemaining - dt);
+			if (uiState.messageHideRemaining === 0) ecs.eventBus.publish('messageHide');
+		});
+
 	world.addSystem('ui-manager')
 		.setOnInitialize((ecs) => {
 			const rootContainer = ecs.getResource('rootContainer');
@@ -87,6 +94,7 @@ export default function registerUI(world: Game): void {
 
 			// Handle game state changes
 			gameInit({ ecs }) {
+				ecs.getResource('uiState').messageHideRemaining = 0;
 				const uiElements = ecs.getResource('uiElements');
 				const bounds = ecs.getResource('bounds');
 
@@ -94,6 +102,7 @@ export default function registerUI(world: Game): void {
 			},
 
 			gameStart({ ecs }) {
+				ecs.getResource('uiState').messageHideRemaining = 0;
 				const uiElements = ecs.getResource('uiElements');
 				uiElements.messageText.visible = false;
 			},
@@ -106,11 +115,13 @@ export default function registerUI(world: Game): void {
 			},
 
 			gameResume({ ecs }) {
+				ecs.getResource('uiState').messageHideRemaining = 0;
 				const uiElements = ecs.getResource('uiElements');
 				uiElements.messageText.visible = false;
 			},
 
 			gameOver({ data, ecs }) {
+				ecs.getResource('uiState').messageHideRemaining = 0;
 				const uiElements = ecs.getResource('uiElements');
 				const bounds = ecs.getResource('bounds');
 				const message = data.win ? `YOU WIN!\nFINAL SCORE: ${data.score}` : `GAME OVER\nFINAL SCORE: ${data.score}`;
@@ -123,18 +134,7 @@ export default function registerUI(world: Game): void {
 				const bounds = ecs.getResource('bounds');
 
 				showMessage(uiElements.messageText, bounds, `LEVEL ${data.level} COMPLETE!`);
-
-				// Spawn timer to hide message after delay with event-based completion
-				ecs.spawn({
-					timers: {
-						hide: createTimer(1.5, {
-							onComplete: ({ entityId }) => {
-								ecs.eventBus.publish('messageHide');
-								ecs.commands.removeEntity(entityId);
-							},
-						}),
-					},
-				});
+				ecs.getResource('uiState').messageHideRemaining = 1.5;
 			},
 
 			messageHide({ ecs }) {

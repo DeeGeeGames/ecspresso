@@ -1,19 +1,19 @@
 import { Graphics, Sprite } from 'pixi.js';
-import ECSpresso from '../../src';
+import ECSpresso from 'ecspresso';
 import {
 	createRenderer2DPlugin,
 	createLocalTransform,
-} from '../../src/plugins/rendering/renderer2D';
+} from 'ecspresso/plugins/rendering/renderer2D';
 import {
 	createPhysics2DPlugin,
 	createRigidBody,
-} from '../../src/plugins/physics/physics2D';
-import { createInputPlugin } from '../../src/plugins/input/input';
+} from 'ecspresso/plugins/physics/physics2D';
+import { createInputPlugin } from 'ecspresso/plugins/input/input';
 import {
 	defineCollisionLayers,
 	createAABBCollider,
-} from '../../src/plugins/physics/collision';
-import { createTimerPlugin, createTimer, type Timer } from '../../src/plugins/scripting/timers';
+} from 'ecspresso/plugins/physics/collision';
+import { createTimerPlugin, createTimer, type Timer } from 'ecspresso/plugins/scripting/timers';
 
 const MOVE_SPEED = 300;
 const JUMP_VELOCITY = -450;

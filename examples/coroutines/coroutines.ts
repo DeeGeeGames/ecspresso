@@ -7,18 +7,18 @@
  */
 
 import { Graphics, Sprite, Text, TextStyle } from 'pixi.js';
-import ECSpresso from '../../src';
+import ECSpresso from 'ecspresso';
 import {
 	createRenderer2DPlugin,
 	createSpriteComponents,
-} from '../../src/plugins/rendering/renderer2D';
+} from 'ecspresso/plugins/rendering/renderer2D';
 import {
 	createCoroutinePlugin,
 	createCoroutine,
 	waitSeconds,
 	parallel,
 	type CoroutineGenerator,
-} from '../../src/plugins/scripting/coroutine';
+} from 'ecspresso/plugins/scripting/coroutine';
 
 // ==================== Constants ====================
 

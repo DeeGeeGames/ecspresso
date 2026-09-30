@@ -11,7 +11,7 @@ export default function registerUISystems(
 
 			// Handle radar animation based on game state
 			if (radarContainer) {
-				const radarSweep = document.getElementById('radar-sweep') as HTMLDivElement;
+				const radarSweep = document.getElementById('radar-sweep');
 				if (radarSweep) {
 					// Pause animation when game is not playing
 					if (gameState.status !== 'playing') {
@@ -70,7 +70,7 @@ export default function registerUISystems(
 				const blipZ = Math.cos(relativeAngle) * normalizedDistance * radarRadius; // Positive cos to make forward be up (not negative)
 
 				// Find existing blip or create new one
-				let blip = radarContainer.querySelector(`.radar-blip[data-entity-id="${enemy.id}"]`) as HTMLDivElement;
+				let blip = radarContainer.querySelector<HTMLDivElement>(`.radar-blip[data-entity-id="${enemy.id}"]`);
 
 				if (!blip) {
 					// Create new blip

@@ -1,8 +1,8 @@
 import { Graphics, Sprite } from 'pixi.js';
-import { createLocalTransform } from '../../src/plugins/rendering/renderer2D';
-import { createRigidBody } from '../../src/plugins/physics/physics2D';
-import { createAABBCollider } from '../../src/plugins/physics/collision';
-import { createClampToBounds } from '../../src/plugins/spatial/bounds';
+import { createLocalTransform } from 'ecspresso/plugins/rendering/renderer2D';
+import { createRigidBody } from 'ecspresso/plugins/physics/physics2D';
+import { createAABBCollider } from 'ecspresso/plugins/physics/collision';
+import { createClampToBounds } from 'ecspresso/plugins/spatial/bounds';
 import collisionLayers from './collision-layers';
 import type { Game } from './game';
 

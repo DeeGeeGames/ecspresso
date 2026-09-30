@@ -1,6 +1,6 @@
 import { Graphics, Sprite } from 'pixi.js';
-import ECSpresso from '../../src';
-import { createInputPlugin } from '../../src/plugins/input/input';
+import ECSpresso from 'ecspresso';
+import { createInputPlugin } from 'ecspresso/plugins/input/input';
 import {
 	createRenderer2DPlugin,
 	createGraphicsComponents,
@@ -9,15 +9,17 @@ import {
 	reapplyViewportScale,
 	type ScaleMode,
 	type ViewportScale,
-} from '../../src/plugins/rendering/renderer2D';
+} from 'ecspresso/plugins/rendering/renderer2D';
 
 const DESIGN_W = 1920;
 const DESIGN_H = 1080;
 
 // canvas and viewportScale only exist after ecs.initialize(); the input plugin's
 // coordinateTransform closure is not invoked until pointer events fire, so lazy binding is safe.
-let canvas: HTMLCanvasElement | null = null;
-let viewport: ViewportScale | null = null;
+const inputBinding: { canvas: HTMLCanvasElement | null; viewport: ViewportScale | null } = {
+	canvas: null,
+	viewport: null,
+};
 
 const ecs = ECSpresso.create()
 	.withPlugin(createRenderer2DPlugin({
@@ -26,6 +28,7 @@ const ecs = ECSpresso.create()
 	}))
 	.withPlugin(createInputPlugin({
 		coordinateTransform: (clientX, clientY) => {
+			const { canvas, viewport } = inputBinding;
 			if (!canvas || !viewport) return { x: clientX, y: clientY };
 			return clientToLogical(clientX, clientY, canvas, viewport);
 		},
@@ -37,23 +40,23 @@ const ecs = ECSpresso.create()
 	.build();
 
 ecs.addSystem('reticle-follow')
-	.inPhase('render')
-	.setPriority(1000)
+	.inPhase('update')
 	.withResources(['inputState'])
-	.setProcessEach({ with: ['reticle', 'worldTransform'] }, ({ entity, resources: { inputState }, ecs }) => {
+	.setProcessEach({ with: ['reticle', 'localTransform'] }, ({ entity, resources: { inputState }, ecs }) => {
 		const { x, y } = inputState.pointer.position;
-		const { worldTransform } = entity.components;
-		if (worldTransform.x === x && worldTransform.y === y) return;
-		worldTransform.x = x;
-		worldTransform.y = y;
-		ecs.markChanged(entity.id, 'worldTransform');
+		const { localTransform } = entity.components;
+		if (localTransform.x === x && localTransform.y === y) return;
+		localTransform.x = x;
+		localTransform.y = y;
+		ecs.markChanged(entity.id, 'localTransform');
 	});
 
 await ecs.initialize();
 
 const pixiApp = ecs.getResource('pixiApp');
-canvas = pixiApp.canvas;
-viewport = ecs.getResource('viewportScale');
+const canvas = pixiApp.canvas;
+const viewport = ecs.getResource('viewportScale');
+Object.assign(inputBinding, { canvas, viewport });
 
 const gridGraphics = new Graphics();
 for (let x = 0; x <= DESIGN_W; x += 120) {
@@ -117,7 +120,6 @@ function spawnBallAt(logicalX: number, logicalY: number) {
 
 // Listen directly on the canvas so DOM button clicks (which sit above it in the stacking order) don't trigger spawns.
 canvas.addEventListener('pointerdown', (e: PointerEvent) => {
-	if (!canvas || !viewport) return;
 	const { x, y } = clientToLogical(e.clientX, e.clientY, canvas, viewport);
 	spawnBallAt(x, y);
 });
@@ -130,7 +132,6 @@ ecs.addSystem('hud-update')
 	.inPhase('render')
 	.withResources(['inputState'])
 	.setProcess(({ resources: { inputState } }) => {
-		if (!viewport) return;
 		const logical = inputState.pointer.position;
 		hud.textContent =
 			`design:    ${DESIGN_W} x ${DESIGN_H}\n` +
@@ -154,7 +155,6 @@ modeBtn.style.cssText = 'position:fixed;bottom:12px;right:12px;z-index:999999;pa
 modeBtn.textContent = 'Mode: fit';
 
 modeBtn.addEventListener('click', () => {
-	if (!viewport) return;
 	const nextMode = NEXT_MODE[viewport.mode];
 	viewport.mode = nextMode;
 	reapplyViewportScale(pixiApp);

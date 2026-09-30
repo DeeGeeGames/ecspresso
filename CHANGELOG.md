@@ -6,6 +6,12 @@ All notable changes to ECSpresso are documented here. Format loosely follows [Ke
 
 ### Changed
 
+- Managed renderer plugins now remove their loops, listeners, and plugin-created
+  scene containers during world disposal. Renderers created by the plugins are
+  disposed with the world; supplied renderers and ECS-provided GPU assets remain
+  caller-owned.
+- The public tween entry point now exports the standard easing functions and
+  `EasingFn` type.
 - World disposal now joins asynchronous plugin cleanup already started by
   standalone uninstall and retains its failures until teardown observes them.
 - Screen teardown waits for in-flight enter/resume/exit hooks before releasing

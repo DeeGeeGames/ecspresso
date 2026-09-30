@@ -1,7 +1,7 @@
 import { Group, Mesh, Vector3, SphereGeometry, MeshBasicMaterial } from 'three';
 import { collisionLayers, type GameSystemRegistrar } from '../types';
-import { createGroupComponents } from '../../../src/plugins/rendering/renderer3D';
-import { createSphereCollider } from '../../../src/plugins/physics/collision3D';
+import { createGroupComponents } from 'ecspresso/plugins/rendering/renderer3D';
+import { createSphereCollider } from 'ecspresso/plugins/physics/collision3D';
 import {
 	createTurret,
 	createGroundEnemy,
