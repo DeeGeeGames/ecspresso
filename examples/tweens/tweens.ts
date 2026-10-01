@@ -1,4 +1,5 @@
-import { Graphics, Sprite, Text, TextStyle } from 'pixi.js';
+import { createBeanGraphics, examplePalette } from '../brand';
+import { Sprite, Text, TextStyle } from 'pixi.js';
 import ECSpresso from "ecspresso";
 import {
 	createRenderer2DPlugin,
@@ -32,7 +33,7 @@ const BALL_RADIUS = 14;
 const ecs = ECSpresso
 	.create()
 	.withPlugin(createRenderer2DPlugin({
-		background: '#1a1a2e',
+		background: examplePalette.background,
 		width: SCREEN_W,
 		height: SCREEN_H,
 	}))
@@ -71,49 +72,49 @@ interface Demo {
 const demos: Demo[] = [
 	{
 		label: 'Linear',
-		color: 0x4fc3f7,
+		color: 0x9d683d,
 		makeTween: (loop) => createTween('localTransform', 'x', RIGHT_X, 2, {
 			from: LEFT_X, loop, loops: -1,
 		}),
 	},
 	{
 		label: 'Ease In (Quad)',
-		color: 0xf06292,
+		color: 0xb85b3d,
 		makeTween: (loop) => createTween('localTransform', 'x', RIGHT_X, 2, {
 			from: LEFT_X, easing: easeInQuad, loop, loops: -1,
 		}),
 	},
 	{
 		label: 'Ease Out (Quad)',
-		color: 0xba68c8,
+		color: 0x6b4a33,
 		makeTween: (loop) => createTween('localTransform', 'x', RIGHT_X, 2, {
 			from: LEFT_X, easing: easeOutQuad, loop, loops: -1,
 		}),
 	},
 	{
 		label: 'Ease In/Out (Cubic)',
-		color: 0x81c784,
+		color: 0xc8956a,
 		makeTween: (loop) => createTween('localTransform', 'x', RIGHT_X, 2, {
 			from: LEFT_X, easing: easeInOutCubic, loop, loops: -1,
 		}),
 	},
 	{
 		label: 'Bounce Out',
-		color: 0xffb74d,
+		color: 0x8c674c,
 		makeTween: (loop) => createTween('localTransform', 'x', RIGHT_X, 2, {
 			from: LEFT_X, easing: easeOutBounce, loop, loops: -1,
 		}),
 	},
 	{
 		label: 'Back Out',
-		color: 0xe57373,
+		color: 0x3c2516,
 		makeTween: (loop) => createTween('localTransform', 'x', RIGHT_X, 1.2, {
 			from: LEFT_X, easing: easeOutBack, loop, loops: -1,
 		}),
 	},
 	{
 		label: 'Sequence',
-		color: 0xfff176,
+		color: 0x9d683d,
 		makeTween: (loop) => createTweenSequence([
 			{
 				targets: [{ component: 'localTransform', field: 'x', to: RIGHT_X }],
@@ -134,11 +135,11 @@ const demos: Demo[] = [
 const labelStyle = new TextStyle({
 	fontFamily: 'monospace',
 	fontSize: 13,
-	fill: '#aaaaaa',
+	fill: '#6b4a33',
 });
 
 function createBallSprite(color: number): Sprite {
-	const gfx = new Graphics().circle(0, 0, BALL_RADIUS).fill(color);
+	const gfx = createBeanGraphics(BALL_RADIUS, color);
 	return new Sprite(pixiApp.renderer.generateTexture(gfx));
 }
 

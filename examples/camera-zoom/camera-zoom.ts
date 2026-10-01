@@ -9,6 +9,7 @@
  * - Applying cameraState to the PixiJS rootContainer (renderer integration)
  */
 
+import { createBeanGraphics, examplePalette } from '../brand';
 import { Graphics, Container, Text, TextStyle } from 'pixi.js';
 import ECSpresso from 'ecspresso';
 import {
@@ -33,7 +34,7 @@ const VIEWPORT_HEIGHT = 600;
 
 const ecs = ECSpresso.create()
 	.withPlugin(createRenderer2DPlugin({
-		background: 0x1a1a2e,
+		background: examplePalette.background,
 		startLoop: true,
 		camera: true,
 	}))
@@ -88,7 +89,7 @@ ecs.addSystem('init')
 
 		const border = new Graphics();
 		border.rect(0, 0, WORLD_WIDTH, WORLD_HEIGHT);
-		border.stroke({ color: 0x334455, width: 2 });
+		border.stroke({ color: 0xc8956a, width: 2 });
 		rootContainer.addChild(border);
 
 		const grid = new Graphics();
@@ -101,36 +102,34 @@ ecs.addSystem('init')
 			grid.moveTo(0, y);
 			grid.lineTo(WORLD_WIDTH, y);
 		}
-		grid.stroke({ color: 0x222233, width: 1 });
+		grid.stroke({ color: 0xecdcc8, width: 1 });
 		rootContainer.addChild(grid);
 
 		const sceneryData = [
-			{ x: 300,  y: 200,  color: 0x44aa44, size: 30, label: 'Tree' },
-			{ x: 800,  y: 400,  color: 0x8888cc, size: 40, label: 'Rock' },
-			{ x: 1500, y: 300,  color: 0xcc6644, size: 25, label: 'Bush' },
-			{ x: 400,  y: 1000, color: 0x44aa44, size: 35, label: 'Tree' },
-			{ x: 1200, y: 800,  color: 0x8888cc, size: 45, label: 'Rock' },
-			{ x: 1700, y: 1200, color: 0xcc6644, size: 20, label: 'Bush' },
-			{ x: 600,  y: 700,  color: 0x44aa44, size: 28, label: 'Tree' },
-			{ x: 1000, y: 1100, color: 0x44ccaa, size: 50, label: 'Pond' },
-			{ x: 2500, y: 500,  color: 0x44aa44, size: 38, label: 'Tree' },
-			{ x: 3200, y: 900,  color: 0x8888cc, size: 50, label: 'Rock' },
-			{ x: 3600, y: 200,  color: 0xcc6644, size: 22, label: 'Bush' },
-			{ x: 2800, y: 1600, color: 0x44ccaa, size: 55, label: 'Pond' },
-			{ x: 3400, y: 2400, color: 0x44aa44, size: 32, label: 'Tree' },
-			{ x: 500,  y: 2200, color: 0x8888cc, size: 42, label: 'Rock' },
-			{ x: 1800, y: 2600, color: 0xcc6644, size: 28, label: 'Bush' },
-			{ x: 2200, y: 2000, color: 0x44aa44, size: 40, label: 'Tree' },
-			{ x: 3000, y: 2800, color: 0x44ccaa, size: 48, label: 'Pond' },
-			{ x: 1000, y: 1800, color: 0x8888cc, size: 35, label: 'Rock' },
+			{ x: 300,  y: 200,  color: 0x9d683d, size: 30, label: 'Beans' },
+			{ x: 800,  y: 400,  color: 0xc8956a, size: 40, label: 'Light roast' },
+			{ x: 1500, y: 300,  color: 0xb85b3d, size: 25, label: 'Dark roast' },
+			{ x: 400,  y: 1000, color: 0x9d683d, size: 35, label: 'Beans' },
+			{ x: 1200, y: 800,  color: 0xc8956a, size: 45, label: 'Light roast' },
+			{ x: 1700, y: 1200, color: 0xb85b3d, size: 20, label: 'Dark roast' },
+			{ x: 600,  y: 700,  color: 0x9d683d, size: 28, label: 'Beans' },
+			{ x: 1000, y: 1100, color: 0x6b4a33, size: 50, label: 'Roast batch' },
+			{ x: 2500, y: 500,  color: 0x9d683d, size: 38, label: 'Beans' },
+			{ x: 3200, y: 900,  color: 0xc8956a, size: 50, label: 'Light roast' },
+			{ x: 3600, y: 200,  color: 0xb85b3d, size: 22, label: 'Dark roast' },
+			{ x: 2800, y: 1600, color: 0x6b4a33, size: 55, label: 'Roast batch' },
+			{ x: 3400, y: 2400, color: 0x9d683d, size: 32, label: 'Beans' },
+			{ x: 500,  y: 2200, color: 0xc8956a, size: 42, label: 'Light roast' },
+			{ x: 1800, y: 2600, color: 0xb85b3d, size: 28, label: 'Dark roast' },
+			{ x: 2200, y: 2000, color: 0x9d683d, size: 40, label: 'Beans' },
+			{ x: 3000, y: 2800, color: 0x6b4a33, size: 48, label: 'Roast batch' },
+			{ x: 1000, y: 1800, color: 0xc8956a, size: 35, label: 'Light roast' },
 		];
 
 		for (const item of sceneryData) {
-			const g = new Graphics();
-			g.circle(0, 0, item.size);
-			g.fill({ color: item.color, alpha: 0.6 });
+			const g = createBeanGraphics(item.size, item.color);
 
-			const style = new TextStyle({ fontSize: 11, fill: 0x888888, fontFamily: 'monospace' });
+			const style = new TextStyle({ fontSize: 11, fill: 0x6b4a33, fontFamily: 'monospace' });
 			const label = new Text({ text: item.label, style });
 			label.anchor.set(0.5);
 			label.position.set(0, item.size + 10);

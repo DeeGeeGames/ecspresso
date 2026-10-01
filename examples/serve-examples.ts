@@ -85,7 +85,9 @@ const server = serve({
 	async fetch(request) {
 		// Serve static assets (e.g. .wav, .mp3) from example directories
 		const url = new URL(request.url);
-		const filePath = join(examplesDir, url.pathname);
+		const filePath = url.pathname === '/brand/ecspresso-icon-light-transparent.svg'
+			? join(examplesDir, '..', 'assets', 'brand', 'ecspresso-icon-light-transparent.svg')
+			: join(examplesDir, url.pathname);
 		const file = Bun.file(filePath);
 
 		if (await file.exists()) {

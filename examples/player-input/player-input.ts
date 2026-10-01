@@ -1,4 +1,5 @@
-import { Graphics, Sprite } from 'pixi.js';
+import { createCupTexture, examplePalette } from '../brand';
+import { Sprite } from 'pixi.js';
 import ECSpresso from "ecspresso";
 import { createInputPlugin } from "ecspresso/plugins/input/input";
 import {
@@ -11,7 +12,7 @@ import {
 // Actions map named intents to physical keys — systems read actions, not raw keys.
 const ecs = ECSpresso.create()
 	.withPlugin(createRenderer2DPlugin({
-		background: '#1099bb',
+		background: examplePalette.background,
 	}))
 	.withPlugin(createInputPlugin({
 		actions: {
@@ -58,9 +59,7 @@ await ecs.initialize();
 const pixiApp = ecs.getResource('pixiApp');
 const ballRadius = 30;
 const sprite = new Sprite(
-	pixiApp.renderer.generateTexture(
-		new Graphics().circle(0, 0, ballRadius).fill(0x0000FF)
-	)
+	await createCupTexture(pixiApp.renderer, ballRadius)
 );
 sprite.anchor.set(0.5, 0.5);
 

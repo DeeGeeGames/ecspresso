@@ -1,5 +1,6 @@
 
 body {
+	background: #fff6ea;
 	margin: 0;
 	padding: 0;
 	height: 100vh;
@@ -11,10 +12,10 @@ body {
 	top: 10px;
 	left: 10px;
 	text-decoration: none;
-	color: #000;
-	background-color: #fff;
+	color: #3c2516;
+	background-color: #fff6ea;
 	padding: 5px;
 	border-radius: 5px;
 	z-index: 10;
-	border: 1px solid #000;
+	border: 1px solid #c8956a;
 }

@@ -1,4 +1,5 @@
-import { Graphics, Sprite } from 'pixi.js';
+import { createBeanGraphics, examplePalette } from '../brand';
+import { Sprite } from 'pixi.js';
 import ECSpresso from 'ecspresso';
 import {
 	createRenderer2DPlugin,
@@ -11,7 +12,7 @@ import { createSteeringPlugin, createMoveSpeed } from 'ecspresso/plugins/physics
 
 const ecs = ECSpresso.create()
 	.withPlugin(createRenderer2DPlugin({
-		background: '#1a1a2e',
+		background: examplePalette.background,
 		renderLayers: ['game', 'ui'],
 		screenSpaceLayers: ['ui'],
 		camera: true,
@@ -48,7 +49,7 @@ await ecs.initialize();
 const pixiApp = ecs.getResource('pixiApp');
 const unitRadius = 10;
 const unitTexture = pixiApp.renderer.generateTexture(
-	new Graphics().circle(0, 0, unitRadius).fill(0x4488FF)
+	createBeanGraphics(unitRadius)
 );
 
 // Position camera at center of the screen

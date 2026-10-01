@@ -1,3 +1,4 @@
+import { createBeanGraphics, examplePalette } from '../brand';
 import { Graphics, Text, TextStyle, Container, Sprite } from 'pixi.js';
 import ECSpresso from "ecspresso";
 import { randomFrom } from '../utils';
@@ -12,7 +13,7 @@ import { createTimerPlugin, createTimer } from "ecspresso/plugins/scripting/time
 const SCREEN_W = 800;
 const SCREEN_H = 500;
 const GAME_DURATION = 20;
-const DOT_COLORS = [0x4fc3f7, 0xf06292, 0xba68c8, 0x81c784, 0xffb74d, 0xe57373] as const;
+const DOT_COLORS = [0x9d683d, 0xb85b3d, 0x6b4a33, 0xc8956a, 0x8c674c, 0x3c2516] as const;
 
 const nextSpawnInterval = () => 0.4 + Math.random() * 0.7;
 
@@ -21,7 +22,7 @@ const nextSpawnInterval = () => 0.4 + Math.random() * 0.7;
 const ecs = ECSpresso
 	.create()
 	.withPlugin(createRenderer2DPlugin({
-		background: '#1a1a2e',
+		background: examplePalette.background,
 		width: SCREEN_W,
 		height: SCREEN_H,
 	}))
@@ -78,16 +79,16 @@ function centeredAt(text: Text, x: number, y: number): Text {
 // Menu
 const menuContainer = new Container();
 menuContainer.addChild(
-	centeredAt(createLabel('Dot Catcher', 44, '#ffffff'), SCREEN_W / 2, SCREEN_H / 2 - 40),
-	centeredAt(createLabel('Press SPACE to start', 18, '#888888'), SCREEN_W / 2, SCREEN_H / 2 + 30),
+	centeredAt(createLabel('Bean Catcher', 44, '#3c2516'), SCREEN_W / 2, SCREEN_H / 2 - 40),
+	centeredAt(createLabel('Press SPACE to start', 18, '#6b4a33'), SCREEN_W / 2, SCREEN_H / 2 + 30),
 );
 
 // Playing HUD
 const hudContainer = new Container();
-const scoreText = createLabel('Score: 0', 20, '#ffffff');
+const scoreText = createLabel('Score: 0', 20, '#3c2516');
 scoreText.anchor.set(0, 0);
 scoreText.position.set(12, 10);
-const timerText = createLabel('20', 20, '#ffffff');
+const timerText = createLabel('20', 20, '#3c2516');
 timerText.anchor.set(1, 0);
 timerText.position.set(SCREEN_W - 12, 10);
 hudContainer.addChild(scoreText, timerText);
@@ -95,18 +96,18 @@ hudContainer.addChild(scoreText, timerText);
 // Pause overlay
 const pauseContainer = new Container();
 pauseContainer.addChild(
-	new Graphics().rect(0, 0, SCREEN_W, SCREEN_H).fill({ color: 0x000000, alpha: 0.6 }),
-	centeredAt(createLabel('PAUSED', 44, '#ffffff'), SCREEN_W / 2, SCREEN_H / 2 - 20),
-	centeredAt(createLabel('Press P to resume', 18, '#888888'), SCREEN_W / 2, SCREEN_H / 2 + 30),
+	new Graphics().rect(0, 0, SCREEN_W, SCREEN_H).fill({ color: examplePalette.background, alpha: 0.94 }),
+	centeredAt(createLabel('PAUSED', 44, '#3c2516'), SCREEN_W / 2, SCREEN_H / 2 - 20),
+	centeredAt(createLabel('Press P to resume', 18, '#6b4a33'), SCREEN_W / 2, SCREEN_H / 2 + 30),
 );
 
 // Game Over
 const gameOverContainer = new Container();
-const finalScoreText = centeredAt(createLabel('Score: 0', 28, '#ffffff'), SCREEN_W / 2, SCREEN_H / 2);
+const finalScoreText = centeredAt(createLabel('Score: 0', 28, '#3c2516'), SCREEN_W / 2, SCREEN_H / 2);
 gameOverContainer.addChild(
-	centeredAt(createLabel('Time\'s Up!', 44, '#ff6666'), SCREEN_W / 2, SCREEN_H / 2 - 60),
+	centeredAt(createLabel('Time\'s Up!', 44, '#b85b3d'), SCREEN_W / 2, SCREEN_H / 2 - 60),
 	finalScoreText,
-	centeredAt(createLabel('Press SPACE to play again', 18, '#888888'), SCREEN_W / 2, SCREEN_H / 2 + 50),
+	centeredAt(createLabel('Press SPACE to play again', 18, '#6b4a33'), SCREEN_W / 2, SCREEN_H / 2 + 50),
 );
 
 // Add all to stage (hidden by default)
@@ -124,7 +125,7 @@ function spawnDot() {
 	const speed = 60 + Math.random() * 120;
 	const lifetime = (SCREEN_H + radius * 2) / speed;
 
-	const gfx = new Graphics().circle(0, 0, radius).fill(color);
+	const gfx = createBeanGraphics(radius, color);
 	const sprite = new Sprite(pixiApp.renderer.generateTexture(gfx));
 	sprite.anchor.set(0.5);
 	sprite.eventMode = 'static';
@@ -181,6 +182,7 @@ ecs.onScreenExit('paused', () => setAllTimersActive(t => t.elapsed < t.duration)
 // Screen UI visibility — runs every frame regardless of current screen
 ecs.addSystem('screenUI')
 	.inPhase('render')
+	.runWhenEmpty() // Menu and game-over UI still render without a gameplay clock.
 	.addQuery('clock', { with: ['clock', 'timers'] })
 	.setProcess(({ ecs, queries }) => {
 		menuContainer.visible = ecs.isCurrentScreen('menu');

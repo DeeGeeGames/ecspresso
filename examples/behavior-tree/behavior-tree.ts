@@ -15,6 +15,7 @@
  * Watch hunger bars deplete over time, driving villagers to food.
  */
 
+import { createBeanGraphics, drawBean } from '../brand';
 import { Graphics } from 'pixi.js';
 import ECSpresso from 'ecspresso';
 import {
@@ -199,7 +200,7 @@ function clearMoveTarget(world: ECS, entityId: number): void {
 function setVillagerColor(world: ECS, entityId: number, color: number): void {
 	const gfx = world.getComponent(entityId, 'graphics');
 	if (!gfx) return;
-	gfx.clear().circle(0, 0, VILLAGER_RADIUS).fill(color);
+	drawBean(gfx.clear(), VILLAGER_RADIUS, color);
 }
 
 function updateStateIndicator(world: ECS, entityId: number, state: string): void {
@@ -599,7 +600,7 @@ const foodPositions: Vector2D[] = [
 ];
 
 foodPositions.forEach(function spawnFood(pos) {
-	const gfx = new Graphics().circle(0, 0, 10).fill(COLORS.food);
+	const gfx = createBeanGraphics(10, COLORS.food);
 	ecs.spawn({
 		...createGraphicsComponents(gfx, pos),
 		...layers.food(),
@@ -627,7 +628,7 @@ Array.from({ length: VILLAGER_COUNT }).forEach(function spawnVillager(_value, i)
 	const x = WORLD_W / 2 + Math.cos(angle) * spawnR;
 	const y = WORLD_H / 2 + Math.sin(angle) * spawnR;
 
-	const gfx = new Graphics().circle(0, 0, VILLAGER_RADIUS).fill(COLORS.idle);
+	const gfx = createBeanGraphics(VILLAGER_RADIUS, COLORS.idle);
 
 	// Hunger bar (child of villager graphic so it moves with it)
 	const hungerBar = new Graphics();

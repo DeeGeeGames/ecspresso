@@ -47,6 +47,12 @@ const examples = [
 await rm(OUT_DIR, { recursive: true, force: true });
 await mkdir(OUT_DIR, { recursive: true });
 
+// Shared player art comes from the brand source, without duplicating it in examples.
+await Bun.write(
+	join(OUT_DIR, 'brand', 'ecspresso-icon-light-transparent.svg'),
+	Bun.file(join(EXAMPLES_DIR, '..', 'assets', 'brand', 'ecspresso-icon-light-transparent.svg')),
+);
+
 // Copy shared styles
 await Bun.write(
 	join(OUT_DIR, 'styles.css'),

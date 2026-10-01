@@ -1,3 +1,4 @@
+import { createCupTexture, examplePalette } from '../brand';
 import { Graphics, Sprite } from 'pixi.js';
 import ECSpresso from "ecspresso";
 import {
@@ -10,7 +11,7 @@ import {
 // withEventTypes declares typed events that systems can publish and subscribe to.
 const ecs = ECSpresso.create()
 	.withPlugin(createRenderer2DPlugin({
-		background: '#1099bb',
+		background: examplePalette.background,
 	}))
 	.withComponentTypes<{
 		velocity: { x: number; y: number };
@@ -53,7 +54,7 @@ ecs.addSystem('trail-spawner')
 	.setEventHandlers({
 		wallHit({ data: { x, y }, ecs }) {
 			ecs.spawn({
-				graphics: new Graphics().circle(0, 0, 4).fill(0xFFFF00),
+				graphics: new Graphics().circle(0, 0, 4).fill(examplePalette.spark),
 				...createLocalTransform(x, y),
 			});
 		},
@@ -65,9 +66,7 @@ await ecs.initialize();
 const pixiApp = ecs.getResource('pixiApp');
 const ballRadius = 30;
 const sprite = new Sprite(
-	pixiApp.renderer.generateTexture(
-		new Graphics().circle(0, 0, ballRadius).fill(0x0000FF)
-	)
+	await createCupTexture(pixiApp.renderer, ballRadius)
 );
 sprite.anchor.set(0.5, 0.5);
 

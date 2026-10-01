@@ -6,7 +6,8 @@
  * and replay via re-spawning.
  */
 
-import { Graphics, Sprite, Text, TextStyle } from 'pixi.js';
+import { createBeanGraphics, examplePalette } from '../brand';
+import { Sprite, Text, TextStyle } from 'pixi.js';
 import ECSpresso from 'ecspresso';
 import {
 	createRenderer2DPlugin,
@@ -27,14 +28,14 @@ const SCREEN_H = 500;
 const CENTER_X = SCREEN_W / 2;
 const CENTER_Y = SCREEN_H / 2;
 const CIRCLE_RADIUS = 40;
-const CIRCLE_COLOR = 0xe53935;
+const CIRCLE_COLOR = 0x9d683d;
 
 // ==================== ECS Setup ====================
 
 const ecs = ECSpresso
 	.create()
 	.withPlugin(createRenderer2DPlugin({
-		background: '#1a1a2e',
+		background: examplePalette.background,
 		width: SCREEN_W,
 		height: SCREEN_H,
 	}))
@@ -48,7 +49,7 @@ const pixiApp = ecs.getResource('pixiApp');
 // ==================== Sprite Factories ====================
 
 function makeCircleSprite(): Sprite {
-	const gfx = new Graphics().circle(0, 0, CIRCLE_RADIUS).fill(CIRCLE_COLOR);
+	const gfx = createBeanGraphics(CIRCLE_RADIUS, CIRCLE_COLOR);
 	return new Sprite(pixiApp.renderer.generateTexture(gfx));
 }
 
@@ -56,7 +57,7 @@ const textStyle = new TextStyle({
 	fontFamily: 'monospace',
 	fontSize: 28,
 	fontWeight: 'bold',
-	fill: '#ffffff',
+	fill: '#3c2516',
 	align: 'center',
 });
 

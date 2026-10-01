@@ -1,3 +1,4 @@
+import { createBeanGraphics, examplePalette } from '../brand';
 import { Graphics, Sprite } from 'pixi.js';
 import ECSpresso from 'ecspresso';
 import { createInputPlugin } from 'ecspresso/plugins/input/input';
@@ -23,7 +24,7 @@ const inputBinding: { canvas: HTMLCanvasElement | null; viewport: ViewportScale 
 
 const ecs = ECSpresso.create()
 	.withPlugin(createRenderer2DPlugin({
-		background: '#1a1a2e',
+		background: examplePalette.background,
 		screenScale: { width: DESIGN_W, height: DESIGN_H, mode: 'fit' },
 	}))
 	.withPlugin(createInputPlugin({
@@ -65,19 +66,19 @@ for (let x = 0; x <= DESIGN_W; x += 120) {
 for (let y = 0; y <= DESIGN_H; y += 120) {
 	gridGraphics.moveTo(0, y).lineTo(DESIGN_W, y);
 }
-gridGraphics.stroke({ width: 1, color: 0x2a3a5e });
+gridGraphics.stroke({ width: 1, color: 0xecdcc8 });
 ecs.spawn(createGraphicsComponents(gridGraphics, { x: 0, y: 0 }));
 
 const borderGraphics = new Graphics()
 	.rect(0, 0, DESIGN_W, DESIGN_H)
-	.stroke({ width: 4, color: 0x4ecdc4 });
+	.stroke({ width: 4, color: 0xc8956a });
 ecs.spawn(createGraphicsComponents(borderGraphics, { x: 0, y: 0 }));
 
 const CORNERS: ReadonlyArray<{ x: number; y: number; color: number }> = [
-	{ x: 0, y: 0, color: 0xff6b6b },
-	{ x: DESIGN_W, y: 0, color: 0xf9ca24 },
-	{ x: 0, y: DESIGN_H, color: 0x4ecdc4 },
-	{ x: DESIGN_W, y: DESIGN_H, color: 0xa29bfe },
+	{ x: 0, y: 0, color: 0xb85b3d },
+	{ x: DESIGN_W, y: 0, color: 0x8c674c },
+	{ x: 0, y: DESIGN_H, color: 0xc8956a },
+	{ x: DESIGN_W, y: DESIGN_H, color: 0x6b4a33 },
 ];
 
 for (const corner of CORNERS) {
@@ -89,27 +90,27 @@ for (const corner of CORNERS) {
 
 const centerGraphics = new Graphics()
 	.circle(0, 0, 8)
-	.fill(0xffffff);
+	.fill(0x3c2516);
 ecs.spawn(createGraphicsComponents(centerGraphics, { x: DESIGN_W / 2, y: DESIGN_H / 2 }));
 
 const reticleGraphics = new Graphics()
 	.moveTo(-16, 0).lineTo(16, 0)
 	.moveTo(0, -16).lineTo(0, 16)
-	.stroke({ width: 2, color: 0xffffff })
+	.stroke({ width: 2, color: 0x3c2516 })
 	.circle(0, 0, 10)
-	.stroke({ width: 2, color: 0xffffff });
+	.stroke({ width: 2, color: 0x3c2516 });
 ecs.spawn({
 	...createGraphicsComponents(reticleGraphics, { x: DESIGN_W / 2, y: DESIGN_H / 2 }),
 	reticle: true,
 });
 
-const BALL_COLORS = [0xff6b6b, 0x4ecdc4, 0x45b7d1, 0xf9ca24, 0xa29bfe, 0xfd79a8];
+const BALL_COLORS = [0xb85b3d, 0xc8956a, 0x9d683d, 0x8c674c, 0x6b4a33, 0x3c2516];
 
 function spawnBallAt(logicalX: number, logicalY: number) {
-	const color = BALL_COLORS[Math.floor(Math.random() * BALL_COLORS.length)] ?? 0xffffff;
+	const color = BALL_COLORS[Math.floor(Math.random() * BALL_COLORS.length)] ?? 0x3c2516;
 	const sprite = new Sprite(
 		pixiApp.renderer.generateTexture(
-			new Graphics().circle(0, 0, 14).fill(color),
+			createBeanGraphics(14, color),
 		),
 	);
 	ecs.spawn({

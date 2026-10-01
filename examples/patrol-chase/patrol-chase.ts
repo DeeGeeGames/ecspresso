@@ -12,6 +12,7 @@
  *   Return (yellow) — head back to last patrol waypoint, then resume
  */
 
+import { createBeanGraphics, drawBean } from '../brand';
 import { Graphics } from 'pixi.js';
 import ECSpresso from 'ecspresso';
 import {
@@ -103,7 +104,7 @@ const { defineStateMachine } = ecs.getHelpers(createStateMachineHelpers);
 function setGuardVisual(world: ECS, entityId: number, color: number): void {
 	const gfx = world.getComponent(entityId, 'graphics');
 	if (!gfx) return;
-	gfx.clear().circle(0, 0, GUARD_RADIUS).fill(color);
+	drawBean(gfx.clear(), GUARD_RADIUS, color);
 	// Range ring is a child of the guard graphic — redraw it too
 	const ring = gfx.children[0];
 	if (!(ring instanceof Graphics)) return;
@@ -236,7 +237,7 @@ for (const route of patrolRoutes) {
 }
 
 // Spawn player
-const playerGfx = new Graphics().circle(0, 0, 16).fill(COLORS.player);
+const playerGfx = createBeanGraphics(16, COLORS.player);
 ecs.spawn({
 	...createGraphicsComponents(
 		playerGfx,
@@ -252,7 +253,7 @@ for (const route of patrolRoutes) {
 	const startPos = route[0];
 	if (!startPos) continue;
 
-	const guardGfx = new Graphics().circle(0, 0, GUARD_RADIUS).fill(COLORS.patrol);
+	const guardGfx = createBeanGraphics(GUARD_RADIUS, COLORS.patrol);
 	// Range ring parented to guard — moves automatically, no sync system needed
 	const rangeRing = new Graphics()
 		.circle(0, 0, DETECTION_RANGE)
