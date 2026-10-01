@@ -29,7 +29,9 @@ export type PluginCleanupRegistrar = (fn: PluginCleanup) => void;
 /**
  * Plugin interface for ECSpresso. A plugin is a plain object with an `install`
  * function that configures a world directly, plus phantom properties for
- * compile-time type extraction.
+ * compile-time type extraction. Allocate mutable runtime state inside `install`
+ * so the same plugin object can be reused across independent worlds. Factory
+ * closures should retain configuration rather than installation-owned state.
  *
  * @typeParam Cfg - The WorldConfig this plugin provides (components, events, resources, etc.)
  * @typeParam Requires - The WorldConfig this plugin requires from other plugins

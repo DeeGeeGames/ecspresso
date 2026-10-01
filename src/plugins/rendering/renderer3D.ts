@@ -382,22 +382,6 @@ export function createRenderer3DPlugin<G extends string = 'renderer3d'>(
 		startLoop = true,
 	} = options;
 
-	// Entity ID -> Three.js Object3D mapping for scene graph management
-	const entityToThreeObject = new Map<number, Object3D>();
-
-	// Cached resource references, set during scene-graph init for hot-path access
-	let cachedRenderer: WebGLRenderer | null = null;
-	let cachedScene: Scene | null = null;
-	let cachedCamera: Camera | null = null;
-	let detachRendererHooks = () => {};
-	let detachSceneGraphEvents = () => {};
-
-	// Preallocated math temporaries for syncObject3D, allocated during scene-graph init.
-	let tmpPos: Vector3 | null = null;
-	let tmpEuler: Euler | null = null;
-	let tmpQuat: Quaternion | null = null;
-	let tmpScale: Vector3 | null = null;
-
 	// Determine mode: pre-initialized if renderer was provided
 	const isManaged = !('renderer' in options && options.renderer !== undefined);
 
@@ -411,6 +395,22 @@ export function createRenderer3DPlugin<G extends string = 'renderer3d'>(
 		.withGroups<G>()
 		.withReactiveQueryNames<Renderer3DReactiveQueryNames>()
 		.install((world) => {
+			// Entity ID -> Three.js Object3D mapping for scene graph management
+			const entityToThreeObject = new Map<number, Object3D>();
+
+			// Cached resource references, set during scene-graph init for hot-path access
+			let cachedRenderer: WebGLRenderer | null = null;
+			let cachedScene: Scene | null = null;
+			let cachedCamera: Camera | null = null;
+			let detachRendererHooks = () => {};
+			let detachSceneGraphEvents = () => {};
+
+			// Preallocated math temporaries for syncObject3D, allocated during scene-graph init.
+			let tmpPos: Vector3 | null = null;
+			let tmpEuler: Euler | null = null;
+			let tmpQuat: Quaternion | null = null;
+			let tmpScale: Vector3 | null = null;
+
 			// Install 3D transform plugin (deduplicates if already installed)
 			world.installPlugin(createTransform3DPlugin(transformOptions));
 

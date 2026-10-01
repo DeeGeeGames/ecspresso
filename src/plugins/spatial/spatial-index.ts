@@ -132,15 +132,15 @@ export function createSpatialIndexPlugin<G extends string = 'spatialIndex'>(
 		phases = ['fixedUpdate', 'postUpdate'] as const,
 	} = options ?? {};
 
-	const grid = createGrid(cellSize);
-	const resource = createSpatialIndexResource(grid);
-
 	return definePlugin('spatialIndex')
 		.withComponentTypes<SpatialIndexComponentTypes>()
 		.withResourceTypes<SpatialIndexResourceTypes>()
 		.withLabels<SpatialIndexLabel>()
 		.withGroups<G>()
 		.install((world) => {
+			const grid = createGrid(cellSize);
+			const resource = createSpatialIndexResource(grid);
+
 			world.addResource('spatialIndex', resource);
 
 			// Flag flipped true by the fixedUpdate rebuild; checked + reset by the

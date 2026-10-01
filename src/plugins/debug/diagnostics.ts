@@ -97,21 +97,21 @@ export function createDiagnosticsPlugin<G extends string = 'diagnostics'>(
 		fpsSampleCount = 60,
 	} = options ?? {};
 
-	const initialData: DiagnosticsData = {
-		fps: 0,
-		entityCount: 0,
-		systemTimings: new Map(),
-		phaseTimings: { preUpdate: 0, fixedUpdate: 0, update: 0, postUpdate: 0, render: 0 },
-		averageFrameTime: 0,
-	};
-
-	const ringBuffer = createRingBuffer(fpsSampleCount);
-
 	return definePlugin('diagnostics')
 		.withResourceTypes<DiagnosticsResourceTypes>()
 		.withLabels<'diagnostics-collect'>()
 		.withGroups<G>()
 		.install((world) => {
+			const initialData: DiagnosticsData = {
+				fps: 0,
+				entityCount: 0,
+				systemTimings: new Map(),
+				phaseTimings: { preUpdate: 0, fixedUpdate: 0, update: 0, postUpdate: 0, render: 0 },
+				averageFrameTime: 0,
+			};
+
+			const ringBuffer = createRingBuffer(fpsSampleCount);
+
 			world.addResource('diagnostics', initialData);
 
 			world

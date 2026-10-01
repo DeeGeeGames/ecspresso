@@ -643,172 +643,172 @@ export function createInputPlugin<A extends string = string, G extends string = 
 		}
 	}
 
-	// Construction-time casts: option defaults of `{}` don't structurally satisfy a narrow `ActionMap<A>`,
-	// but at this boundary we know the user either supplied a valid map or is using A = string.
-	const unifiedActionMap = { ...(options?.actions ?? {}) } as ActionMap<A>;
-	const playerMaps = new Map<string, ActionMap<A>>(
-		Object.entries(options?.players ?? {}) as Array<[string, ActionMap<A>]>,
-	);
-
-	const deadzone = gamepadOpts.deadzone ?? DEFAULT_DEADZONE;
-	const pollFn = gamepadOpts.poll ?? defaultPoll(new Array<GamepadLike | null>(PAD_COUNT).fill(null));
-
-	const raw = createRawKeyPointerState();
-	const frame = createFrameState();
-	const pads: PadRuntime[] = Array.from({ length: PAD_COUNT }, createPadRuntime);
-	const unifiedSlot = createActionSlot();
-	const playerSlots = new Map<string, ActionSlot>();
-	const playerHandles = new Map<string, PlayerInput<A>>();
-	const cleanupFns: Array<() => void> = [];
-
-	// Vector2Ds exposed via the resource — updated in place each frame.
-	const position: Vector2D = { x: 0, y: 0 };
-	const delta: Vector2D = { x: 0, y: 0 };
-
-	let currentUnifiedMap = unifiedActionMap;
-
-	const keyboard: KeyboardState = {
-		isDown: (key) => frame.keysDown.has(key),
-		justPressed: (key) => frame.keysPressed.has(key),
-		justReleased: (key) => frame.keysReleased.has(key),
-	};
-
-	const pointer: PointerState = {
-		position,
-		delta,
-		isDown: (button) => frame.pointerButtonsDown.has(button),
-		justPressed: (button) => frame.pointerButtonsPressed.has(button),
-		justReleased: (button) => frame.pointerButtonsReleased.has(button),
-	};
-
-	function makeGamepadState(index: number): GamepadState {
-		const state = pads[index];
-		if (!state) throw new Error(`Invalid gamepad index: ${index}`);
-		return {
-			get connected() { return state.connected; },
-			get id() { return state.id; },
-			isDown: (button) => state.buttonsDown.has(button),
-			justPressed: (button) => state.buttonsPressed.has(button),
-			justReleased: (button) => state.buttonsReleased.has(button),
-			buttonValue: (button) => state.buttonValues[button] ?? 0,
-			axis: (index) => state.axes[index] ?? 0,
-			rawAxis: (index) => state.rawAxes[index] ?? 0,
-		};
-	}
-
-	const gamepadStates: ReadonlyArray<GamepadState> = Array.from({ length: PAD_COUNT }, (_, i) => makeGamepadState(i));
-
-	const unifiedActions = makeActionState<A>(unifiedSlot);
-
-	function ensurePlayerSlot(id: string): ActionSlot {
-		const existing = playerSlots.get(id);
-		if (existing) return existing;
-		const slot = createActionSlot();
-		playerSlots.set(id, slot);
-		return slot;
-	}
-
-	function createPlayerHandle(id: string): PlayerInput<A> {
-		const slot = ensurePlayerSlot(id);
-		return {
-			actions: makeActionState<A>(slot),
-			setActionMap: (map) => {
-				if (!playerMaps.has(id)) throw new Error(`Player '${id}' was removed`);
-				playerMaps.set(id, { ...map });
-			},
-			getActionMap: () => {
-				const map = playerMaps.get(id);
-				if (!map) throw new Error(`Player '${id}' was removed`);
-				return { ...map };
-			},
-		};
-	}
-
-	for (const id of playerMaps.keys()) {
-		playerHandles.set(id, createPlayerHandle(id));
-	}
-
-	const inputState: InputState<A> = {
-		keyboard,
-		pointer,
-		gamepads: gamepadStates,
-		actions: unifiedActions,
-		setActionMap(newMap) {
-			currentUnifiedMap = { ...newMap };
-		},
-		getActionMap() {
-			return { ...currentUnifiedMap };
-		},
-		definePlayer(id, map) {
-			playerMaps.set(id, { ...map });
-			if (!playerHandles.has(id)) playerHandles.set(id, createPlayerHandle(id));
-		},
-		removePlayer(id) {
-			const existed = playerMaps.delete(id);
-			playerHandles.delete(id);
-			playerSlots.delete(id);
-			return existed;
-		},
-		player(id) {
-			return playerHandles.get(id);
-		},
-		playerIds() {
-			return Array.from(playerMaps.keys());
-		},
-	};
-
-	function onKeyDown(e: Event) {
-		const ke = e as KeyboardEvent;
-		if (ke.repeat) return;
-		checkPreventDefault(ke);
-		raw.keysDown.add(ke.key);
-		raw.keysPressed.push(ke.key);
-	}
-
-	function onKeyUp(e: Event) {
-		const ke = e as KeyboardEvent;
-		checkPreventDefault(ke);
-		raw.keysDown.delete(ke.key);
-		raw.keysReleased.push(ke.key);
-	}
-
-	function onPointerDown(e: Event) {
-		const pe = e as PointerEvent;
-		checkPreventDefault(pe);
-		raw.pointerButtonsDown.add(pe.button);
-		raw.pointerButtonsPressed.push(pe.button);
-	}
-
-	function onPointerMove(e: Event) {
-		const pe = e as PointerEvent;
-		if (coordinateTransform) {
-			const { x, y } = coordinateTransform(pe.clientX, pe.clientY);
-			raw.pointerX = x;
-			raw.pointerY = y;
-		} else {
-			raw.pointerX = pe.clientX;
-			raw.pointerY = pe.clientY;
-		}
-		raw.pointerMoved = true;
-	}
-
-	function onPointerUp(e: Event) {
-		const pe = e as PointerEvent;
-		checkPreventDefault(pe);
-		raw.pointerButtonsDown.delete(pe.button);
-		raw.pointerButtonsReleased.push(pe.button);
-	}
-
-	function addListener(type: string, handler: (e: Event) => void) {
-		target.addEventListener(type, handler);
-		cleanupFns.push(() => { target.removeEventListener(type, handler); });
-	}
-
 	return definePlugin('input')
 		.withResourceTypes<InputResourceTypes<A>>()
 		.withLabels<'input-state'>()
 		.withGroups<G>()
 		.install((world) => {
+			// Option default casts: option defaults of `{}` don't structurally satisfy a narrow `ActionMap<A>`,
+			// but at this boundary we know the user either supplied a valid map or is using A = string.
+			const unifiedActionMap = { ...(options?.actions ?? {}) } as ActionMap<A>;
+			const playerMaps = new Map<string, ActionMap<A>>(
+				Object.entries(options?.players ?? {}) as Array<[string, ActionMap<A>]>,
+			);
+
+			const deadzone = gamepadOpts.deadzone ?? DEFAULT_DEADZONE;
+			const pollFn = gamepadOpts.poll ?? defaultPoll(new Array<GamepadLike | null>(PAD_COUNT).fill(null));
+
+			const raw = createRawKeyPointerState();
+			const frame = createFrameState();
+			const pads: PadRuntime[] = Array.from({ length: PAD_COUNT }, createPadRuntime);
+			const unifiedSlot = createActionSlot();
+			const playerSlots = new Map<string, ActionSlot>();
+			const playerHandles = new Map<string, PlayerInput<A>>();
+			const cleanupFns: Array<() => void> = [];
+
+			// Vector2Ds exposed via the resource — updated in place each frame.
+			const position: Vector2D = { x: 0, y: 0 };
+			const delta: Vector2D = { x: 0, y: 0 };
+
+			let currentUnifiedMap = unifiedActionMap;
+
+			const keyboard: KeyboardState = {
+				isDown: (key) => frame.keysDown.has(key),
+				justPressed: (key) => frame.keysPressed.has(key),
+				justReleased: (key) => frame.keysReleased.has(key),
+			};
+
+			const pointer: PointerState = {
+				position,
+				delta,
+				isDown: (button) => frame.pointerButtonsDown.has(button),
+				justPressed: (button) => frame.pointerButtonsPressed.has(button),
+				justReleased: (button) => frame.pointerButtonsReleased.has(button),
+			};
+
+			function makeGamepadState(index: number): GamepadState {
+				const state = pads[index];
+				if (!state) throw new Error(`Invalid gamepad index: ${index}`);
+				return {
+					get connected() { return state.connected; },
+					get id() { return state.id; },
+					isDown: (button) => state.buttonsDown.has(button),
+					justPressed: (button) => state.buttonsPressed.has(button),
+					justReleased: (button) => state.buttonsReleased.has(button),
+					buttonValue: (button) => state.buttonValues[button] ?? 0,
+					axis: (index) => state.axes[index] ?? 0,
+					rawAxis: (index) => state.rawAxes[index] ?? 0,
+				};
+			}
+
+			const gamepadStates: ReadonlyArray<GamepadState> = Array.from({ length: PAD_COUNT }, (_, i) => makeGamepadState(i));
+
+			const unifiedActions = makeActionState<A>(unifiedSlot);
+
+			function ensurePlayerSlot(id: string): ActionSlot {
+				const existing = playerSlots.get(id);
+				if (existing) return existing;
+				const slot = createActionSlot();
+				playerSlots.set(id, slot);
+				return slot;
+			}
+
+			function createPlayerHandle(id: string): PlayerInput<A> {
+				const slot = ensurePlayerSlot(id);
+				return {
+					actions: makeActionState<A>(slot),
+					setActionMap: (map) => {
+						if (!playerMaps.has(id)) throw new Error(`Player '${id}' was removed`);
+						playerMaps.set(id, { ...map });
+					},
+					getActionMap: () => {
+						const map = playerMaps.get(id);
+						if (!map) throw new Error(`Player '${id}' was removed`);
+						return { ...map };
+					},
+				};
+			}
+
+			for (const id of playerMaps.keys()) {
+				playerHandles.set(id, createPlayerHandle(id));
+			}
+
+			const inputState: InputState<A> = {
+				keyboard,
+				pointer,
+				gamepads: gamepadStates,
+				actions: unifiedActions,
+				setActionMap(newMap) {
+					currentUnifiedMap = { ...newMap };
+				},
+				getActionMap() {
+					return { ...currentUnifiedMap };
+				},
+				definePlayer(id, map) {
+					playerMaps.set(id, { ...map });
+					if (!playerHandles.has(id)) playerHandles.set(id, createPlayerHandle(id));
+				},
+				removePlayer(id) {
+					const existed = playerMaps.delete(id);
+					playerHandles.delete(id);
+					playerSlots.delete(id);
+					return existed;
+				},
+				player(id) {
+					return playerHandles.get(id);
+				},
+				playerIds() {
+					return Array.from(playerMaps.keys());
+				},
+			};
+
+			function onKeyDown(e: Event) {
+				const ke = e as KeyboardEvent;
+				if (ke.repeat) return;
+				checkPreventDefault(ke);
+				raw.keysDown.add(ke.key);
+				raw.keysPressed.push(ke.key);
+			}
+
+			function onKeyUp(e: Event) {
+				const ke = e as KeyboardEvent;
+				checkPreventDefault(ke);
+				raw.keysDown.delete(ke.key);
+				raw.keysReleased.push(ke.key);
+			}
+
+			function onPointerDown(e: Event) {
+				const pe = e as PointerEvent;
+				checkPreventDefault(pe);
+				raw.pointerButtonsDown.add(pe.button);
+				raw.pointerButtonsPressed.push(pe.button);
+			}
+
+			function onPointerMove(e: Event) {
+				const pe = e as PointerEvent;
+				if (coordinateTransform) {
+					const { x, y } = coordinateTransform(pe.clientX, pe.clientY);
+					raw.pointerX = x;
+					raw.pointerY = y;
+				} else {
+					raw.pointerX = pe.clientX;
+					raw.pointerY = pe.clientY;
+				}
+				raw.pointerMoved = true;
+			}
+
+			function onPointerUp(e: Event) {
+				const pe = e as PointerEvent;
+				checkPreventDefault(pe);
+				raw.pointerButtonsDown.delete(pe.button);
+				raw.pointerButtonsReleased.push(pe.button);
+			}
+
+			function addListener(type: string, handler: (e: Event) => void) {
+				target.addEventListener(type, handler);
+				cleanupFns.push(() => { target.removeEventListener(type, handler); });
+			}
+
 			world.addResource('inputState', inputState);
 
 			world

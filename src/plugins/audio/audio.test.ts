@@ -153,13 +153,13 @@ interface TestEvents extends AudioEventTypes<TestChannel> {}
 
 interface TestResources extends AudioResourceTypes<TestChannel> {}
 
-function createTestEcs() {
+function createTestEcs(plugin = createAudioPlugin({ channels: testChannels })) {
 	const explosionHowl = createMockHowl();
 	const bgmHowl = createMockHowl();
 
 	const ecs = ECSpresso
 		.create<WorldConfigFrom<TestComponents, TestEvents, TestResources>>()
-		.withPlugin(createAudioPlugin({ channels: testChannels }))
+		.withPlugin(plugin)
 		.withResource('$assets' as never, {
 			get(key: string) {
 				const map: Record<string, MockHowlInstance> = {
@@ -629,4 +629,37 @@ describe('Audio Helpers', () => {
 		expect(source.audioSource.sound).toBe('boom');
 		expect(source.audioSource.channel).toBe('sfx');
 	});
+});
+
+test('reused audio plugin isolates assets, controls, events, and teardown', async () => {
+	const plugin = createAudioPlugin({ channels: testChannels });
+	const a = createTestEcs(plugin);
+	const b = createTestEcs(plugin);
+	await a.ecs.initialize();
+	await b.ecs.initialize();
+	const audioA = a.ecs.getResource('audioState');
+	const audioB = b.ecs.getResource('audioState');
+	const endedA: SoundEndedEvent[] = [];
+	const endedB: SoundEndedEvent[] = [];
+	a.ecs.eventBus.subscribe('soundEnded', (event) => endedA.push(event));
+	b.ecs.eventBus.subscribe('soundEnded', (event) => endedB.push(event));
+	audioA.setChannelVolume('sfx', 0.2);
+	audioA.setMasterVolume(0.5);
+	audioA.mute();
+	expect(audioB.getChannelVolume('sfx')).toBe(1);
+	expect(audioB.getMasterVolume()).toBe(1);
+	expect(audioB.isMuted()).toBe(false);
+	const soundA = audioA.play('explosion');
+	const soundB = audioB.play('explosion');
+	expect(a.explosionHowl._playing.has(soundA)).toBe(true);
+	expect(b.explosionHowl._playing.has(soundB)).toBe(true);
+	a.explosionHowl._triggerEnd(soundA);
+	expect(endedA).toHaveLength(1);
+	expect(endedB).toHaveLength(0);
+	audioA.play('explosion');
+	await a.ecs.dispose();
+	expect(b.explosionHowl._playing.has(soundB)).toBe(true);
+	b.explosionHowl._triggerEnd(soundB);
+	expect(endedB).toHaveLength(1);
+	await b.ecs.dispose();
 });

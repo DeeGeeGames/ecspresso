@@ -96,13 +96,69 @@ async function threeOwnership(managed: boolean): Promise<void> {
 	container.remove();
 }
 
+async function pixiInstallationIsolation(): Promise<void> {
+	const container = document.createElement('div');
+	document.body.appendChild(container);
+	const plugin = createRenderer2DPlugin({ container, width: 64, height: 64, startLoop: false, renderLayers: ['actors'] });
+	const a = ECSpresso.create().withPlugin(plugin).build();
+	const b = ECSpresso.create().withPlugin(plugin).build();
+	await a.initialize();
+	await b.initialize();
+	const spriteA = new Sprite();
+	const spriteB = new Sprite();
+	a.spawn({ ...createSpriteComponents(spriteA), renderLayer: 'actors' });
+	b.spawn({ ...createSpriteComponents(spriteB), renderLayer: 'actors' });
+	a.update(0);
+	b.update(0);
+	assert(spriteA.parent?.parent === a.getResource('rootContainer'), 'World A lost its Pixi layer');
+	assert(spriteB.parent?.parent === b.getResource('rootContainer'), 'World B reused world A Pixi layer');
+	await a.dispose();
+	b.update(0);
+	assert(spriteB.parent?.parent === b.getResource('rootContainer'), 'World A disposal removed world B Pixi layer');
+	await b.dispose();
+	assert(spriteB.parent === null, 'World B retained its Pixi sprite after disposal');
+	spriteA.destroy();
+	spriteB.destroy();
+	container.remove();
+}
+
+async function threeInstallationIsolation(): Promise<void> {
+	const container = document.createElement('div');
+	document.body.appendChild(container);
+	const plugin = createRenderer3DPlugin({ container, width: 64, height: 64, startLoop: false });
+	const a = ECSpresso.create().withPlugin(plugin).build();
+	const b = ECSpresso.create().withPlugin(plugin).build();
+	await a.initialize();
+	await b.initialize();
+	const geometry = new BoxGeometry();
+	const material = new MeshBasicMaterial();
+	const meshA = new Mesh(geometry, material);
+	const meshB = new Mesh(geometry, material);
+	a.spawn(createMeshComponents(meshA, { x: 1, y: 0, z: -5 }));
+	b.spawn(createMeshComponents(meshB, { x: 2, y: 0, z: -5 }));
+	a.update(0);
+	b.update(0);
+	assert(meshA.parent === a.getResource('scene'), 'World A lost its Three mesh');
+	assert(meshB.parent === b.getResource('scene'), 'World B reused world A Three scene');
+	await a.dispose();
+	b.update(0);
+	assert(meshB.parent === b.getResource('scene'), 'World A disposal removed world B Three mesh');
+	await b.dispose();
+	assert(meshB.parent === null, 'World B retained its Three mesh after disposal');
+	geometry.dispose();
+	material.dispose();
+	container.remove();
+}
+
 try {
 	await pixiOwnership(true);
 	await pixiOwnership(false);
 	await threeOwnership(true);
 	await threeOwnership(false);
+	await pixiInstallationIsolation();
+	await threeInstallationIsolation();
 	document.body.dataset['status'] = 'passed';
-	document.body.textContent = 'PASS: managed and supplied Pixi/Three renderer ownership';
+	document.body.textContent = 'PASS: Pixi/Three renderer ownership and installation isolation';
 } catch (error) {
 	document.body.dataset['status'] = 'failed';
 	document.body.textContent = String(error);

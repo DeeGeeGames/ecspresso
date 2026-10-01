@@ -1007,3 +1007,51 @@ describe('Input Plugin', () => {
 		});
 	});
 });
+
+test('reused input plugin isolates frame edges, maps, players, and listener cleanup', async () => {
+	const target = new EventTarget();
+	const plugin = createInputPlugin({
+		target,
+		actions: { jump: { keys: [' '] } },
+		players: { p1: { jump: { keys: [' '] } } },
+	});
+	function buildWorld() {
+		return ECSpresso.create().withPlugin(plugin).build();
+	}
+	const a = buildWorld();
+	const b = buildWorld();
+	await a.initialize();
+	await b.initialize();
+	const inputA = a.getResource('inputState');
+	const inputB = b.getResource('inputState');
+	inputA.setActionMap({ jump: { keys: ['x'] } });
+	inputA.removePlayer('p1');
+	expect(inputB.getActionMap()).toEqual({ jump: { keys: [' '] } });
+	expect(inputB.playerIds()).toEqual(['p1']);
+	dispatchKeyDown(target, ' ');
+	dispatchPointerMove(target, 25, 50);
+	a.update(0.016);
+	expect(inputB.pointer.position).toEqual({ x: 0, y: 0 });
+	b.update(0.016);
+	expect(inputA.keyboard.justPressed(' ')).toBe(true);
+	expect(inputB.keyboard.justPressed(' ')).toBe(true);
+	expect(inputA.actions.isActive('jump')).toBe(false);
+	expect(inputB.actions.justActivated('jump')).toBe(true);
+	a.update(0.016);
+	expect(inputB.keyboard.justPressed(' ')).toBe(true);
+	await a.dispose();
+	dispatchKeyUp(target, ' ');
+	b.update(0.016);
+	expect(inputB.keyboard.justReleased(' ')).toBe(true);
+	const c = buildWorld();
+	await c.initialize();
+	expect(c.getResource('inputState').playerIds()).toEqual(['p1']);
+	expect(c.getResource('inputState').keyboard.isDown(' ')).toBe(false);
+	dispatchKeyDown(target, ' ');
+	b.update(0.016);
+	c.update(0.016);
+	expect(inputB.actions.justActivated('jump')).toBe(true);
+	expect(c.getResource('inputState').actions.justActivated('jump')).toBe(true);
+	await b.dispose();
+	await c.dispose();
+});

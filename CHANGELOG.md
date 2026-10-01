@@ -2,6 +2,15 @@
 
 All notable changes to ECSpresso are documented here. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## Unreleased
+
+### Fixed
+
+- Reusing a built-in plugin object across worlds now creates independent runtime
+  state per installation. This includes both spatial indexes, input, detection,
+  audio, diagnostics, coroutines, flocking, particles, UI, and renderer caches
+  and cleanup hooks. Caller-supplied resources retain their existing ownership.
+
 ## 0.23.0
 
 ### Changed

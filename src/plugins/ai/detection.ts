@@ -184,13 +184,6 @@ export function createDetectionPlugin<G extends string = 'ai', L extends string 
 		phase = 'update',
 	} = options ?? {};
 
-	// Per-detector tracking of previous frame's detected set for event diffing
-	const previousSets = new Map<number, Set<number>>();
-	const currentSet = new Set<number>();
-	const candidateBuf: number[] = [];
-	// Cache: layerFilter array → Set for O(1) lookups
-	const layerFilterCache = new WeakMap<readonly string[], Set<string>>();
-
 	return definePlugin('detection')
 		.withComponentTypes<DetectionComponentTypes>()
 		.withEventTypes<DetectionEventTypes>()
@@ -202,6 +195,13 @@ export function createDetectionPlugin<G extends string = 'ai', L extends string 
 			ResourcesConfig<SpatialIndexResourceTypes>
 		>()
 		.install((world) => {
+			// Per-detector tracking of previous frame's detected set for event diffing
+			const previousSets = new Map<number, Set<number>>();
+			const currentSet = new Set<number>();
+			const candidateBuf: number[] = [];
+			// Cache: layerFilter array → Set for O(1) lookups
+			const layerFilterCache = new WeakMap<readonly string[], Set<string>>();
+
 			world.registerDispose('detector', ({ entityId }) => {
 				previousSets.delete(entityId);
 			});

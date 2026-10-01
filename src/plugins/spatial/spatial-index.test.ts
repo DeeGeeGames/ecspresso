@@ -765,3 +765,27 @@ describe('Spatial Index — Performance', () => {
 		expect(elapsed).toBeLessThan(1000);
 	});
 });
+
+test('one spatial plugin keeps alternating worlds independent', async () => {
+	const plugin = createSpatialIndexPlugin({ cellSize: 32, phases: ['postUpdate'] });
+	function buildWorld() {
+		return ECSpresso.create().withPlugin(createTransformPlugin()).withPlugin(plugin).build();
+	}
+	const a = buildWorld();
+	const b = buildWorld();
+	const entityA = a.spawn({ ...createTransform(10, 10), aabbCollider: { width: 4, height: 4 } });
+	const entityB = b.spawn({ ...createTransform(500, 500), aabbCollider: { width: 4, height: 4 } });
+	a.update(0.016);
+	b.update(0.016);
+	const indexA = a.getResource('spatialIndex');
+	const indexB = b.getResource('spatialIndex');
+	expect(indexA.grid).not.toBe(indexB.grid);
+	expect(indexA.queryRadius(10, 10, 10)).toEqual([entityA.id]);
+	expect(indexB.queryRadius(500, 500, 10)).toEqual([entityB.id]);
+	a.update(0.016);
+	expect(indexB.queryRadius(500, 500, 10)).toEqual([entityB.id]);
+	await a.dispose();
+	b.update(0.016);
+	expect(indexB.queryRadius(500, 500, 10)).toEqual([entityB.id]);
+	await b.dispose();
+});

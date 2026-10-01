@@ -605,9 +605,6 @@ export function createParticlePlugin<
 		phase = 'update',
 	} = options ?? {};
 
-	// Side storage for runtime particle data
-	const emitterData = new Map<number, EmitterRuntimeData>();
-
 	return definePlugin('particles')
 		.withComponentTypes<ParticleComponentTypes>()
 		.withLabels<ParticleLabels>()
@@ -615,6 +612,9 @@ export function createParticlePlugin<
 		.withReactiveQueryNames<'particle-emitters'>()
 		.requires<ParticleRequires>()
 		.install((world) => {
+			// Side storage for runtime particle data
+			const emitterData = new Map<number, EmitterRuntimeData>();
+
 			// Required component: particleEmitter needs localTransform
 			world.registerRequired('particleEmitter', 'localTransform', (): LocalTransform => ({
 				x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1,

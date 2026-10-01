@@ -281,15 +281,15 @@ export function createCoroutinePlugin<G extends string = 'coroutines'>(
 		phase = 'update',
 	} = options ?? {};
 
-	// Tracks entities whose coroutine completed this frame to prevent re-ticking
-	// before the command buffer removes the component.
-	const finished = new Set<number>();
-
 	return definePlugin('coroutines')
 		.withComponentTypes<CoroutineComponentTypes>()
 		.withLabels<'coroutine-update'>()
 		.withGroups<G>()
 		.install((world) => {
+			// Tracks entities whose coroutine completed this frame to prevent re-ticking
+			// before the command buffer removes the component.
+			const finished = new Set<number>();
+
 			world.registerDispose('coroutine', ({ value, entityId }) => {
 				value.generator.return();
 				finished.delete(entityId);

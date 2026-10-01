@@ -345,218 +345,6 @@ export function createAudioPlugin<Ch extends string, G extends string = 'audio'>
 		phase = 'update',
 	} = options;
 
-	// Closure state
-	const channelVolumes = new Map<Ch, number>();
-	const activeSounds = new Map<number, ActiveSound<Ch>>();
-	const musicByChannel = new Map<Ch, MusicEntry<Ch>>();
-	let masterVolume = 1;
-	let muted = false;
-
-	// Initialize channel volumes from definitions
-	const channelNames: Ch[] = [];
-	for (const [name, config] of Object.entries(channelDefs) as Array<[Ch, AudioChannelConfig]>) {
-		channelVolumes.set(name, config.volume);
-		channelNames.push(name);
-	}
-
-	const defaultChannel = channelNames[0] as Ch;
-
-	// Volume computation
-	function effectiveVolume(individualVol: number, channel: Ch): number {
-		if (muted) return 0;
-		const chanVol = channelVolumes.get(channel) ?? 1;
-		return individualVol * chanVol * masterVolume;
-	}
-
-	// Propagate volume changes to all active sounds on a channel
-	function propagateChannelVolume(channel: Ch): void {
-		for (const sound of activeSounds.values()) {
-			if (sound.channel !== channel) continue;
-			sound.howl.volume(effectiveVolume(sound.individualVolume, channel), sound.soundId);
-		}
-		const music = musicByChannel.get(channel);
-		if (music) {
-			music.howl.volume(effectiveVolume(music.individualVolume, channel), music.soundId);
-		}
-	}
-
-	// Propagate volume to all sounds across all channels
-	function propagateAllVolumes(): void {
-		for (const ch of channelNames) {
-			propagateChannelVolume(ch);
-		}
-	}
-
-	// Stop a sound by its Howler sound ID
-	function stopSoundById(soundId: number): void {
-		const entry = activeSounds.get(soundId);
-		if (!entry) return;
-		entry.howl.stop(soundId);
-		activeSounds.delete(soundId);
-	}
-
-	// Event bus reference, set during initialization
-	let eventBusRef: { publish(event: string, data: unknown): void } | null = null;
-
-	// Resolve Howl from asset key
-	let getAsset: ((key: string) => Howl) | null = null;
-
-	// AudioState resource implementation
-	const audioState: AudioState<Ch> = {
-		play(sound, playOpts) {
-			if (!getAsset) return -1;
-			const channel = playOpts?.channel ?? defaultChannel;
-			const individualVol = playOpts?.volume ?? 1;
-			const loop = playOpts?.loop ?? false;
-
-			const howl = getAsset(sound);
-			howl.volume(effectiveVolume(individualVol, channel));
-			howl.loop(loop);
-			const soundId = howl.play();
-
-			const entry: ActiveSound<Ch> = {
-				howl,
-				soundId,
-				channel,
-				individualVolume: individualVol,
-				assetKey: sound,
-				entityId: -1,
-			};
-			activeSounds.set(soundId, entry);
-
-			howl.once('end', () => {
-				activeSounds.delete(soundId);
-				eventBusRef?.publish('soundEnded', {
-					entityId: -1,
-					soundId,
-					sound,
-				} satisfies SoundEndedEvent);
-			}, soundId);
-
-			return soundId;
-		},
-
-		stop(soundId) {
-			stopSoundById(soundId);
-		},
-
-		playMusic(sound, musicOpts) {
-			if (!getAsset) return;
-			const channel = musicOpts?.channel ?? defaultChannel;
-			const individualVol = musicOpts?.volume ?? 1;
-			const loop = musicOpts?.loop ?? true;
-
-			// Stop existing music on this channel
-			const existing = musicByChannel.get(channel);
-			if (existing) {
-				existing.howl.stop(existing.soundId);
-				activeSounds.delete(existing.soundId);
-			}
-
-			const howl = getAsset(sound);
-			howl.volume(effectiveVolume(individualVol, channel));
-			howl.loop(loop);
-			const soundId = howl.play();
-
-			const entry: MusicEntry<Ch> = {
-				howl,
-				soundId,
-				channel,
-				individualVolume: individualVol,
-				assetKey: sound,
-			};
-			musicByChannel.set(channel, entry);
-			activeSounds.set(soundId, {
-				...entry,
-				entityId: -1,
-			});
-
-			howl.once('end', () => {
-				activeSounds.delete(soundId);
-				const current = musicByChannel.get(channel);
-				if (current?.soundId === soundId) {
-					musicByChannel.delete(channel);
-				}
-			}, soundId);
-		},
-
-		stopMusic(channel) {
-			if (channel !== undefined) {
-				const entry = musicByChannel.get(channel);
-				if (entry) {
-					entry.howl.stop(entry.soundId);
-					activeSounds.delete(entry.soundId);
-					musicByChannel.delete(channel);
-				}
-			} else {
-				for (const [ch, entry] of musicByChannel) {
-					entry.howl.stop(entry.soundId);
-					activeSounds.delete(entry.soundId);
-					musicByChannel.delete(ch);
-				}
-			}
-		},
-
-		pauseMusic(channel) {
-			if (channel !== undefined) {
-				const entry = musicByChannel.get(channel);
-				if (entry) entry.howl.pause(entry.soundId);
-			} else {
-				for (const entry of musicByChannel.values()) {
-					entry.howl.pause(entry.soundId);
-				}
-			}
-		},
-
-		resumeMusic(channel) {
-			if (channel !== undefined) {
-				const entry = musicByChannel.get(channel);
-				if (entry) entry.howl.play(entry.soundId);
-			} else {
-				for (const entry of musicByChannel.values()) {
-					entry.howl.play(entry.soundId);
-				}
-			}
-		},
-
-		setChannelVolume(channel, volume) {
-			channelVolumes.set(channel, volume);
-			propagateChannelVolume(channel);
-		},
-
-		getChannelVolume(channel) {
-			return channelVolumes.get(channel) ?? 1;
-		},
-
-		setMasterVolume(volume) {
-			masterVolume = volume;
-			propagateAllVolumes();
-		},
-
-		getMasterVolume() {
-			return masterVolume;
-		},
-
-		mute() {
-			muted = true;
-			propagateAllVolumes();
-		},
-
-		unmute() {
-			muted = false;
-			propagateAllVolumes();
-		},
-
-		toggleMute() {
-			muted = !muted;
-			propagateAllVolumes();
-		},
-
-		isMuted() {
-			return muted;
-		},
-	};
-
 	return definePlugin('audio')
 		.withComponentTypes<AudioComponentTypes<Ch>>()
 		.withEventTypes<AudioEventTypes<Ch>>()
@@ -565,6 +353,218 @@ export function createAudioPlugin<Ch extends string, G extends string = 'audio'>
 		.withGroups<G>()
 		.withReactiveQueryNames<'audio-sources'>()
 		.install((world) => {
+			// Closure state
+			const channelVolumes = new Map<Ch, number>();
+			const activeSounds = new Map<number, ActiveSound<Ch>>();
+			const musicByChannel = new Map<Ch, MusicEntry<Ch>>();
+			let masterVolume = 1;
+			let muted = false;
+
+			// Initialize channel volumes from definitions
+			const channelNames: Ch[] = [];
+			for (const [name, config] of Object.entries(channelDefs) as Array<[Ch, AudioChannelConfig]>) {
+				channelVolumes.set(name, config.volume);
+				channelNames.push(name);
+			}
+
+			const defaultChannel = channelNames[0] as Ch;
+
+			// Volume computation
+			function effectiveVolume(individualVol: number, channel: Ch): number {
+				if (muted) return 0;
+				const chanVol = channelVolumes.get(channel) ?? 1;
+				return individualVol * chanVol * masterVolume;
+			}
+
+			// Propagate volume changes to all active sounds on a channel
+			function propagateChannelVolume(channel: Ch): void {
+				for (const sound of activeSounds.values()) {
+					if (sound.channel !== channel) continue;
+					sound.howl.volume(effectiveVolume(sound.individualVolume, channel), sound.soundId);
+				}
+				const music = musicByChannel.get(channel);
+				if (music) {
+					music.howl.volume(effectiveVolume(music.individualVolume, channel), music.soundId);
+				}
+			}
+
+			// Propagate volume to all sounds across all channels
+			function propagateAllVolumes(): void {
+				for (const ch of channelNames) {
+					propagateChannelVolume(ch);
+				}
+			}
+
+			// Stop a sound by its Howler sound ID
+			function stopSoundById(soundId: number): void {
+				const entry = activeSounds.get(soundId);
+				if (!entry) return;
+				entry.howl.stop(soundId);
+				activeSounds.delete(soundId);
+			}
+
+			// Event bus reference, set during initialization
+			let eventBusRef: { publish(event: string, data: unknown): void } | null = null;
+
+			// Resolve Howl from asset key
+			let getAsset: ((key: string) => Howl) | null = null;
+
+			// AudioState resource implementation
+			const audioState: AudioState<Ch> = {
+				play(sound, playOpts) {
+					if (!getAsset) return -1;
+					const channel = playOpts?.channel ?? defaultChannel;
+					const individualVol = playOpts?.volume ?? 1;
+					const loop = playOpts?.loop ?? false;
+
+					const howl = getAsset(sound);
+					howl.volume(effectiveVolume(individualVol, channel));
+					howl.loop(loop);
+					const soundId = howl.play();
+
+					const entry: ActiveSound<Ch> = {
+						howl,
+						soundId,
+						channel,
+						individualVolume: individualVol,
+						assetKey: sound,
+						entityId: -1,
+					};
+					activeSounds.set(soundId, entry);
+
+					howl.once('end', () => {
+						activeSounds.delete(soundId);
+						eventBusRef?.publish('soundEnded', {
+							entityId: -1,
+							soundId,
+							sound,
+						} satisfies SoundEndedEvent);
+					}, soundId);
+
+					return soundId;
+				},
+
+				stop(soundId) {
+					stopSoundById(soundId);
+				},
+
+				playMusic(sound, musicOpts) {
+					if (!getAsset) return;
+					const channel = musicOpts?.channel ?? defaultChannel;
+					const individualVol = musicOpts?.volume ?? 1;
+					const loop = musicOpts?.loop ?? true;
+
+					// Stop existing music on this channel
+					const existing = musicByChannel.get(channel);
+					if (existing) {
+						existing.howl.stop(existing.soundId);
+						activeSounds.delete(existing.soundId);
+					}
+
+					const howl = getAsset(sound);
+					howl.volume(effectiveVolume(individualVol, channel));
+					howl.loop(loop);
+					const soundId = howl.play();
+
+					const entry: MusicEntry<Ch> = {
+						howl,
+						soundId,
+						channel,
+						individualVolume: individualVol,
+						assetKey: sound,
+					};
+					musicByChannel.set(channel, entry);
+					activeSounds.set(soundId, {
+						...entry,
+						entityId: -1,
+					});
+
+					howl.once('end', () => {
+						activeSounds.delete(soundId);
+						const current = musicByChannel.get(channel);
+						if (current?.soundId === soundId) {
+							musicByChannel.delete(channel);
+						}
+					}, soundId);
+				},
+
+				stopMusic(channel) {
+					if (channel !== undefined) {
+						const entry = musicByChannel.get(channel);
+						if (entry) {
+							entry.howl.stop(entry.soundId);
+							activeSounds.delete(entry.soundId);
+							musicByChannel.delete(channel);
+						}
+					} else {
+						for (const [ch, entry] of musicByChannel) {
+							entry.howl.stop(entry.soundId);
+							activeSounds.delete(entry.soundId);
+							musicByChannel.delete(ch);
+						}
+					}
+				},
+
+				pauseMusic(channel) {
+					if (channel !== undefined) {
+						const entry = musicByChannel.get(channel);
+						if (entry) entry.howl.pause(entry.soundId);
+					} else {
+						for (const entry of musicByChannel.values()) {
+							entry.howl.pause(entry.soundId);
+						}
+					}
+				},
+
+				resumeMusic(channel) {
+					if (channel !== undefined) {
+						const entry = musicByChannel.get(channel);
+						if (entry) entry.howl.play(entry.soundId);
+					} else {
+						for (const entry of musicByChannel.values()) {
+							entry.howl.play(entry.soundId);
+						}
+					}
+				},
+
+				setChannelVolume(channel, volume) {
+					channelVolumes.set(channel, volume);
+					propagateChannelVolume(channel);
+				},
+
+				getChannelVolume(channel) {
+					return channelVolumes.get(channel) ?? 1;
+				},
+
+				setMasterVolume(volume) {
+					masterVolume = volume;
+					propagateAllVolumes();
+				},
+
+				getMasterVolume() {
+					return masterVolume;
+				},
+
+				mute() {
+					muted = true;
+					propagateAllVolumes();
+				},
+
+				unmute() {
+					muted = false;
+					propagateAllVolumes();
+				},
+
+				toggleMute() {
+					muted = !muted;
+					propagateAllVolumes();
+				},
+
+				isMuted() {
+					return muted;
+				},
+			};
+
 			world.addResource('audioState', audioState);
 
 			// Dispose callback: stop sounds when audioSource component is removed

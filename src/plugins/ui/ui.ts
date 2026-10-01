@@ -443,16 +443,6 @@ export function createUIPlugin<G extends string = 'ui', A extends string = strin
 		renderSyncPriority = 480,
 	} = options ?? {};
 
-	const labelPool = new Map<number, UILabelRuntime>();
-	const panelPool = new Map<number, UIPanelRuntime>();
-	const progressPool = new Map<number, UIProgressRuntime>();
-	const messageLogPool = new Map<number, UIMessageLogRuntime>();
-	const scratchPos: Vector2D = { x: 0, y: 0 };
-	const scratchFill: FillRect = { x: 0, y: 0, width: 0, height: 0 };
-	// Captured at init for the message-log sync, which (unlike other sync systems) must create
-	// new Text/Container nodes during process() as fragments grow via appendLogLine.
-	let pixiModuleForMessageLog: typeof import('pixi.js') | null = null;
-
 	return definePlugin('ui')
 		.withComponentTypes<UIComponentTypes>()
 		.withEventTypes<UIEventTypes>()
@@ -461,6 +451,16 @@ export function createUIPlugin<G extends string = 'ui', A extends string = strin
 		.withReactiveQueryNames<'ui-labels' | 'ui-panels' | 'ui-progress-bars' | 'ui-message-logs'>()
 		.requires<UIRequires<A>>()
 		.install((world) => {
+			const labelPool = new Map<number, UILabelRuntime>();
+			const panelPool = new Map<number, UIPanelRuntime>();
+			const progressPool = new Map<number, UIProgressRuntime>();
+			const messageLogPool = new Map<number, UIMessageLogRuntime>();
+			const scratchPos: Vector2D = { x: 0, y: 0 };
+			const scratchFill: FillRect = { x: 0, y: 0, width: 0, height: 0 };
+			// Captured at init for the message-log sync, which (unlike other sync systems) must create
+			// new Text/Container nodes during process() as fragments grow via appendLogLine.
+			let pixiModuleForMessageLog: typeof import('pixi.js') | null = null;
+
 			world.registerRequired('uiElement', 'localTransform', (): LocalTransform => ({
 				x: DEFAULT_LOCAL_TRANSFORM.x,
 				y: DEFAULT_LOCAL_TRANSFORM.y,

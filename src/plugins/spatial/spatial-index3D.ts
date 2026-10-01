@@ -161,15 +161,15 @@ export function createSpatialIndex3DPlugin<G extends string = 'spatialIndex3D'>(
 		phases = ['fixedUpdate', 'postUpdate'] as const,
 	} = options ?? {};
 
-	const grid = createGrid3D(cellSize);
-	const resource = createSpatialIndex3DResource(grid);
-
 	return definePlugin('spatialIndex3D')
 		.withComponentTypes<SpatialIndex3DComponentTypes>()
 		.withResourceTypes<SpatialIndex3DResourceTypes>()
 		.withLabels<SpatialIndex3DLabel>()
 		.withGroups<G>()
 		.install((world) => {
+			const grid = createGrid3D(cellSize);
+			const resource = createSpatialIndex3DResource(grid);
+
 			world.addResource('spatialIndex3D', resource);
 
 			// Flag flipped true by the fixedUpdate rebuild; checked + reset by the

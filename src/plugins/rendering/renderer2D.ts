@@ -490,105 +490,8 @@ export function createRenderer2DPlugin<G extends string = 'renderer2d'>(
 	const designHeight = screenScale?.height ?? 0;
 	const screenScaleMode: ScaleMode = screenScale?.mode ?? 'fit';
 
-	// Entity ID -> PixiJS Container mapping for scene graph management
-	const entityToPixiObject = new Map<number, Container>();
-
-	// Render layer name -> PixiJS Container mapping
-	const layerContainers = new Map<string, Container>();
-	const pluginContainers = new Set<Container>();
-	const screenSpaceLayerSet = new Set(screenSpaceLayers);
-	let detachRendererHooks = () => {};
-	let detachSceneGraphEvents = () => {};
-
-	function disposePluginContainers(): void {
-		Array.from(pluginContainers).reverse().forEach((container) => {
-			container.removeFromParent();
-			container.destroy({ children: false });
-		});
-		pluginContainers.clear();
-		layerContainers.clear();
-		entityToPixiObject.clear();
-		screenSpaceParent = null;
-	}
-
-	// Container constructor captured during initialization via dynamic import
-	// Used by getOrCreateLayerContainer for lazy layer creation
-	let createLayerContainer: (label: string) => Container = () => {
-		throw new Error('renderer2D: createLayerContainer called before initialization');
-	};
-
-	// Parent container for screen-space layers (set during init when camera + screenSpaceLayers)
-	let screenSpaceParent: Container | null = null;
-
-	// Helper to get or create a render layer container
-	function getOrCreateLayerContainer(
-		layerName: string,
-		rootCont: Container
-	): Container {
-		const existing = layerContainers.get(layerName);
-		if (existing) return existing;
-
-		// Lazy-create for undeclared layers, appended to end
-		const cont = createLayerContainer(`layer:${layerName}`);
-		pluginContainers.add(cont);
-		layerContainers.set(layerName, cont);
-		const parent = (screenSpaceParent && screenSpaceLayerSet.has(layerName))
-			? screenSpaceParent
-			: rootCont;
-		parent.addChild(cont);
-		return cont;
-	}
-
-	// Helper to resolve the target container for an entity.
-	// Scene graph stays flat (rootContainer or render layer) because the render
-	// sync positions objects using absolute worldTransform.  Nesting under a
-	// parent's display object would double-apply the parent's transform.
 	type PluginResourceTypes = Renderer2DResourceTypes & ViewportScaleResourceTypes;
 	type PluginECS = ECSpresso<Renderer2DWorldConfig<PluginResourceTypes>>;
-
-	function resolveTargetContainer(
-		entityId: number,
-		ecs: PluginECS
-	): Container {
-		const rootCont = ecs.getResource('rootContainer');
-
-		// 1. Check render layer component
-		const layerName = ecs.getComponent(entityId, 'renderLayer');
-		if (layerName) return getOrCreateLayerContainer(layerName, rootCont);
-
-		// 2. Fall back to root container
-		return rootCont;
-	}
-
-	// Helper to add a PixiJS object to the scene graph
-	function addToSceneGraph(
-		entityId: number,
-		pixiObject: Container,
-		ecs: PluginECS
-	): void {
-		const targetContainer = resolveTargetContainer(entityId, ecs);
-
-		// Only add if not already a child
-		if (pixiObject.parent !== targetContainer) {
-			targetContainer.addChild(pixiObject);
-		}
-	}
-
-	// Helper to update parent in scene graph
-	function updateSceneGraphParent(
-		entityId: number,
-		ecs: PluginECS
-	): void {
-		const pixiObject = entityToPixiObject.get(entityId);
-		if (!pixiObject) return;
-
-		const targetContainer = resolveTargetContainer(entityId, ecs);
-
-		if (pixiObject.parent !== targetContainer) {
-			pixiObject.removeFromParent();
-			targetContainer.addChild(pixiObject);
-		}
-	}
 
 	// Determine mode: pre-initialized if an Application instance was provided, otherwise managed
 	const isManaged = !('app' in options && options.app !== undefined);
@@ -601,6 +504,103 @@ export function createRenderer2DPlugin<G extends string = 'renderer2d'>(
 		.withGroups<G>()
 		.withReactiveQueryNames<Renderer2DReactiveQueryNames>()
 		.install((world) => {
+			// Entity ID -> PixiJS Container mapping for scene graph management
+			const entityToPixiObject = new Map<number, Container>();
+
+			// Render layer name -> PixiJS Container mapping
+			const layerContainers = new Map<string, Container>();
+			const pluginContainers = new Set<Container>();
+			const screenSpaceLayerSet = new Set(screenSpaceLayers);
+			let detachRendererHooks = () => {};
+			let detachSceneGraphEvents = () => {};
+
+			function disposePluginContainers(): void {
+				Array.from(pluginContainers).reverse().forEach((container) => {
+					container.removeFromParent();
+					container.destroy({ children: false });
+				});
+				pluginContainers.clear();
+				layerContainers.clear();
+				entityToPixiObject.clear();
+				screenSpaceParent = null;
+			}
+
+			// Container constructor captured during initialization via dynamic import
+			// Used by getOrCreateLayerContainer for lazy layer creation
+			let createLayerContainer: (label: string) => Container = () => {
+				throw new Error('renderer2D: createLayerContainer called before initialization');
+			};
+
+			// Parent container for screen-space layers (set during init when camera + screenSpaceLayers)
+			let screenSpaceParent: Container | null = null;
+
+			// Helper to get or create a render layer container
+			function getOrCreateLayerContainer(
+				layerName: string,
+				rootCont: Container
+			): Container {
+				const existing = layerContainers.get(layerName);
+				if (existing) return existing;
+
+				// Lazy-create for undeclared layers, appended to end
+				const cont = createLayerContainer(`layer:${layerName}`);
+				pluginContainers.add(cont);
+				layerContainers.set(layerName, cont);
+				const parent = (screenSpaceParent && screenSpaceLayerSet.has(layerName))
+					? screenSpaceParent
+					: rootCont;
+				parent.addChild(cont);
+				return cont;
+			}
+
+			// Helper to resolve the target container for an entity.
+			// Scene graph stays flat (rootContainer or render layer) because the render
+			// sync positions objects using absolute worldTransform.  Nesting under a
+			// parent's display object would double-apply the parent's transform.
+			function resolveTargetContainer(
+				entityId: number,
+				ecs: PluginECS
+			): Container {
+				const rootCont = ecs.getResource('rootContainer');
+
+				// 1. Check render layer component
+				const layerName = ecs.getComponent(entityId, 'renderLayer');
+				if (layerName) return getOrCreateLayerContainer(layerName, rootCont);
+
+				// 2. Fall back to root container
+				return rootCont;
+			}
+
+			// Helper to add a PixiJS object to the scene graph
+			function addToSceneGraph(
+				entityId: number,
+				pixiObject: Container,
+				ecs: PluginECS
+			): void {
+				const targetContainer = resolveTargetContainer(entityId, ecs);
+
+				// Only add if not already a child
+				if (pixiObject.parent !== targetContainer) {
+					targetContainer.addChild(pixiObject);
+				}
+			}
+
+			// Helper to update parent in scene graph
+			function updateSceneGraphParent(
+				entityId: number,
+				ecs: PluginECS
+			): void {
+				const pixiObject = entityToPixiObject.get(entityId);
+				if (!pixiObject) return;
+
+				const targetContainer = resolveTargetContainer(entityId, ecs);
+
+				if (pixiObject.parent !== targetContainer) {
+					pixiObject.removeFromParent();
+					targetContainer.addChild(pixiObject);
+				}
+			}
+
 			// Install transform plugin (deduplicates if already installed)
 			world.installPlugin(createTransformPlugin(transformOptions));
 

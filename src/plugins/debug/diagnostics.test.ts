@@ -255,3 +255,24 @@ describe('Diagnostics Plugin', () => {
 		expect(d.phaseTimings).toBe(ecs.phaseTimings);
 	});
 });
+
+test('reused diagnostics plugin isolates resources and frame history', async () => {
+	const plugin = createDiagnosticsPlugin({ fpsSampleCount: 3 });
+	const a = ECSpresso.create().withPlugin(plugin).build();
+	const b = ECSpresso.create().withPlugin(plugin).build();
+	await a.initialize();
+	await b.initialize();
+	a.spawn({});
+	a.update(0.016);
+	a.update(0.016);
+	const dataA = a.getResource('diagnostics');
+	const dataB = b.getResource('diagnostics');
+	expect(dataA).not.toBe(dataB);
+	expect(dataA.entityCount).toBe(1);
+	expect(dataB.entityCount).toBe(0);
+	b.update(0.016);
+	expect(dataB.fps).toBe(0);
+	expect(dataA.entityCount).toBe(1);
+	await a.dispose();
+	await b.dispose();
+});

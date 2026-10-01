@@ -45,6 +45,28 @@ const game = ECSpresso.create()
   .build();
 ```
 
+## State per installation
+
+The same plugin object can be installed into multiple worlds. Allocate mutable
+runtime state inside `install`, so each world owns its resources, caches,
+listeners, and cleanup closures. Keep reusable configuration outside the
+callback:
+
+```typescript
+function createCounterPlugin(initialCount = 0) {
+  return definePlugin('counter')
+    .withResourceTypes<{ counter: { value: number } }>()
+    .install((world) => {
+      world.addResource('counter', { value: initialCount });
+    });
+}
+```
+
+Built-in plugins follow this rule for state they create. Objects supplied by
+the caller, such as a navigation grid, renderer, scene, or asset, retain their
+existing ownership and identity. Supply separate objects when those external
+objects also need to be independent.
+
 ## Plugin System Defaults
 
 When every system installed by a plugin shares a phase, priority, or screen
