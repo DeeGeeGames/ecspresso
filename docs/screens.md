@@ -144,6 +144,48 @@ const game = ECSpresso.create()
 
 ## Screen Hooks
 
+### Screen state subscriptions
+
+Use `onResourceChange('$screen', ...)` to observe the current screen and state.
+Register before or after `initialize()`. Initialization establishes the first
+snapshot without calling the subscriber.
+
+```typescript
+const game = ECSpresso.create()
+  .withScreens(screens => screens
+    .add('gameplay', { initialState: () => ({ score: 0 }) }))
+  .build();
+
+const offState = game.onResourceChange('$screen', (screen, previous) => {
+  console.log(screen.current, screen.state, previous.state);
+});
+
+await game.initialize();
+await game.setScreen('gameplay', {});
+game.update(0); // Subscriber sees entry into gameplay.
+
+game.updateScreenState('gameplay', current => ({ score: current.score + 1 }));
+game.update(0); // Subscriber sees the new state and the previous state.
+
+offState();
+```
+
+Screen updates and transitions notify at the end of the next `update()` call,
+after render systems run. A running game loop performs this flush; the example
+calls `update(0)` explicitly. Changes between flushes are batched into one
+notification with the latest value. If the final shallow properties match the
+previous snapshot, no notification fires. Use lifecycle hooks below when every
+individual enter, resume, or exit matters.
+
+Observation is shallow: `updateScreenState` replaces the state object and is
+observable, while `getScreenState('gameplay').score += 1` mutates a nested value
+and does not notify a `$screen` subscriber. Replace nested objects in the update
+if their previous contents need to remain available to the callback; snapshots
+retain nested references. Explicit `setResource`/`updateResource` calls notify
+resource subscribers immediately, but screen updates use the frame flush.
+
+### Screen lifecycle subscriptions
+
 Subscribe to a specific screen entering, resuming, or exiting without writing inline `screenEnter` / `screenResume` / `screenExit` event guards. Multiple handlers can be registered for the same screen and fire in registration order. Each returns a disposer.
 
 ```typescript
