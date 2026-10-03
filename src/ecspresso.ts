@@ -12,6 +12,7 @@ import {
 	type SystemRegistrar,
 } from "./system-registrar";
 import { SystemBuilder, PROCESS_EACH_QUERY } from "./system-builder";
+import { buildSystemSchedule } from './system-schedule';
 import { checkRequiredCycle } from "./utils/check-required-cycle";
 import { version } from "../package.json";
 import type { AssetDefinition, AssetHandle, AssetEvents } from "./asset-types";
@@ -211,6 +212,8 @@ export default class ECSpresso<
 	/** Pending system builders retained until finalization or teardown. */
 	private _pendingFinalizers: Array<() => System<Cfg, any, any>> = [];
 	private _batchingRegistrations = false;
+	/** A failed assembly must never fall back to a previously valid schedule. */
+	private _scheduleDirty = false;
 	/** Whether `initialize()` has completed — flips the onInitialize firing path for late-added systems */
 	private _initializeFired = false;
 	private _systemsInitialized: WeakSet<object> = new WeakSet();
@@ -401,19 +404,18 @@ export default class ECSpresso<
 	 * Finalize and register all pending system builders.
 	 * @private
 	 */
-	private _finalizePendingBuilders(): void {
+	private _finalizePendingBuilders(validate = true): void {
 		if (this._lifecycleState !== 'active') return;
-		if (this._pendingFinalizers.length === 0) return;
-		this._batchingRegistrations = true;
-		while (this._pendingFinalizers.length > 0) {
-			const finalizers = this._pendingFinalizers;
-			this._pendingFinalizers = [];
-			for (const finalize of finalizers) {
-				this._registerSystem(finalize());
+		try {
+			this._batchingRegistrations = true;
+			while (this._pendingFinalizers.length > 0) {
+				const finalize = this._pendingFinalizers.shift();
+				if (finalize) this._registerSystem(finalize());
 			}
+		} finally {
+			this._batchingRegistrations = false;
 		}
-		this._batchingRegistrations = false;
-		this._rebuildPhaseSystems();
+		if (validate && this._scheduleDirty) this._rebuildPhaseSystems();
 	}
 
 	/**
@@ -428,9 +430,12 @@ export default class ECSpresso<
 		if (this._lifecycleState !== 'active') return;
 		const currentScreen = this._getCurrentScreen();
 		const timing = this._diagnosticsEnabled;
+		// Pin processing order for this entire update, including repeated fixed steps.
+		// Runtime edits assemble the next schedule; removals are skipped immediately.
+		const phaseSystems = this._phaseSystems;
 
 		// 1. preUpdate phase
-		this._runPhase('preUpdate', deltaTime, currentScreen, timing);
+		this._runPhase('preUpdate', deltaTime, currentScreen, timing, phaseSystems.preUpdate);
 		if (this._lifecycleState !== 'active') return;
 
 		// 2. fixedUpdate phase — accumulate time and step N times
@@ -438,7 +443,7 @@ export default class ECSpresso<
 		this._fixedAccumulator += deltaTime;
 		let steps = 0;
 		while (this._lifecycleState === 'active' && this._fixedAccumulator >= this._fixedDt && steps < this._maxFixedSteps) {
-			this._executePhase(this._phaseSystems.fixedUpdate, this._fixedDt, currentScreen);
+			this._executePhase(phaseSystems.fixedUpdate, this._fixedDt, currentScreen);
 			this._commandBuffer.playback(this);
 			this._fixedAccumulator -= this._fixedDt;
 			steps++;
@@ -455,22 +460,24 @@ export default class ECSpresso<
 		this._interpolationAlpha = this._fixedAccumulator / this._fixedDt;
 
 		// 3. update phase
-		this._runPhase('update', deltaTime, currentScreen, timing);
+		this._runPhase('update', deltaTime, currentScreen, timing, phaseSystems.update);
 		if (this._lifecycleState !== 'active') return;
 
 		// 4. postUpdate phase
-		this._runPhase('postUpdate', deltaTime, currentScreen, timing);
+		this._runPhase('postUpdate', deltaTime, currentScreen, timing, phaseSystems.postUpdate);
 		if (this._lifecycleState !== 'active') return;
 
 		// 5. Post-update hooks (between postUpdate and render, preserving existing behavior)
 		for (const hook of this._postUpdateHooks) {
 			if (this._lifecycleState !== 'active') return;
+			if (this._scheduleDirty) this._rebuildPhaseSystems();
 			hook({ ecs: this, dt: deltaTime });
 		}
 		if (this._lifecycleState !== 'active') return;
+		if (this._scheduleDirty) this._rebuildPhaseSystems();
 
 		// 6. render phase
-		this._runPhase('render', deltaTime, currentScreen, timing);
+		this._runPhase('render', deltaTime, currentScreen, timing, phaseSystems.render);
 
 		// 7. Flush observed resources — shallow-diff any resource with active
 		// subscribers and fire callbacks for in-place mutations.
@@ -496,6 +503,7 @@ export default class ECSpresso<
 	): void {
 		for (const system of systems) {
 			if (this._lifecycleState !== 'active') return;
+			if (!this._canProcessSystem(system)) continue;
 			if (!system.process && !system.onEntityEnter) continue;
 			if (!this._isSystemActive(system, currentScreen)) continue;
 
@@ -574,6 +582,7 @@ export default class ECSpresso<
 			const enterTracking = this._entityEnterTracking.get(system);
 			if (enterTracking && system.onEntityEnter) {
 				for (const queryName in system.onEntityEnter) {
+					if (!this._canProcessSystem(system)) break;
 					const results = queryResults[queryName];
 					const seenEntities = enterTracking.get(queryName);
 					if (!results || !seenEntities) continue;
@@ -586,6 +595,7 @@ export default class ECSpresso<
 					frameSet.clear();
 
 					for (const entity of results) {
+						if (!this._canProcessSystem(system)) break;
 						frameSet.add(entity.id);
 						if (!seenEntities.has(entity.id)) {
 							seenEntities.add(entity.id);
@@ -601,8 +611,10 @@ export default class ECSpresso<
 					}
 				}
 			}
+			if (this._lifecycleState !== 'active') return;
+			const canProcess = this._canProcessSystem(system);
 
-			if (system.process) {
+			if (system.process && canProcess) {
 				const shouldRun = hasResults || system.runWhenEmpty || !hasQueries;
 				if (shouldRun) {
 					const previousHint = this._activeScopeHint;
@@ -619,9 +631,11 @@ export default class ECSpresso<
 				}
 			}
 			if (this._lifecycleState !== 'active') return;
+			if (this._scheduleDirty) this._rebuildPhaseSystems();
 
 			// Auto-mark iterated entities for queries that declared `mutates`.
-			// Runs after process() and before the threshold advance so the
+			// Publish completed callback writes even after self-removal. Runs
+			// after process() and before the threshold advance so the
 			// system's own threshold captures its auto-marks (no feedback loop).
 			const autoMarkPairs = system._autoMarkPairs;
 			if (autoMarkPairs) {
@@ -657,8 +671,16 @@ export default class ECSpresso<
 			}
 
 			// Record this system's last-seen sequence so it won't re-process these marks
-			this._systemLastSeqs.set(system, this._entityManager.changeSeq);
+			if (this._systemLastSeqs.has(system)) this._systemLastSeqs.set(system, this._entityManager.changeSeq);
 		}
+		if (this._lifecycleState === 'active' && this._scheduleDirty) this._rebuildPhaseSystems();
+	}
+
+	/** Validate between framework callbacks without allocating on unchanged updates. */
+	private _canProcessSystem(system: (typeof this._systems)[number]): boolean {
+		if (this._lifecycleState !== 'active') return false;
+		if (this._scheduleDirty) this._rebuildPhaseSystems();
+		return this._systemLastSeqs.has(system);
 	}
 
 	/**
@@ -669,14 +691,15 @@ export default class ECSpresso<
 		phase: SystemPhase,
 		deltaTime: number,
 		currentScreen: (keyof Cfg['screens'] & string) | null,
-		timing: boolean
+		timing: boolean,
+		systems: Readonly<typeof this._systems>,
 	): void {
 		if (timing) {
 			const t0 = performance.now();
-			this._executePhase(this._phaseSystems[phase], deltaTime, currentScreen);
+			this._executePhase(systems, deltaTime, currentScreen);
 			this._phaseTimings[phase] = performance.now() - t0;
 		} else {
-			this._executePhase(this._phaseSystems[phase], deltaTime, currentScreen);
+			this._executePhase(systems, deltaTime, currentScreen);
 		}
 		this._commandBuffer.playback(this);
 	}
@@ -775,31 +798,19 @@ export default class ECSpresso<
 
 	/**
 	 * Rebuild per-phase system arrays from the flat _systems list.
-	 * Each phase array is sorted by priority (higher first), with
-	 * registration order as tiebreaker.
+	 * Explicit edges precede priority; eligible systems retain descending
+	 * priority and registration ties. Replace the live cache only after validation.
 	 * @private
 	 */
 	private _rebuildPhaseSystems(): void {
-		for (const phase of PHASE_ORDER) {
-			this._phaseSystems[phase] = [];
-		}
-		for (const system of this._systems) {
-			const phase = system.phase ?? 'update';
-			this._phaseSystems[phase].push(system);
-		}
-		for (const phase of PHASE_ORDER) {
-			this._phaseSystems[phase].sort((a, b) => {
-				const priorityA = a.priority ?? 0;
-				const priorityB = b.priority ?? 0;
-				return priorityB - priorityA; // Higher priority executes first
-			});
-		}
+		this._phaseSystems = buildSystemSchedule(this._systems);
+		this._scheduleDirty = false;
 	}
 
 	/**
 		* Update the priority of a system
 		* @param label The unique label of the system to update
-		* @param priority The new priority value (higher values execute first)
+		* @param priority The new priority among eligible systems (higher first)
 		* @returns true if the system was found and updated, false otherwise
 	*/
 	updateSystemPriority(label: Labels, priority: number): boolean {
@@ -823,10 +834,11 @@ export default class ECSpresso<
 	 * @returns true if the system was found and updated, false otherwise
 	 */
 	updateSystemPhase(label: Labels, phase: SystemPhase): boolean {
-		this._finalizePendingBuilders();
+		this._finalizePendingBuilders(false);
 		const system = this._systems.find(system => system.label === label);
 		if (!system) return false;
 
+		buildSystemSchedule(this._systems.map(current => current === system ? { ...current, phase } : current));
 		system.phase = phase;
 		this._rebuildPhaseSystems();
 
@@ -896,7 +908,7 @@ export default class ECSpresso<
 		* @returns true if the system was found and removed, false otherwise
 	*/
 	removeSystem(label: Labels): boolean {
-		this._finalizePendingBuilders();
+		this._finalizePendingBuilders(false);
 		const index = this._systems.findIndex(system => system.label === label);
 		if (index === -1) return false;
 
@@ -904,17 +916,21 @@ export default class ECSpresso<
 		// This should never happen since we just found the system by index
 		if (!system) return false;
 
-		const detachResult = this._detachSystemSafely(system);
+		// Validate before detach, unsubscribe, or removing tracking state.
+		const remaining = this._systems.filter(current => current !== system);
+		const schedule = buildSystemSchedule(remaining);
 
 		// Remove system and clean up per-system tracking
-		this._systems.splice(index, 1);
+		this._systems = remaining;
 		this._forgetSystem(system);
+		this._phaseSystems = schedule;
+		this._scheduleDirty = false;
+
+		// Publish the removal before user hooks so their schedule edits persist.
+		const detachResult = this._detachSystemSafely(system);
 		if (detachResult instanceof Promise) {
 			this._trackSystemDetach(detachResult, system.label);
 		}
-
-		// Re-sort systems
-		this._rebuildPhaseSystems();
 
 		return true;
 	}
@@ -1094,6 +1110,7 @@ export default class ECSpresso<
 	_registerSystem(system: System<Cfg, any, any>): void {
 		if (this._lifecycleState !== 'active') return;
 		this._systems.push(system);
+		this._scheduleDirty = true;
 		// Initialize the system's last-seen sequence to the current change threshold.
 		// Before any update this is 0, so newly added systems see spawn marks.
 		// After updates, the threshold is advanced past consumed marks, so

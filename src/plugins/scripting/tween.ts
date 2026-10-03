@@ -5,7 +5,7 @@
  * field over time with standard easing functions, sequences, and completion events.
  */
 
-import { definePlugin, type BasePluginOptions } from 'ecspresso';
+import { defineSystemRef, type SystemOrderingOptions, definePlugin, type BasePluginOptions } from 'ecspresso';
 import type { ComponentsOfWorld, AnyECSpresso } from 'ecspresso';
 import { linear, type EasingFn } from '../../utils/easing';
 export * from '../../utils/easing';
@@ -67,7 +67,12 @@ export interface TweenComponentTypes {
 
 // ==================== Plugin Options ====================
 
-export interface TweenPluginOptions<G extends string = 'tweens'> extends BasePluginOptions<G> {}
+/** Public processing references. Factory before/after options target `update` only. */
+export const tweenSystems = Object.freeze({
+	update: defineSystemRef('scripting.tween.update'),
+});
+
+export interface TweenPluginOptions<G extends string = 'tweens'> extends BasePluginOptions<G>, SystemOrderingOptions {}
 
 // ==================== Helper Functions ====================
 
@@ -549,6 +554,9 @@ export function createTweenPlugin<G extends string = 'tweens'>(
 		.install((world) => {
 			world
 				.addSystem('tween-update')
+				.withRef(tweenSystems.update)
+				.before(...options?.before ?? [])
+				.after(...options?.after ?? [])
 				.setPriority(priority)
 				.inPhase(phase)
 				.inGroup(systemGroup)

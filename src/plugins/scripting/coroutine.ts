@@ -7,7 +7,7 @@
  * `waitForEvent`, `parallel`, `race`) compose via `yield*`.
  */
 
-import { definePlugin, type BasePluginOptions } from 'ecspresso';
+import { defineSystemRef, type SystemOrderingOptions, definePlugin, type BasePluginOptions } from 'ecspresso';
 import type { EventsOfWorld, AnyECSpresso } from 'ecspresso';
 
 // ==================== Generator Protocol ====================
@@ -39,7 +39,12 @@ export interface CoroutineComponentTypes {
 
 // ==================== Plugin Options ====================
 
-export interface CoroutinePluginOptions<G extends string = 'coroutines'> extends BasePluginOptions<G> {}
+/** Public processing references. Factory before/after options target `update` only. */
+export const coroutineSystems = Object.freeze({
+	update: defineSystemRef('scripting.coroutine.update'),
+});
+
+export interface CoroutinePluginOptions<G extends string = 'coroutines'> extends BasePluginOptions<G>, SystemOrderingOptions {}
 
 // ==================== Component Factory ====================
 
@@ -297,6 +302,9 @@ export function createCoroutinePlugin<G extends string = 'coroutines'>(
 
 			world
 				.addSystem('coroutine-update')
+				.withRef(coroutineSystems.update)
+				.before(...options?.before ?? [])
+				.after(...options?.after ?? [])
 				.setPriority(priority)
 				.inPhase(phase)
 				.inGroup(systemGroup)

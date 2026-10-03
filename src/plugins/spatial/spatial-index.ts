@@ -10,8 +10,7 @@
  * spatialIndex resource at runtime and use it for broadphase when present.
  */
 
-import { definePlugin } from 'ecspresso';
-import type { SystemPhase } from 'ecspresso';
+import { definePlugin, defineSystemRef, type SystemOrderingOptions } from 'ecspresso';
 import type { TransformComponentTypes } from './transform';
 import type { CollisionComponentTypes } from '../physics/collision';
 import {
@@ -67,6 +66,14 @@ type SpatialIndexComponentTypes =
 export type SpatialIndexPhase = 'fixedUpdate' | 'postUpdate';
 type SpatialIndexLabel = `spatial-index-rebuild-${SpatialIndexPhase}`;
 
+/** Rebuild references are bound only for phases selected by the factory. */
+export const spatialIndexSystems = Object.freeze({
+	rebuild: Object.freeze({
+		fixedUpdate: defineSystemRef('spatialIndex.rebuild.fixedUpdate'),
+		postUpdate: defineSystemRef('spatialIndex.rebuild.postUpdate'),
+	}),
+});
+
 export interface SpatialIndexPluginOptions<G extends string = 'spatialIndex'> {
 	/** Cell size for the spatial hash grid (default: 64) */
 	cellSize?: number;
@@ -94,6 +101,8 @@ export interface SpatialIndexPluginOptions<G extends string = 'spatialIndex'> {
 	 * `phases: ['postUpdate']` explicitly to bypass the auto-skip.
 	 */
 	phases?: ReadonlyArray<SpatialIndexPhase>;
+	/** Per-phase constraints; keys for unregistered phases are rejected. */
+	ordering?: Partial<Record<SpatialIndexPhase, SystemOrderingOptions>>;
 }
 
 // ==================== Plugin Factory ====================
@@ -130,7 +139,13 @@ export function createSpatialIndexPlugin<G extends string = 'spatialIndex'>(
 		systemGroup = 'spatialIndex',
 		priority = 2000,
 		phases = ['fixedUpdate', 'postUpdate'] as const,
+		ordering,
 	} = options ?? {};
+
+	Object.keys(ordering ?? {}).forEach(phase => {
+		if (phases.some(registered => registered === phase)) return;
+		throw new Error(`Spatial index ordering configured for unregistered phase "${phase}".`);
+	});
 
 	return definePlugin('spatialIndex')
 		.withComponentTypes<SpatialIndexComponentTypes>()
@@ -157,8 +172,11 @@ export function createSpatialIndexPlugin<G extends string = 'spatialIndex'>(
 
 				world
 					.addSystem(`spatial-index-rebuild-${phase}`)
+					.withRef(spatialIndexSystems.rebuild[phase])
+					.before(...ordering?.[phase]?.before ?? [])
+					.after(...ordering?.[phase]?.after ?? [])
 					.setPriority(priority)
-					.inPhase(phase as SystemPhase)
+					.inPhase(phase)
 					.inGroup(systemGroup)
 					.addQuery('aabbOnly', {
 						with: [transformComponent, 'aabbCollider'],

@@ -21,7 +21,7 @@
  *   Leaves     — action (tick → NodeStatus, optional onAbort), condition (predicate)
  */
 
-import { definePlugin, type BasePluginOptions, type BaseWorld, type ComponentsConfig, type EventsConfig } from 'ecspresso';
+import { defineSystemRef, type SystemOrderingOptions, definePlugin, type BasePluginOptions, type BaseWorld, type ComponentsConfig, type EventsConfig } from 'ecspresso';
 
 // ==================== NodeStatus ====================
 
@@ -673,10 +673,15 @@ export function createBehaviorTreeHelpers<
 
 // ==================== Plugin Options ====================
 
+/** Public processing references. Factory before/after options target `update` only. */
+export const behaviorTreeSystems = Object.freeze({
+	update: defineSystemRef('ai.behavior-tree.update'),
+});
+
 /**
  * Configuration options for the behavior tree plugin.
  */
-export interface BehaviorTreePluginOptions<G extends string = 'ai'> extends BasePluginOptions<G> {}
+export interface BehaviorTreePluginOptions<G extends string = 'ai'> extends BasePluginOptions<G>, SystemOrderingOptions {}
 
 // ==================== Plugin Factory ====================
 
@@ -744,6 +749,9 @@ export function createBehaviorTreePlugin<G extends string = 'ai'>(
 
 			world
 				.addSystem('behavior-tree-update')
+				.withRef(behaviorTreeSystems.update)
+				.before(...options?.before ?? [])
+				.after(...options?.after ?? [])
 				.setPriority(priority)
 				.inPhase(phase)
 				.inGroup(systemGroup)

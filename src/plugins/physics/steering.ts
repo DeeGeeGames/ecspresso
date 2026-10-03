@@ -7,7 +7,7 @@
  * on arrival and an `arriveAtTarget` event is published.
  */
 
-import { definePlugin, type BasePluginOptions } from 'ecspresso';
+import { defineSystemRef, type SystemOrderingOptions, definePlugin, type BasePluginOptions } from 'ecspresso';
 import type { ComponentsConfig, EventsConfig } from 'ecspresso';
 import type { TransformWorldConfig } from '../spatial/transform';
 
@@ -58,10 +58,15 @@ export type SteeringWorldConfig =
 
 // ==================== Plugin Options ====================
 
+/** Public processing references. Factory before/after options target `move` only. */
+export const steeringSystems = Object.freeze({
+	move: defineSystemRef('physics.steering.move'),
+});
+
 /**
  * Configuration options for the steering plugin.
  */
-export interface SteeringPluginOptions<G extends string = 'steering'> extends BasePluginOptions<G> {
+export interface SteeringPluginOptions<G extends string = 'steering'> extends BasePluginOptions<G>, SystemOrderingOptions {
 	/** Distance threshold to consider arrival (default: 2) */
 	arrivalThreshold?: number;
 }
@@ -148,6 +153,9 @@ export function createSteeringPlugin<G extends string = 'steering'>(
 		.install((world) => {
 			world
 				.addSystem('move-to-target')
+				.withRef(steeringSystems.move)
+				.before(...options?.before ?? [])
+				.after(...options?.after ?? [])
 				.setPriority(priority)
 				.inPhase(phase)
 				.inGroup(systemGroup)

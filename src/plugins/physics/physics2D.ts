@@ -9,7 +9,7 @@
  * the existing collision plugin can still run in postUpdate for game logic events.
  */
 
-import { definePlugin } from 'ecspresso';
+import { defineSystemRef, type SystemOrderingOptions, definePlugin } from 'ecspresso';
 import type { SystemPhase } from 'ecspresso';
 import type { TransformComponentTypes, TransformWorldConfig } from '../spatial/transform';
 import type { CollisionComponentTypes, LayerFactories } from './collision';
@@ -98,7 +98,13 @@ export interface Physics2DEventTypes {
 
 // ==================== Plugin Options ====================
 
-export interface Physics2DPluginOptions<G extends string = 'physics2D', CG extends string = never> {
+/** Public processing references. Factory before/after options target `integrate` only. */
+export const physics2DSystems = Object.freeze({
+	integrate: defineSystemRef('physics.physics2D.integrate'),
+	collide: defineSystemRef('physics.physics2D.collide'),
+});
+
+export interface Physics2DPluginOptions<G extends string = 'physics2D', CG extends string = never> extends SystemOrderingOptions {
 	/** World gravity vector (default: {x: 0, y: 0}) */
 	gravity?: Vector2D;
 	/** System group name (default: 'physics2D') */
@@ -375,6 +381,9 @@ export function createPhysics2DPlugin<L extends string = string, G extends strin
 
 			world
 				.addSystem('physics2D-integration')
+				.withRef(physics2DSystems.integrate)
+				.before(...options?.before ?? [])
+				.after(...options?.after ?? [])
 				.setPriority(integrationPriority)
 				.inPhase(phase)
 				.inGroup(systemGroup)
@@ -437,6 +446,7 @@ export function createPhysics2DPlugin<L extends string = string, G extends strin
 
 			const collisionSystem = world
 				.addSystem('physics2D-collision')
+				.withRef(physics2DSystems.collide)
 				.setPriority(collisionPriority)
 				.inPhase(phase)
 				.inGroup(systemGroup);

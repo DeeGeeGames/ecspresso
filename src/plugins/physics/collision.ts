@@ -6,7 +6,7 @@
  * Supports AABB and circle colliders.
  */
 
-import { definePlugin, type BasePluginOptions } from 'ecspresso';
+import { defineSystemRef, type SystemOrderingOptions, definePlugin, type BasePluginOptions } from 'ecspresso';
 import type { TransformWorldConfig } from '../spatial/transform';
 import { fillBaseColliderInfo, detectCollisions, createBroadphaseScratch, AABB_SHAPE, type Contact, type BaseColliderInfo } from '../../utils/narrowphase';
 import type { SpatialIndex } from '../../utils/spatial-hash';
@@ -105,10 +105,15 @@ export interface CollisionEventTypes<L extends string = never> {
 
 // ==================== Plugin Options ====================
 
+/** Public processing references. Factory before/after options target `detect` only. */
+export const collisionSystems = Object.freeze({
+	detect: defineSystemRef('physics.collision.detect'),
+});
+
 /**
  * Configuration options for the collision plugin.
  */
-export interface CollisionPluginOptions<G extends string = 'physics'> extends BasePluginOptions<G> {
+export interface CollisionPluginOptions<G extends string = 'physics'> extends BasePluginOptions<G>, SystemOrderingOptions {
 	/** Name of the collision event (default: 'collision') */
 	collisionEventName?: string;
 }
@@ -492,6 +497,9 @@ export function createCollisionPlugin<L extends string, G extends string = 'phys
 
 			world
 				.addSystem('collision-detection')
+				.withRef(collisionSystems.detect)
+				.before(...options?.before ?? [])
+				.after(...options?.after ?? [])
 				.setPriority(priority)
 				.inPhase(phase)
 				.inGroup(systemGroup)

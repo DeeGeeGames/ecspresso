@@ -220,6 +220,7 @@
 		"check:types": "bun tsc --noEmit --skipLibCheck",
 		"check": "bun run check:types && bun test",
 		"check:examples:consumer": "bun run build && bun tsc --noEmit -p tsconfig.examples-consumer.json",
+		"check:ordering:consumer": "bun run build && bun scripts/check-system-ordering-package.ts",
 		"test:browser:build": "bun build browser-tests/disposal-regression.ts --target=browser --outfile=browser-tests/disposal-regression.js",
 		"test:browser:renderers:build": "bun build browser-tests/renderer-lifecycle.ts --target=browser --outfile=browser-tests/renderer-lifecycle.js",
 		"examples": "bun ./examples/serve-examples.ts",

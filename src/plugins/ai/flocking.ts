@@ -13,7 +13,7 @@
  * in spatial index queries.
  */
 
-import { definePlugin, type BasePluginOptions } from 'ecspresso';
+import { defineSystemRef, type SystemOrderingOptions, definePlugin, type BasePluginOptions } from 'ecspresso';
 import type { ComponentsConfig, ResourcesConfig } from 'ecspresso';
 import type { TransformWorldConfig } from '../spatial/transform';
 import type { Physics2DOwnComponentTypes } from '../physics/physics2D';
@@ -63,7 +63,13 @@ export type FlockingWorldConfig = ComponentsConfig<FlockingComponentTypes>;
 
 // ==================== Plugin Options ====================
 
-export interface FlockingPluginOptions<G extends string = 'ai'> extends BasePluginOptions<G> {
+/** Public processing references. Factory before/after options target `forces` only. */
+export const flockingSystems = Object.freeze({
+	forces: defineSystemRef('ai.flocking.forces'),
+	heading: defineSystemRef('ai.flocking.heading'),
+});
+
+export interface FlockingPluginOptions<G extends string = 'ai'> extends BasePluginOptions<G>, SystemOrderingOptions {
 	/** Priority for the heading/speed-clamp system (default: 200) */
 	headingPriority?: number;
 }
@@ -153,6 +159,9 @@ export function createFlockingPlugin<G extends string = 'ai'>(
 			// --- System 1: Compute and apply flocking forces ---
 			world
 				.addSystem('flocking-forces')
+				.withRef(flockingSystems.forces)
+				.before(...options?.before ?? [])
+				.after(...options?.after ?? [])
 				.setPriority(priority)
 				.inPhase(phase)
 				.inGroup(systemGroup)
@@ -255,6 +264,7 @@ export function createFlockingPlugin<G extends string = 'ai'>(
 			// --- System 2: Clamp speed and orient heading from velocity ---
 			world
 				.addSystem('flocking-heading')
+				.withRef(flockingSystems.heading)
 				.setPriority(headingPriority)
 				.inPhase(phase)
 				.inGroup(systemGroup)

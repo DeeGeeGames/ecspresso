@@ -6,7 +6,7 @@
  * Supports AABB3D and sphere colliders.
  */
 
-import { definePlugin, type BasePluginOptions } from 'ecspresso';
+import { defineSystemRef, type SystemOrderingOptions, definePlugin, type BasePluginOptions } from 'ecspresso';
 import type { Transform3DWorldConfig } from '../spatial/transform3D';
 import {
 	fillBaseColliderInfo3D,
@@ -76,10 +76,15 @@ export interface Collision3DEventTypes<L extends string = never> {
 
 // ==================== Plugin Options ====================
 
+/** Public processing references. Factory before/after options target `detect` only. */
+export const collision3DSystems = Object.freeze({
+	detect: defineSystemRef('physics.collision3D.detect'),
+});
+
 /**
  * Configuration options for the collision3D plugin.
  */
-export interface Collision3DPluginOptions<G extends string = 'physics'> extends BasePluginOptions<G> {}
+export interface Collision3DPluginOptions<G extends string = 'physics'> extends BasePluginOptions<G>, SystemOrderingOptions {}
 
 // ==================== Helper Functions ====================
 
@@ -216,6 +221,9 @@ export function createCollision3DPlugin<L extends string, G extends string = 'ph
 
 			world
 				.addSystem('collision3D-detection')
+				.withRef(collision3DSystems.detect)
+				.before(...options?.before ?? [])
+				.after(...options?.after ?? [])
 				.setPriority(priority)
 				.inPhase(phase)
 				.inGroup(systemGroup)

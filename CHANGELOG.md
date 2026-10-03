@@ -4,6 +4,24 @@ All notable changes to ECSpresso are documented here. Format loosely follows [Ke
 
 ## Unreleased
 
+### Added
+
+- Opaque `defineSystemRef()` identities and system `.withRef()`, `.before()` and
+  `.after()` declarations. Explicit processing edges precede priority, retain
+  fixed phases, and validate missing references, duplicate bindings and cycles.
+- Configurable built-in processing plugins export stable system references and
+  accept primary-system ordering options. Spatial indexes accept phase-specific
+  rebuild ordering. The turret-defense example now declares its detection and
+  aiming dependencies directly.
+
+### Changed
+
+- System removal and phase changes validate the resulting graph before side
+  effects. Invalid registrations block processing until repaired; disposal
+  still cleans up invalid graphs. Updates pin their phase schedules, so runtime
+  priority/phase changes apply on the next update and removals take effect
+  immediately, including later fixed steps.
+
 ### Fixed
 
 - Resource subscriptions registered before initialization now establish a

@@ -229,7 +229,9 @@ Move systems between phases at runtime with `world.updateSystemPhase('debug-over
 
 ## System Priority
 
-Within each phase, systems execute in priority order (higher numbers first). Systems with the same priority execute in registration order:
+Within each phase, explicit dependencies take precedence. Eligible systems
+execute in priority order (higher numbers first), with registration order
+breaking ties:
 
 ```typescript
 world.addSystem('physics')
@@ -241,6 +243,77 @@ world.addSystem('constraints')
   .inPhase('fixedUpdate')
   .setPriority(50)  // Runs second within fixedUpdate
   .setProcess(() => { /* constraints */ });
+```
+
+## Explicit Processing Order
+
+Create references with `defineSystemRef` from `ecspresso`, bind a producer with
+`.withRef()`, and declare consumers with `.before(...refs)` / `.after(...refs)`.
+Calls accumulate and accept multiple tokens. A system binds one token; each
+world binds that token independently. The frozen token supplies identity, while
+its name is only diagnostic: importing the original token is required.
+
+```typescript
+import { defineSystemRef } from 'ecspresso';
+
+export const movement = defineSystemRef('game.movement');
+
+world.addSystem('private-movement-label')
+  .withRef(movement)
+  .setProcess(moveEntities);
+
+world.addSystem('collision')
+  .after(movement)
+  .setProcess(checkCollisions);
+```
+
+The scheduler retains fixed phase order. Within each phase it chooses an
+eligible system by descending priority, then registration order. Explicit edges
+override priority. Without edges, existing priority order is preserved.
+Compatible cross-phase edges are accepted; an edge requiring a later phase to
+precede an earlier phase throws. Fixed-update dependencies do not guarantee a
+fixed step runs on every frame.
+
+Pending builders are collected before validation, so forward references work.
+`initialize()` and `update()` reject missing tokens, duplicate bindings,
+self-dependencies and cycles before processing. Diagnostics identify system
+labels, reference names or conflicting phases. TypeScript rejects strings and
+fabricated token objects; runtime validation also rejects unrecognized tokens.
+An invalid registration blocks updates until the graph is repaired, for example
+by registering the missing producer or removing the invalid consumer.
+
+`removeSystem()` validates before detach: remove consumers before a referenced
+producer. `updateSystemPhase()` validates before committing the phase change.
+Rejected removal or phase changes preserve the existing schedule and callbacks.
+Each update pins all phase schedules, including repeated fixed steps. Successful
+priority/phase changes and registrations finalized during processing apply on
+the next update; removed systems receive no further entry callbacks or processing invocations.
+An already-running user callback completes normally. Terminal world disposal
+bypasses scheduling validation so even invalid graphs can release their systems.
+
+Ordering affects processing only. It does not order plugin installation,
+initialization, event delivery or cleanup, activate skipped producers, or flush
+commands. Structural commands still play back after each phase or fixed step:
+a same-phase consumer ordered after a spawning producer does not yet see that
+producer's deferred spawn. Direct mutations remain visible according to the
+existing mutation/change-tracking contract.
+
+Built-in configurable processing plugins export references from their existing
+package subpaths and accept `before` / `after` options for their documented
+primary system. See [the processing-reference catalog](built-in-plugins.md#processing-references).
+
+```typescript
+import { timerSystems } from 'ecspresso/plugins/scripting/timers';
+import { createCoroutinePlugin, coroutineSystems } from 'ecspresso/plugins/scripting/coroutine';
+
+const coroutines = createCoroutinePlugin({
+  phase: 'preUpdate',
+  after: [timerSystems.update],
+});
+
+world.addSystem('ai').inPhase('preUpdate')
+  .after(coroutineSystems.update)
+  .setProcess(planMovement);
 ```
 
 ## System Groups

@@ -10,8 +10,7 @@
  * spatialIndex3D resource at runtime and use it for broadphase when present.
  */
 
-import { definePlugin } from 'ecspresso';
-import type { SystemPhase } from 'ecspresso';
+import { definePlugin, defineSystemRef, type SystemOrderingOptions } from 'ecspresso';
 import type { Transform3DComponentTypes } from './transform3D';
 import {
 	type SpatialEntry3D,
@@ -96,6 +95,14 @@ type SpatialIndex3DComponentTypes = Transform3DComponentTypes & Spatial3DCollide
 export type SpatialIndex3DPhase = 'fixedUpdate' | 'postUpdate';
 type SpatialIndex3DLabel = `spatial-index3D-rebuild-${SpatialIndex3DPhase}`;
 
+/** Rebuild references are bound only for phases selected by the factory. */
+export const spatialIndex3DSystems = Object.freeze({
+	rebuild: Object.freeze({
+		fixedUpdate: defineSystemRef('spatialIndex3D.rebuild.fixedUpdate'),
+		postUpdate: defineSystemRef('spatialIndex3D.rebuild.postUpdate'),
+	}),
+});
+
 export interface SpatialIndex3DPluginOptions<G extends string = 'spatialIndex3D'> {
 	/** Cell size for the spatial hash grid (default: 64) */
 	cellSize?: number;
@@ -123,6 +130,8 @@ export interface SpatialIndex3DPluginOptions<G extends string = 'spatialIndex3D'
 	 * `phases: ['postUpdate']` explicitly to bypass the auto-skip.
 	 */
 	phases?: ReadonlyArray<SpatialIndex3DPhase>;
+	/** Per-phase constraints; keys for unregistered phases are rejected. */
+	ordering?: Partial<Record<SpatialIndex3DPhase, SystemOrderingOptions>>;
 }
 
 // ==================== Plugin Factory ====================
@@ -159,7 +168,13 @@ export function createSpatialIndex3DPlugin<G extends string = 'spatialIndex3D'>(
 		systemGroup = 'spatialIndex3D',
 		priority = 2000,
 		phases = ['fixedUpdate', 'postUpdate'] as const,
+		ordering,
 	} = options ?? {};
+
+	Object.keys(ordering ?? {}).forEach(phase => {
+		if (phases.some(registered => registered === phase)) return;
+		throw new Error(`Spatial index ordering configured for unregistered phase "${phase}".`);
+	});
 
 	return definePlugin('spatialIndex3D')
 		.withComponentTypes<SpatialIndex3DComponentTypes>()
@@ -186,8 +201,11 @@ export function createSpatialIndex3DPlugin<G extends string = 'spatialIndex3D'>(
 
 				world
 					.addSystem(`spatial-index3D-rebuild-${phase}`)
+					.withRef(spatialIndex3DSystems.rebuild[phase])
+					.before(...ordering?.[phase]?.before ?? [])
+					.after(...ordering?.[phase]?.after ?? [])
 					.setPriority(priority)
-					.inPhase(phase as SystemPhase)
+					.inPhase(phase)
 					.inGroup(systemGroup)
 					.addQuery('aabbWith', {
 						with: [transformComponent, 'aabb3DCollider'],

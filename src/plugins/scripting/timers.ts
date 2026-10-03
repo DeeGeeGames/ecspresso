@@ -8,7 +8,7 @@
  * by reacting to `justFinished` or in the slot's `onComplete` callback.
  */
 
-import { definePlugin, type BasePluginOptions } from 'ecspresso';
+import { defineSystemRef, type SystemOrderingOptions, definePlugin, type BasePluginOptions } from 'ecspresso';
 
 // ==================== Event Types ====================
 
@@ -85,7 +85,12 @@ export interface TimerComponentTypes<Slots extends string = string> {
 
 // ==================== Plugin Options ====================
 
-export interface TimerPluginOptions<G extends string = 'timers'> extends BasePluginOptions<G> {}
+/** Public processing references. Factory before/after options target `update` only. */
+export const timerSystems = Object.freeze({
+	update: defineSystemRef('scripting.timers.update'),
+});
+
+export interface TimerPluginOptions<G extends string = 'timers'> extends BasePluginOptions<G>, SystemOrderingOptions {}
 
 // ==================== Helper Functions ====================
 
@@ -229,6 +234,9 @@ export function createTimerPlugin<
 		.install((world) => {
 			world
 				.addSystem('timer-update')
+				.withRef(timerSystems.update)
+				.before(...options?.before ?? [])
+				.after(...options?.after ?? [])
 				.setPriority(priority)
 				.inPhase(phase)
 				.inGroup(systemGroup)

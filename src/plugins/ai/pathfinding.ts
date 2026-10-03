@@ -10,7 +10,7 @@
  * turn-based / non-realtime consumers that don't need the component dance.
  */
 
-import { definePlugin, type BasePluginOptions } from 'ecspresso';
+import { defineSystemRef, type SystemOrderingOptions, definePlugin, type BasePluginOptions } from 'ecspresso';
 import type { ComponentsConfig, EventsConfig, ResourcesConfig } from 'ecspresso';
 import type { Vector2D } from '../../utils/math';
 import type { TransformWorldConfig } from '../spatial/transform';
@@ -112,7 +112,12 @@ export type PathfindingWorldConfig =
 
 // ==================== Plugin Options ====================
 
-export interface PathfindingPluginOptions<G extends string = 'ai'> extends BasePluginOptions<G> {
+/** Public processing references. Factory before/after options target `request` only. */
+export const pathfindingSystems = Object.freeze({
+	request: defineSystemRef('ai.pathfinding.request'),
+});
+
+export interface PathfindingPluginOptions<G extends string = 'ai'> extends BasePluginOptions<G>, SystemOrderingOptions {
 	/** The navigation grid. Construct via `createNavGrid`. */
 	grid: NavGrid;
 	/** Max path requests processed per frame (default 4). */
@@ -455,6 +460,9 @@ export function createPathfindingPlugin<G extends string = 'ai'>(
 
 			world
 				.addSystem('pathfinding-request')
+				.withRef(pathfindingSystems.request)
+				.before(...options?.before ?? [])
+				.after(...options?.after ?? [])
 				.setPriority(priority)
 				.inPhase(phase)
 				.inGroup(systemGroup)

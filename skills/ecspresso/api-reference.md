@@ -370,3 +370,34 @@ cleanup, system detach, and resource disposal callbacks receive a
 `CleanupControl`; use `cleanup.requestDisposal()` when a callback must initiate
 owner teardown without joining the barrier that includes itself. Calls after
 teardown are no-ops.
+
+## Explicit System Processing Order
+
+Import `defineSystemRef`, `SystemRef` and `SystemOrderingOptions` from `ecspresso`.
+Bind a producer with `.withRef(token)`; declare consumers with
+`.before(...tokens)` / `.after(...tokens)`. Both methods accept multiple tokens
+and repeated calls accumulate. Import the original frozen token: names are
+only diagnostics, and each world binds a token independently.
+
+```typescript
+const movement = defineSystemRef('game.movement');
+world.addSystem('movement').withRef(movement).setProcess(move);
+world.addSystem('collision').after(movement).setProcess(collide);
+```
+
+Constraints override priority. Among eligible systems, descending priority then
+registration order wins. Fixed phase order remains; compatible cross-phase
+constraints work and contradictory ones throw. Missing refs, duplicate bindings,
+self edges and cycles fail after pending registrations are collected. Forward
+refs work. Invalid registration blocks subsequent updates until repaired.
+Removal rejects live dependent references before detach; remove consumers first.
+Phase changes are validated before committing. Update schedules are pinned:
+priority/phase changes and additions finalized during processing apply next
+update; removal skips subsequent entry callbacks and processing invocations, even in
+later fixed steps. An already-running user callback completes normally.
+Disposal cleans up invalid schedules without graph validation.
+
+Ordering controls processing, not installation, initialization, synchronous
+event delivery or cleanup. It does not activate disabled/gated producers, ensure
+a fixed step occurs, or add a command flush. A same-phase consumer cannot see a
+deferred spawn solely because it runs after the producer.

@@ -9,7 +9,7 @@
  * Uses the spatial-index plugin for efficient range queries.
  */
 
-import { definePlugin, type BasePluginOptions } from 'ecspresso';
+import { defineSystemRef, type SystemOrderingOptions, definePlugin, type BasePluginOptions } from 'ecspresso';
 import type { ComponentsConfig, EventsConfig, ResourcesConfig } from 'ecspresso';
 import type { TransformWorldConfig } from '../spatial/transform';
 import type { SpatialIndexResourceTypes } from '../spatial/spatial-index';
@@ -93,7 +93,12 @@ export type DetectionWorldConfig =
 
 // ==================== Plugin Options ====================
 
-export interface DetectionPluginOptions<G extends string = 'ai'> extends BasePluginOptions<G> {}
+/** Public processing references. Factory before/after options target `scan` only. */
+export const detectionSystems = Object.freeze({
+	scan: defineSystemRef('ai.detection.scan'),
+});
+
+export interface DetectionPluginOptions<G extends string = 'ai'> extends BasePluginOptions<G>, SystemOrderingOptions {}
 
 // ==================== Helper Functions ====================
 
@@ -208,6 +213,9 @@ export function createDetectionPlugin<G extends string = 'ai', L extends string 
 
 			world
 				.addSystem('detection-scan')
+				.withRef(detectionSystems.scan)
+				.before(...options?.before ?? [])
+				.after(...options?.after ?? [])
 				.setPriority(priority)
 				.inPhase(phase)
 				.inGroup(systemGroup)

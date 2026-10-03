@@ -1,5 +1,9 @@
 import type { GameSystemRegistrar, World } from '../types';
 import { spawnProjectileAt } from '../utils';
+import { defineSystemRef } from 'ecspresso';
+import { detectionSystems } from 'ecspresso/plugins/ai/detection';
+
+const turretAim = defineSystemRef('turret.aim');
 
 function findNearestLiveTarget(
 	detectedEntities: { entities: readonly { entityId: number; distanceSq: number }[] },
@@ -23,8 +27,9 @@ export default function registerTurretSystems(
 	// Aim turret toward nearest detected enemy
 	systems
 		.addSystem('turret-aim')
+		.withRef(turretAim)
+		.after(detectionSystems.scan)
 		.inGroup('gameplay')
-		.setPriority(600)
 		.setProcessEach({ with: ['turret', 'localTransform', 'detectedEntities'] }, ({ entity, ecs }) => {
 			const { localTransform, detectedEntities } = entity.components;
 			const target = findNearestLiveTarget(detectedEntities, ecs);
@@ -40,8 +45,8 @@ export default function registerTurretSystems(
 	// Fire projectiles on timer tick when targets are available
 	systems
 		.addSystem('turret-fire')
+		.after(detectionSystems.scan, turretAim)
 		.inGroup('gameplay')
-		.setPriority(700)
 		.setProcessEach({ with: ['turret', 'localTransform', 'detectedEntities', 'timers'] }, ({ entity, ecs }) => {
 			const { timers, localTransform, detectedEntities } = entity.components;
 			if (!timers['fire']?.justFinished) return;

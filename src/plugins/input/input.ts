@@ -13,7 +13,7 @@
  * so edge detection costs nothing beyond one `.add()` per active action.
  */
 
-import { definePlugin, type BasePluginOptions, type Vector2D } from 'ecspresso';
+import { defineSystemRef, type SystemOrderingOptions, definePlugin, type BasePluginOptions, type Vector2D } from 'ecspresso';
 
 // ==================== Public Types ====================
 
@@ -253,7 +253,12 @@ export interface GamepadOptions {
 	poll?: () => ReadonlyArray<GamepadLike | null>;
 }
 
-export interface InputPluginOptions<A extends string = string, G extends string = 'input'> extends BasePluginOptions<G> {
+/** Public processing references. Factory before/after options target `update` only. */
+export const inputSystems = Object.freeze({
+	update: defineSystemRef('input.input.update'),
+});
+
+export interface InputPluginOptions<A extends string = string, G extends string = 'input'> extends BasePluginOptions<G>, SystemOrderingOptions {
 	/** Initial unified action map. */
 	actions?: ActionMap<A>;
 	/** Initial per-player action maps, keyed by player id. */
@@ -813,6 +818,9 @@ export function createInputPlugin<A extends string = string, G extends string = 
 
 			world
 				.addSystem('input-state')
+				.withRef(inputSystems.update)
+				.before(...options?.before ?? [])
+				.after(...options?.after ?? [])
 				.setPriority(priority)
 				.inPhase(phase)
 				.inGroup(systemGroup)
