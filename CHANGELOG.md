@@ -6,6 +6,11 @@ All notable changes to ECSpresso are documented here. Format loosely follows [Ke
 
 ### Fixed
 
+- Resource subscriptions registered before initialization now establish a
+  baseline when the first value becomes available. This repairs silent
+  `$screen` and lazy-resource subscriptions without sending an initialization
+  callback with an undefined previous value.
+
 - Reusing a built-in plugin object across worlds now creates independent runtime
   state per installation. This includes both spatial indexes, input, detection,
   audio, diagnostics, coroutines, flocking, particles, UI, and renderer caches

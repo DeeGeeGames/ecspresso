@@ -174,10 +174,18 @@ class ResourceManager<
 	/** Prevent a late factory result from repopulating a manager that was cleared. */
 	private cleared = false;
 	private _changeSubscribers: Map<keyof ResourceTypes, Set<(newValue: any, oldValue: any) => void>> = new Map();
-	/** Shallow snapshots of observed resources, keyed by resource key */
-	private _observedSnapshots: Map<keyof ResourceTypes, Record<string, unknown>> = new Map();
+	/** Shallow snapshots; undefined means observation is waiting for initialization. */
+	private _observedSnapshots: Map<keyof ResourceTypes, Record<string, unknown> | undefined> = new Map();
 
 	constructor(private readonly requestOwnerDisposal?: () => Promise<unknown>) {}
+
+	private storeInitializedResource<K extends keyof ResourceTypes>(label: K, value: unknown): void {
+		this.resources.set(label, value);
+		this.initializedResourceKeys.add(label);
+		if (!this._observedSnapshots.has(label) || this._observedSnapshots.get(label) !== undefined) return;
+		// The first available value becomes the baseline, without an initialization event.
+		this._observedSnapshots.set(label, shallowSnapshot(value));
+	}
 
 	/**
 	 * Add a resource to the manager.
@@ -204,8 +212,7 @@ class ResourceManager<
 			throw new Error('ResourceManager is closed');
 		}
 		const storeValue = (value: unknown) => {
-			this.resources.set(label, value);
-			this.initializedResourceKeys.add(label);
+			this.storeInitializedResource(label, value);
 			this.resourceDependencies.set(label, []);
 		};
 
@@ -274,13 +281,11 @@ class ResourceManager<
 
 		// If it's not a Promise, store it immediately
 		if (!(initializedResource instanceof Promise)) {
-			this.resources.set(label, initializedResource);
-			this.initializedResourceKeys.add(label);
+			this.storeInitializedResource(label, initializedResource);
 		} else {
 			const initialization = initializedResource.then(value => {
 				if (this.cleared) return;
-				this.resources.set(label, value);
-				this.initializedResourceKeys.add(label);
+				this.storeInitializedResource(label, value);
 			});
 			this.pendingInitializations.set(label, initialization);
 			initialization.then(
@@ -320,6 +325,7 @@ class ResourceManager<
 		this.resourceDependencies.delete(label);
 		this.resourceDisposers.delete(label);
 		this.initializedResourceKeys.delete(label);
+		if (this._observedSnapshots.has(label)) this._observedSnapshots.set(label, undefined);
 		return resourceRemoved || factoryRemoved;
 	}
 
@@ -400,8 +406,7 @@ class ResourceManager<
 	): Promise<void> {
 		const initializedResource = await factory(context);
 		if (this.cleared) return;
-		this.resources.set(label, initializedResource);
-		this.initializedResourceKeys.add(label);
+		this.storeInitializedResource(label, initializedResource);
 		this.resourceFactories.delete(label);
 	}
 
@@ -562,6 +567,8 @@ class ResourceManager<
 	 * shallow-diffed at the end of each frame via `flushObserved()`, so in-place
 	 * mutations are detected and subscribers notified.
 	 *
+	 * Resources that are not initialized yet begin observation when their first
+	 * value is stored. Initialization establishes a baseline without notifying.
 	 * When the last subscriber unsubscribes, per-frame diffing stops.
 	 *
 	 * @param key The resource key to watch
@@ -577,8 +584,8 @@ class ResourceManager<
 		if (!existing) {
 			this._changeSubscribers.set(key, subscribers);
 			// First subscriber — take a shallow snapshot for per-frame diffing
-			const current = this.resources.get(key);
-			this._observedSnapshots.set(key, shallowSnapshot(current));
+			const snapshot = this.resources.has(key) ? shallowSnapshot(this.resources.get(key)) : undefined;
+			this._observedSnapshots.set(key, snapshot);
 		}
 		const wrapped = callback as (newValue: any, oldValue: any) => void;
 		subscribers.add(wrapped);
@@ -633,6 +640,7 @@ class ResourceManager<
 	flushObserved(): void {
 		if (this._observedSnapshots.size === 0) return;
 		for (const [key, snapshot] of this._observedSnapshots) {
+			if (snapshot === undefined) continue;
 			const current = this.resources.get(key);
 			if (!shallowChanged(current, snapshot)) continue;
 

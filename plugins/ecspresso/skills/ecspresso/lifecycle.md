@@ -20,6 +20,31 @@ A renderer adapter may cache view objects and own presentation-only state such
 as focus targets and transitions. It should not maintain a second navigation
 stack or bypass `setScreen`, `pushScreen`, and `popScreen`.
 
+## Screen state subscriptions
+
+Observe current screen/state through `onResourceChange('$screen', ...)`.
+Subscriptions can be registered before or after `initialize()`; the first
+resource value establishes a baseline without an initialization notification.
+
+```typescript
+const offState = ecs.onResourceChange('$screen', (screen, previous) => {
+  renderState(screen.current, screen.state, previous.state);
+});
+
+await ecs.initialize();
+await ecs.setScreen('playing', {});
+ecs.updateScreenState('playing', current => ({ score: current.score + 1 }));
+ecs.update(0); // A running game loop normally flushes this via ecs.update(dt).
+offState(); // Unsubscribe when the observer is no longer needed.
+```
+
+Screen transitions and state replacements notify after render systems at the
+end of the next `update()`. Multiple changes between flushes are batched; use
+lifecycle hooks when every transition matters. Observation is shallow:
+`updateScreenState` replaces state and is observable, while directly mutating a
+field on `getScreenState()` is not. Snapshots retain nested references, so
+replace nested objects when a callback needs their previous contents.
+
 ## Pause and overlays
 
 Pushing an overlay changes the current screen, so systems gated with
