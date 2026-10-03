@@ -13,6 +13,12 @@ All notable changes to ECSpresso are documented here. Format loosely follows [Ke
   accept primary-system ordering options. Spatial indexes accept phase-specific
   rebuild ordering. The turret-defense example now declares its detection and
   aiming dependencies directly.
+- The public tween entry point now exports the standard easing functions and
+  `EasingFn` type.
+- An interactive documentation homepage with an editable game, Monaco
+  completions and type diagnostics from the library declarations, isolated
+  execution, and recovery from compile errors or stalled code.
+- ECSpresso cup and bean branding across the README, documentation, and examples.
 
 ### Changed
 
@@ -21,6 +27,9 @@ All notable changes to ECSpresso are documented here. Format loosely follows [Ke
   still cleans up invalid graphs. Updates pin their phase schedules, so runtime
   priority/phase changes apply on the next update and removals take effect
   immediately, including later fixed steps.
+- Examples now use published package entry points and validate against the
+  built package. Behavior-tree guidance clarifies that blackboard defaults are
+  shallow-copied and require fresh nested values for independent mutable state.
 
 ### Fixed
 
@@ -28,22 +37,24 @@ All notable changes to ECSpresso are documented here. Format loosely follows [Ke
   baseline when the first value becomes available. This repairs silent
   `$screen` and lazy-resource subscriptions without sending an initialization
   callback with an undefined previous value.
-
 - Reusing a built-in plugin object across worlds now creates independent runtime
   state per installation. This includes both spatial indexes, input, detection,
   audio, diagnostics, coroutines, flocking, particles, UI, and renderer caches
   and cleanup hooks. Caller-supplied resources retain their existing ownership.
+- Renderer plugins now remove their loops, listeners, and plugin-created scene
+  containers during world disposal. Renderers created by the plugins are
+  disposed with the world; supplied renderers and ECS-provided GPU assets remain
+  caller-owned.
+- The Screen Manager example now renders menu and game-over UI when no gameplay
+  clock exists. The audio example uses deployment-relative asset URLs and runs
+  the world update loop required for playback processing.
+- Engine benchmark switches now await teardown, recover from failed starts,
+  isolate Bevy in an iframe, and disable Bevy when its generated files are absent.
 
 ## 0.23.0
 
 ### Changed
 
-- Managed renderer plugins now remove their loops, listeners, and plugin-created
-  scene containers during world disposal. Renderers created by the plugins are
-  disposed with the world; supplied renderers and ECS-provided GPU assets remain
-  caller-owned.
-- The public tween entry point now exports the standard easing functions and
-  `EasingFn` type.
 - World disposal now joins asynchronous plugin cleanup already started by
   standalone uninstall and retains its failures until teardown observes them.
 - Screen teardown waits for in-flight enter/resume/exit hooks before releasing
