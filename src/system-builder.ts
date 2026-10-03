@@ -3,6 +3,7 @@ import type { SystemDefaults } from "./system-registrar";
 import type { FilteredEntity, QueryDefinition, System, SystemPhase } from "./types";
 import type { WorldConfig, EmptyConfig } from "./type-utils";
 import type { CleanupControl } from "./cleanup-control";
+import { assertSystemRef, type SystemRef } from './system-ref';
 
 export const PROCESS_EACH_QUERY = '__each' as const;
 type ProcessEachKey = typeof PROCESS_EACH_QUERY;
@@ -33,6 +34,9 @@ export class SystemBuilder<
 	};
 	private _priority = 0;
 	private _phase: SystemPhase = 'update';
+	private _ref?: SystemRef;
+	private _before: readonly SystemRef[] = [];
+	private _after: readonly SystemRef[] = [];
 	private _groups: string[] = [];
 	private _inScreens?: ReadonlyArray<keyof Cfg['screens'] & string>;
 	private _excludeScreens?: ReadonlyArray<keyof Cfg['screens'] & string>;
@@ -64,6 +68,9 @@ export class SystemBuilder<
 			entityQueries: this.queries,
 			priority: this._priority,
 			phase: this._phase,
+			ref: this._ref,
+			before: this._before,
+			after: this._after,
 		};
 
 		if (Object.keys(this.singletons).length > 0) {
@@ -114,14 +121,35 @@ export class SystemBuilder<
 	}
 
 	/**
-	 * Set the priority of this system. Systems with higher priority values
-	 * execute before those with lower values. Systems with the same priority
-	 * execute in the order they were registered.
+	 * Set priority among systems eligible under explicit ordering constraints.
+	 * Higher values run first; registration order breaks equal-priority ties.
 	 * @param priority The priority value (default: 0)
 	 * @returns This SystemBuilder instance for method chaining
 	 */
 	setPriority(priority: number): this {
 		this._priority = priority;
+		return this;
+	}
+
+	/** Bind one public scheduling reference. Binding the token twice in a world is invalid. */
+	withRef(ref: SystemRef): this {
+		assertSystemRef(ref);
+		if (this._ref && this._ref !== ref) throw new Error(`System "${this._label}" already has a scheduling reference.`);
+		this._ref = ref;
+		return this;
+	}
+
+	/** Run before these processing systems, subject to fixed phase order. Calls accumulate. */
+	before(...refs: readonly SystemRef[]): this {
+		refs.forEach(assertSystemRef);
+		this._before = [...this._before, ...refs];
+		return this;
+	}
+
+	/** Run after these processing systems. Ordering does not flush commands or activate producers. */
+	after(...refs: readonly SystemRef[]): this {
+		refs.forEach(assertSystemRef);
+		this._after = [...this._after, ...refs];
 		return this;
 	}
 

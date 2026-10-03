@@ -9,7 +9,7 @@
  * then converts back to Euler for storage.
  */
 
-import { definePlugin, type BasePluginOptions } from 'ecspresso';
+import { defineSystemRef, type SystemOrderingOptions, definePlugin, type BasePluginOptions } from 'ecspresso';
 import type ECSpresso from 'ecspresso';
 import type { ComponentsConfig } from '../../type-utils';
 
@@ -66,10 +66,15 @@ export type Transform3DWorldConfig = ComponentsConfig<Transform3DComponentTypes>
 
 // ==================== Plugin Options ====================
 
+/** Public processing references. Factory before/after options target `propagate` only. */
+export const transform3DSystems = Object.freeze({
+	propagate: defineSystemRef('spatial.transform3D.propagate'),
+});
+
 /**
  * Configuration options for the 3D transform plugin.
  */
-export interface Transform3DPluginOptions<G extends string = 'transform3d'> extends BasePluginOptions<G> {}
+export interface Transform3DPluginOptions<G extends string = 'transform3d'> extends BasePluginOptions<G>, SystemOrderingOptions {}
 
 // ==================== Default Values ====================
 
@@ -332,6 +337,9 @@ export function createTransform3DPlugin<G extends string = 'transform3d'>(
 
 			world
 				.addSystem('transform3d-propagation')
+				.withRef(transform3DSystems.propagate)
+				.before(...options?.before ?? [])
+				.after(...options?.after ?? [])
 				.setPriority(priority)
 				.inPhase(phase)
 				.inGroup(systemGroup)

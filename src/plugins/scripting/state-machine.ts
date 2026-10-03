@@ -8,7 +8,7 @@
  * One system processes all state machine entities each tick.
  */
 
-import { definePlugin, type BasePluginOptions } from 'ecspresso';
+import { defineSystemRef, type SystemOrderingOptions, definePlugin, type BasePluginOptions } from 'ecspresso';
 import type { BaseWorld } from 'ecspresso';
 
 /** BaseWorld narrowed to state-machine components for typed access in helpers. */
@@ -111,10 +111,15 @@ export type StatesOf<D> = D extends StateMachineDefinition<infer S> ? S : never;
 
 // ==================== Plugin Options ====================
 
+/** Public processing references. Factory before/after options target `update` only. */
+export const stateMachineSystems = Object.freeze({
+	update: defineSystemRef('scripting.state-machine.update'),
+});
+
 /**
  * Configuration options for the state machine plugin.
  */
-export interface StateMachinePluginOptions<G extends string = 'stateMachine'> extends BasePluginOptions<G> {}
+export interface StateMachinePluginOptions<G extends string = 'stateMachine'> extends BasePluginOptions<G>, SystemOrderingOptions {}
 
 // ==================== Helper Functions ====================
 
@@ -363,6 +368,9 @@ export function createStateMachinePlugin<S extends string = string, G extends st
 		.install((world) => {
 			world
 				.addSystem('state-machine-update')
+				.withRef(stateMachineSystems.update)
+				.before(...options?.before ?? [])
+				.after(...options?.after ?? [])
 				.setPriority(priority)
 				.inPhase(phase)
 				.inGroup(systemGroup)

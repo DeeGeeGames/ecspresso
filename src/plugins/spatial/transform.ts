@@ -7,7 +7,7 @@
  * @see https://docs.rs/bevy/latest/bevy/transform/components/struct.GlobalTransform.html
  */
 
-import { definePlugin, type BasePluginOptions } from 'ecspresso';
+import { defineSystemRef, type SystemOrderingOptions, definePlugin, type BasePluginOptions } from 'ecspresso';
 import type ECSpresso from 'ecspresso';
 import type { ComponentsConfig } from '../../type-utils';
 
@@ -62,10 +62,15 @@ export type TransformWorldConfig = ComponentsConfig<TransformComponentTypes>;
 
 // ==================== Plugin Options ====================
 
+/** Public processing references. Factory before/after options target `propagate` only. */
+export const transformSystems = Object.freeze({
+	propagate: defineSystemRef('spatial.transform.propagate'),
+});
+
 /**
  * Configuration options for the transform plugin.
  */
-export interface TransformPluginOptions<G extends string = 'transform'> extends BasePluginOptions<G> {}
+export interface TransformPluginOptions<G extends string = 'transform'> extends BasePluginOptions<G>, SystemOrderingOptions {}
 
 // ==================== Default Values ====================
 
@@ -247,6 +252,9 @@ export function createTransformPlugin<G extends string = 'transform'>(
 
 			world
 				.addSystem('transform-propagation')
+				.withRef(transformSystems.propagate)
+				.before(...options?.before ?? [])
+				.after(...options?.after ?? [])
 				.setPriority(priority)
 				.inPhase(phase)
 				.inGroup(systemGroup)

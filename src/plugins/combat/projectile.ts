@@ -8,7 +8,7 @@
  * and a `damage` event is forwarded to the target (if the health plugin is present).
  */
 
-import { definePlugin, type BasePluginOptions } from 'ecspresso';
+import { defineSystemRef, type SystemOrderingOptions, definePlugin, type BasePluginOptions } from 'ecspresso';
 import type { ComponentsConfig, EventsConfig } from 'ecspresso';
 import type { TransformWorldConfig } from '../spatial/transform';
 import type { CollisionEventTypes } from '../physics/collision';
@@ -80,7 +80,13 @@ export type ProjectileWorldConfig =
 
 // ==================== Plugin Options ====================
 
-export interface ProjectilePluginOptions<G extends string = 'combat'> extends BasePluginOptions<G> {
+/** Public processing references. Factory before/after options target `homing` only. */
+export const projectileSystems = Object.freeze({
+	homing: defineSystemRef('combat.projectile.homing'),
+	linear: defineSystemRef('combat.projectile.linear'),
+});
+
+export interface ProjectilePluginOptions<G extends string = 'combat'> extends BasePluginOptions<G>, SystemOrderingOptions {
 	/**
 	 * Whether to auto-publish `damage` events on hit.
 	 * Requires the health plugin to be installed. (default: true)
@@ -177,6 +183,9 @@ export function createProjectilePlugin<G extends string = 'combat', L extends st
 			// Homing projectiles — track target position each frame
 			world
 				.addSystem('projectile-homing')
+				.withRef(projectileSystems.homing)
+				.before(...options?.before ?? [])
+				.after(...options?.after ?? [])
 				.setPriority(priority)
 				.inPhase(phase)
 				.inGroup(systemGroup)
@@ -220,6 +229,7 @@ export function createProjectilePlugin<G extends string = 'combat', L extends st
 			// Linear projectiles — move in fixed direction
 			world
 				.addSystem('projectile-linear')
+				.withRef(projectileSystems.linear)
 				.setPriority(priority)
 				.inPhase(phase)
 				.inGroup(systemGroup)

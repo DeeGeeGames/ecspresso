@@ -9,7 +9,7 @@
  * This plugin declares only `spriteAnimation` as its component type.
  */
 
-import { definePlugin, type BasePluginOptions } from 'ecspresso';
+import { defineSystemRef, type SystemOrderingOptions, definePlugin, type BasePluginOptions } from 'ecspresso';
 import type { BaseWorld } from 'ecspresso';
 import type { Spritesheet, SpritesheetData, Texture, TextureSource } from 'pixi.js';
 
@@ -97,7 +97,12 @@ export interface SpriteAnimationEventData {
 
 // ==================== Plugin Options ====================
 
-export interface SpriteAnimationPluginOptions<G extends string = 'spriteAnimation'> extends BasePluginOptions<G> {}
+/** Public processing references. Factory before/after options target `update` only. */
+export const spriteAnimationSystems = Object.freeze({
+	update: defineSystemRef('rendering.sprite-animation.update'),
+});
+
+export interface SpriteAnimationPluginOptions<G extends string = 'spriteAnimation'> extends BasePluginOptions<G>, SystemOrderingOptions {}
 
 // ==================== Helper Functions ====================
 
@@ -396,6 +401,9 @@ export function createSpriteAnimationPlugin<
 		.install((world) => {
 			world
 				.addSystem('sprite-animation-update')
+				.withRef(spriteAnimationSystems.update)
+				.before(...options?.before ?? [])
+				.after(...options?.after ?? [])
 				.setPriority(priority)
 				.inPhase(phase)
 				.inGroup(systemGroup)

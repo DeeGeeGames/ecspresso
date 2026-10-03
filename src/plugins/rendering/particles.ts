@@ -10,7 +10,7 @@
  * side-storage Map for PixiJS objects, kit pattern for typed helpers.
  */
 
-import { definePlugin, type BasePluginOptions } from 'ecspresso';
+import { defineSystemRef, type SystemOrderingOptions, definePlugin, type BasePluginOptions } from 'ecspresso';
 import type { BaseWorld } from 'ecspresso';
 import type { ComponentsConfig } from '../../type-utils';
 import type { TransformComponentTypes, LocalTransform } from 'ecspresso/plugins/spatial/transform';
@@ -166,7 +166,13 @@ export interface ParticleEmitterEventData {
 
 // ==================== Plugin Options ====================
 
-export interface ParticlePluginOptions<G extends string = 'particles'> extends BasePluginOptions<G> {}
+/** Public processing references. Factory before/after options target `update` only. */
+export const particleSystems = Object.freeze({
+	update: defineSystemRef('rendering.particles.update'),
+	sync: defineSystemRef('rendering.particles.sync'),
+});
+
+export interface ParticlePluginOptions<G extends string = 'particles'> extends BasePluginOptions<G>, SystemOrderingOptions {}
 
 // ==================== Pure Functions (Simulation Engine) ====================
 
@@ -637,6 +643,9 @@ export function createParticlePlugin<
 			// ==================== Particle Update System ====================
 			world
 				.addSystem('particle-update')
+				.withRef(particleSystems.update)
+				.before(...options?.before ?? [])
+				.after(...options?.after ?? [])
 				.setPriority(priority)
 				.inPhase(phase)
 				.inGroup(systemGroup)
@@ -683,6 +692,7 @@ export function createParticlePlugin<
 			// ==================== Particle Render Sync System ====================
 			world
 				.addSystem('particle-render-sync')
+				.withRef(particleSystems.sync)
 				.setPriority(400)
 				.inPhase('render')
 				.inGroup(systemGroup)

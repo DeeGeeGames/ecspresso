@@ -1,10 +1,11 @@
 import ECSpresso from "./ecspresso";
 import type { WorldConfig, EmptyConfig, WorldConfigFrom } from "./type-utils";
+import type { SystemRef, SystemOrderingOptions } from './system-ref';
 
 /**
  * Execution phase for systems. Systems are grouped by phase and executed
  * in this fixed order: preUpdate -> fixedUpdate -> update -> postUpdate -> render.
- * Within each phase, systems are sorted by priority (higher first).
+ * Within each phase, explicit ordering edges precede descending priority.
  */
 export type SystemPhase = 'preUpdate' | 'fixedUpdate' | 'update' | 'postUpdate' | 'render';
 
@@ -211,11 +212,13 @@ interface System<
 	Cfg extends WorldConfig = EmptyConfig,
 	WithComponents extends keyof Cfg['components'] = never,
 	WithoutComponents extends keyof Cfg['components'] = never,
-> {
+> extends SystemOrderingOptions {
 	label: string;
+	/** Stable public identity, independent of the private label. */
+	ref?: SystemRef;
 	/**
-	 * System priority - higher values execute first (default: 0)
-	 * When systems have the same priority, they execute in registration order
+	 * Eligible systems run by descending priority (default: 0), then registration
+	 * order. Explicit before/after dependencies take precedence.
 	 */
 	priority?: number;
 	/**

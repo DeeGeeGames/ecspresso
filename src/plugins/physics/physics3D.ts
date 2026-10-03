@@ -10,7 +10,7 @@
  * logic events.
  */
 
-import { definePlugin } from 'ecspresso';
+import { defineSystemRef, type SystemOrderingOptions, definePlugin } from 'ecspresso';
 import type { SystemPhase } from 'ecspresso';
 import type { Vector3D } from 'ecspresso';
 import type { Transform3DWorldConfig } from '../spatial/transform3D';
@@ -80,7 +80,13 @@ export interface Physics3DEventTypes {
 
 // ==================== Plugin Options ====================
 
-export interface Physics3DPluginOptions<G extends string = 'physics3D', CG extends string = never> {
+/** Public processing references. Factory before/after options target `integrate` only. */
+export const physics3DSystems = Object.freeze({
+	integrate: defineSystemRef('physics.physics3D.integrate'),
+	collide: defineSystemRef('physics.physics3D.collide'),
+});
+
+export interface Physics3DPluginOptions<G extends string = 'physics3D', CG extends string = never> extends SystemOrderingOptions {
 	/** World gravity vector (default: {x: 0, y: 0, z: 0}) */
 	gravity?: Vector3D;
 	/** System group name (default: 'physics3D') */
@@ -376,6 +382,9 @@ export function createPhysics3DPlugin<L extends string = never, G extends string
 
 			world
 				.addSystem('physics3D-integration')
+				.withRef(physics3DSystems.integrate)
+				.before(...options?.before ?? [])
+				.after(...options?.after ?? [])
 				.setPriority(integrationPriority)
 				.inPhase(phase)
 				.inGroup(systemGroup)
@@ -445,6 +454,7 @@ export function createPhysics3DPlugin<L extends string = never, G extends string
 
 			const collisionSystem = world
 				.addSystem('physics3D-collision')
+				.withRef(physics3DSystems.collide)
 				.setPriority(collisionPriority)
 				.inPhase(phase)
 				.inGroup(systemGroup);

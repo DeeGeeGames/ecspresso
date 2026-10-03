@@ -15,7 +15,7 @@
  */
 
 import { Graphics } from 'pixi.js';
-import { definePlugin, type BasePluginOptions } from 'ecspresso';
+import { defineSystemRef, type SystemOrderingOptions, definePlugin, type BasePluginOptions } from 'ecspresso';
 import type { ComponentsConfig, ResourcesConfig } from 'ecspresso';
 import type { InputResourceTypes } from './input';
 import type { Renderer2DComponentTypes, Renderer2DResourceTypes } from '../rendering/renderer2D';
@@ -68,10 +68,16 @@ type SelectionRequires<A extends string = string> =
 
 // ==================== Plugin Options ====================
 
+/** Public processing references. Factory before/after options target `input` only. */
+export const selectionSystems = Object.freeze({
+	input: defineSystemRef('input.selection.input'),
+	visual: defineSystemRef('input.selection.visual'),
+});
+
 /**
  * Configuration options for the selection plugin.
  */
-export interface SelectionPluginOptions<G extends string = 'selection'> extends BasePluginOptions<G> {
+export interface SelectionPluginOptions<G extends string = 'selection'> extends BasePluginOptions<G>, SystemOrderingOptions {
 	/** Minimum drag distance (px) to trigger box select vs click select (default: 5) */
 	clickThreshold?: number;
 	/** Selection box fill color (default: 0x00FF00) */
@@ -179,6 +185,9 @@ export function createSelectionPlugin<G extends string = 'selection', A extends 
 
 			world
 				.addSystem('selection-input')
+				.withRef(selectionSystems.input)
+				.before(...options?.before ?? [])
+				.after(...options?.after ?? [])
 				.setPriority(priority)
 				.inPhase(phase)
 				.inGroup(systemGroup)
@@ -315,6 +324,7 @@ export function createSelectionPlugin<G extends string = 'selection', A extends 
 			// Visual feedback via enter/exit callbacks — only fires on selection change
 			world
 				.addSystem('selection-visual')
+				.withRef(selectionSystems.visual)
 				.setPriority(priority)
 				.inPhase('render')
 				.inGroup(systemGroup)

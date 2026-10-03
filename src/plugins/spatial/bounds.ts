@@ -6,7 +6,7 @@
  * Supports destroy, clamp, and wrap behaviors.
  */
 
-import { definePlugin, type BasePluginOptions } from 'ecspresso';
+import { defineSystemRef, type SystemOrderingOptions, definePlugin, type BasePluginOptions } from 'ecspresso';
 import type { TransformWorldConfig } from './transform';
 
 // ==================== Component Types ====================
@@ -98,10 +98,17 @@ export interface BoundsEventTypes {
 
 // ==================== Plugin Options ====================
 
+/** Public processing references. Factory before/after options target `destroy` only. */
+export const boundsSystems = Object.freeze({
+	destroy: defineSystemRef('spatial.bounds.destroy'),
+	clamp: defineSystemRef('spatial.bounds.clamp'),
+	wrap: defineSystemRef('spatial.bounds.wrap'),
+});
+
 /**
  * Configuration options for the bounds plugin.
  */
-export interface BoundsPluginOptions<G extends string = 'physics'> extends BasePluginOptions<G> {
+export interface BoundsPluginOptions<G extends string = 'physics'> extends BasePluginOptions<G>, SystemOrderingOptions {
 	/** Resource key for bounds rectangle (default: 'bounds') */
 	boundsResourceKey?: string;
 	/** Whether to auto-remove entities when out of bounds (default: true) */
@@ -247,6 +254,9 @@ export function createBoundsPlugin<ResourceTypes extends BoundsResourceTypes = B
 			// Destroy out of bounds system
 			world
 				.addSystem('bounds-destroy')
+				.withRef(boundsSystems.destroy)
+				.before(...options?.before ?? [])
+				.after(...options?.after ?? [])
 				.setPriority(priority)
 				.inPhase(phase)
 				.inGroup(systemGroup)
@@ -281,6 +291,7 @@ export function createBoundsPlugin<ResourceTypes extends BoundsResourceTypes = B
 			// Clamp to bounds system
 			world
 				.addSystem('bounds-clamp')
+				.withRef(boundsSystems.clamp)
 				.setPriority(priority - 1)
 				.inPhase(phase)
 				.inGroup(systemGroup)
@@ -324,6 +335,7 @@ export function createBoundsPlugin<ResourceTypes extends BoundsResourceTypes = B
 			// Wrap at bounds system
 			world
 				.addSystem('bounds-wrap')
+				.withRef(boundsSystems.wrap)
 				.setPriority(priority - 2)
 				.inPhase(phase)
 				.inGroup(systemGroup)

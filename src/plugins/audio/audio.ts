@@ -6,7 +6,7 @@
  * and asset manager integration.
  */
 
-import { definePlugin, type BasePluginOptions } from 'ecspresso';
+import { defineSystemRef, type SystemOrderingOptions, definePlugin, type BasePluginOptions } from 'ecspresso';
 import type { AssetsOfWorld, AnyECSpresso, ChannelOfWorld } from 'ecspresso';
 import type { Howl } from 'howler';
 
@@ -193,10 +193,15 @@ export interface AudioResourceTypes<Ch extends string = string> {
 
 // ==================== Plugin Options ====================
 
+/** Public processing references. Factory before/after options target `sync` only. */
+export const audioSystems = Object.freeze({
+	sync: defineSystemRef('audio.audio.sync'),
+});
+
 /**
  * Configuration options for the audio plugin.
  */
-export interface AudioPluginOptions<Ch extends string, G extends string = 'audio'> extends BasePluginOptions<G> {
+export interface AudioPluginOptions<Ch extends string, G extends string = 'audio'> extends BasePluginOptions<G>, SystemOrderingOptions {
 	/** Channel definitions from defineAudioChannels */
 	channels: Readonly<Record<Ch, AudioChannelConfig>>;
 }
@@ -576,6 +581,9 @@ export function createAudioPlugin<Ch extends string, G extends string = 'audio'>
 
 			world
 				.addSystem('audio-sync')
+				.withRef(audioSystems.sync)
+				.before(...options?.before ?? [])
+				.after(...options?.after ?? [])
 				.setPriority(priority)
 				.inPhase(phase)
 				.inGroup(systemGroup)
