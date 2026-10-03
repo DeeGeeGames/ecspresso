@@ -259,3 +259,71 @@ when a plugin registers multiple systems or is event-driven.
 For plugin-specific options, inspect the exported types for the application's
 installed ECSpresso version. Repository documentation may describe a newer
 release.
+
+## Processing References
+
+Import each catalog from `ecspresso/plugins/<subpath>` in this table. Factory
+`before` / `after` options apply only to the listed primary processing system.
+Secondary references are individual processing points, not groups or passes.
+
+| Subpath | Primary reference | Other references in the same catalog |
+| --- | --- | --- |
+| `scripting/timers` | `timerSystems.update` | — |
+| `scripting/coroutine` | `coroutineSystems.update` | — |
+| `scripting/tween` | `tweenSystems.update` | — |
+| `scripting/state-machine` | `stateMachineSystems.update` | — |
+| `ai/detection` | `detectionSystems.scan` | — |
+| `ai/behavior-tree` | `behaviorTreeSystems.update` | — |
+| `ai/flocking` | `flockingSystems.forces` | `heading` |
+| `ai/pathfinding` | `pathfindingSystems.request` | — |
+| `spatial/transform` | `transformSystems.propagate` | — |
+| `spatial/transform3D` | `transform3DSystems.propagate` | — |
+| `spatial/bounds` | `boundsSystems.destroy` | `clamp, wrap` |
+| `physics/collision` | `collisionSystems.detect` | — |
+| `physics/collision3D` | `collision3DSystems.detect` | — |
+| `physics/steering` | `steeringSystems.move` | — |
+| `physics/physics2D` | `physics2DSystems.integrate` | `collide` |
+| `physics/physics3D` | `physics3DSystems.integrate` | `collide` |
+| `rendering/sprite-animation` | `spriteAnimationSystems.update` | — |
+| `rendering/particles` | `particleSystems.update` | `sync` |
+| `input/input` | `inputSystems.update` | — |
+| `input/selection` | `selectionSystems.input` | `visual` |
+| `audio/audio` | `audioSystems.sync` | — |
+| `combat/projectile` | `projectileSystems.homing` | `linear` |
+
+Factory constraints affect only the listed primary; they add no implicit
+edges between a plugin's other processing systems. Existing custom priorities
+remain effective for unconstrained passes. Target the relevant secondary
+reference when a consumer needs that pass, or declare additional edges explicitly
+when coordinating a full multi-pass feature. Particle sync and selection visual
+retain their fixed render phase. Event-only handlers, such as
+pathfinding waypoint advancement and projectile hit handling, are not ordering
+targets because event delivery is synchronous and unaffected by processing edges.
+
+The spatial indexes expose phase-specific rebuild references:
+`spatialIndexSystems.rebuild.fixedUpdate` / `.postUpdate` from
+`spatial/spatial-index`, and `spatialIndex3DSystems.rebuild.fixedUpdate` /
+`.postUpdate` from `spatial/spatial-index3D`. Only configured phases bind tokens.
+Their factory options use `ordering` keyed by `fixedUpdate` or `postUpdate`;
+configuring ordering for an unregistered phase throws.
+
+```typescript
+import { createSpatialIndexPlugin, spatialIndexSystems } from 'ecspresso/plugins/spatial/spatial-index';
+import { createDetectionPlugin, detectionSystems } from 'ecspresso/plugins/ai/detection';
+
+const spatial = createSpatialIndexPlugin({
+  phases: ['postUpdate'],
+  ordering: { postUpdate: { before: [detectionSystems.scan] } },
+});
+const detection = createDetectionPlugin({
+  phase: 'postUpdate',
+  after: [spatialIndexSystems.rebuild.postUpdate],
+});
+```
+
+Camera, renderer, UI, isometric and diagnostics plugins retain their existing
+pipelines without this configurable-primary API. Health and tilemap
+plugins have reactive/event responsibilities rather than a primary processing
+system. Ordering does not change their lifecycle, command visibility or event
+semantics. Catalogs do not represent plugin-installation dependencies or activate
+disabled systems. See [explicit processing order](api-reference.md#explicit-system-processing-order).

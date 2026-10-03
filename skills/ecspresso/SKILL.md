@@ -37,7 +37,7 @@ belongs inside a system callback:
    publishers and handlers, command-buffer operations, and renderer adapters.
 4. Extend the system that owns the responsibility. Add a system only when the
    behavior has a distinct phase, lifecycle, gate, or testable responsibility.
-5. Update queries, mutation declarations, resources, phase, priority, screens,
+5. Update queries, mutation declarations, resources, phase, explicit ordering references, priority, screens,
    groups, assets, and event handlers alongside the implementation.
 6. Validate the behavior and directly affected interactions. Expand farther
    only when observed dependencies warrant it.
