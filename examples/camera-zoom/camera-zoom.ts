@@ -1,3 +1,5 @@
+import { createPointerTransform } from '../camera/pointer-coordinates';
+import type { Application } from 'pixi.js';
 /**
  * Camera Zoom Example
  *
@@ -32,6 +34,9 @@ const VIEWPORT_HEIGHT = 600;
 
 // ==================== ECS Setup ====================
 
+// Bind after initialization; pointer events arrive in CSS client coordinates.
+const inputBinding: { app: Application | null } = { app: null };
+
 const ecs = ECSpresso.create()
 	.withPlugin(createRenderer2DPlugin({
 		background: examplePalette.background,
@@ -39,6 +44,7 @@ const ecs = ECSpresso.create()
 		camera: true,
 	}))
 	.withPlugin(createInputPlugin({
+		coordinateTransform: createPointerTransform(() => inputBinding.app),
 		actions: {
 			panUp:    { keys: ['w', 'ArrowUp'] },
 			panDown:  { keys: ['s', 'ArrowDown'] },
@@ -147,3 +153,4 @@ ecs.addSystem('init')
 // ==================== Start ====================
 
 await ecs.initialize();
+inputBinding.app = ecs.getResource('pixiApp');

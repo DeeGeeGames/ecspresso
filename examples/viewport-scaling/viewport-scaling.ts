@@ -43,13 +43,12 @@ const ecs = ECSpresso.create()
 ecs.addSystem('reticle-follow')
 	.inPhase('update')
 	.withResources(['inputState'])
-	.setProcessEach({ with: ['reticle', 'localTransform'] }, ({ entity, resources: { inputState }, ecs }) => {
+	.setProcessEach({ with: ['reticle', 'localTransform'], mutates: ['localTransform'] }, ({ entity, resources: { inputState } }) => {
 		const { x, y } = inputState.pointer.position;
 		const { localTransform } = entity.components;
-		if (localTransform.x === x && localTransform.y === y) return;
+		if (localTransform.x === x && localTransform.y === y) return false;
 		localTransform.x = x;
 		localTransform.y = y;
-		ecs.markChanged(entity.id, 'localTransform');
 	});
 
 await ecs.initialize();

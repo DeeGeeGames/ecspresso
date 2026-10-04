@@ -1,5 +1,5 @@
 import { Vector3, Euler, Quaternion } from 'three';
-import type { GameSystemRegistrar, World } from '../types';
+import type { GameSystemRegistrar } from '../types';
 
 export default function registerInputSystems(
 	systems: GameSystemRegistrar,
@@ -13,23 +13,6 @@ export default function registerInputSystems(
 			let targetRotationX = 0; // Vertical rotation (around X axis)
 			const verticalLimit = Math.PI / 2; // 90 degrees limit
 
-			// Add continuous fire check
-			function checkContinuousFire() {
-				const gameState = ecs.getResource('gameState');
-				const input = ecs.getResource('input');
-
-				// Only fire if game is playing and left mouse button is held
-				if (gameState.status === 'playing' && input.mouseButtons.left) {
-					handleShoot(ecs);
-				}
-
-				// Continue checking
-				requestAnimationFrame(checkContinuousFire);
-			}
-
-			// Start continuous fire check
-			checkContinuousFire();
-
 			// Lock pointer for first-person control
 			const lockPointer = () => {
 				const container = document.getElementById('game-container');
@@ -39,7 +22,7 @@ export default function registerInputSystems(
 			};
 
 			// Handle pointer lock change
-			document.addEventListener('pointerlockchange', () => {
+			const onPointerLockChange = () => {
 				const isLocked = document.pointerLockElement === document.getElementById('game-container');
 				if (isLocked && ecs.getResource('gameState').status === 'playing') {
 					// Pointer is locked, enable mouse movement
@@ -49,7 +32,7 @@ export default function registerInputSystems(
 						ecs.eventBus.publish('gamePause', true);
 					}
 				}
-			});
+			};
 
 			// Mouse movement handling for first-person view
 			const onMouseMove = (event: MouseEvent) => {
@@ -69,28 +52,11 @@ export default function registerInputSystems(
 					targetRotationY = -mouseX; // Horizontal rotation
 					targetRotationX = mouseY; // Vertical rotation
 
-					// Get player and camera
-					const playerEntities = ecs.entityManager.getEntitiesWithQuery(['player', 'localTransform3D']);
-					const camera = ecs.getResource('camera');
-
-					if (playerEntities.length > 0) {
-						const player = playerEntities[0];
-						if (!player) return;
-
-						// Update player rotation via localTransform3D
-						player.components.localTransform3D.ry = targetRotationY;
-						player.components.localTransform3D.rx = targetRotationX;
-
-						// Update camera rotation to match player
-						const euler = new Euler(targetRotationX, targetRotationY, 0, 'YXZ');
-						camera.quaternion.setFromEuler(euler);
-
-						// Publish mouse move event
-						ecs.eventBus.publish('inputMouseMove', {
-							x: mouseX,
-							y: mouseY
-						});
-					}
+					const input = ecs.getResource('input');
+					input.aim.x = targetRotationX;
+					input.aim.y = targetRotationY;
+					input.aimDirty = true;
+					ecs.eventBus.publish('inputMouseMove', { x: mouseX, y: mouseY });
 				} else {
 					// Update mouse position for regular cursor
 					const input = ecs.getResource('input');
@@ -118,7 +84,7 @@ export default function registerInputSystems(
 				if (event.button === 0 &&
 					ecs.getResource('gameState').status === 'playing' &&
 					document.pointerLockElement === document.getElementById('game-container')) {
-					handleShoot(ecs);
+					ecs.getResource('input').shotRequested = true;
 				}
 
 				// Publish mouse down event
@@ -161,7 +127,7 @@ export default function registerInputSystems(
 
 				// Handle shooting with space
 				if (event.key === ' ' && ecs.getResource('gameState').status === 'playing') {
-					handleShoot(ecs);
+					ecs.getResource('input').shotRequested = true;
 				}
 
 				// Publish key down event
@@ -194,26 +160,17 @@ export default function registerInputSystems(
 			window.addEventListener('keyup', onKeyUp);
 			window.addEventListener('contextmenu', onContextMenu);
 
-			// Store event listener references for cleanup
-			ecs.addResource('eventListeners', {
-				mousemove: onMouseMove,
-				mousedown: onMouseDown,
-				mouseup: onMouseUp,
-				keydown: onKeyDown,
-				keyup: onKeyUp,
-				contextmenu: onContextMenu
-			});
-
-			// Add click handler to game container for pointer lock
 			const container = document.getElementById('game-container');
-			if (container) {
-				container.addEventListener('click', () => {
-					if (ecs.getResource('gameState').status === 'playing' &&
-						document.pointerLockElement !== container) {
-						lockPointer();
-					}
-				});
-			}
+			const onContainerClick = () => {
+				if (ecs.getResource('gameState').status === 'playing' && document.pointerLockElement !== container) lockPointer();
+			};
+			document.addEventListener('pointerlockchange', onPointerLockChange);
+			container?.addEventListener('click', onContainerClick);
+			ecs.addResource('eventListeners', {
+				mousemove: onMouseMove, mousedown: onMouseDown, mouseup: onMouseUp,
+				keydown: onKeyDown, keyup: onKeyUp, contextmenu: onContextMenu,
+				pointerlockchange: onPointerLockChange, containerClick: onContainerClick, container,
+			});
 		})
 		.setOnDetach((ecs) => {
 			// Clean up event listeners when system is detached
@@ -226,63 +183,48 @@ export default function registerInputSystems(
 			window.removeEventListener('keyup', listeners.keyup);
 			window.removeEventListener('contextmenu', listeners.contextmenu);
 
+			document.removeEventListener('pointerlockchange', listeners.pointerlockchange);
+			listeners.container?.removeEventListener('click', listeners.containerClick);
+
 			// Exit pointer lock if active
 			if (document.pointerLockElement) {
 				document.exitPointerLock();
 			}
 		});
+	registerInputSimulationSystems(systems);
 }
 
-// Helper function to handle shooting
-function handleShoot(ecs: World) {
-	const playerEntities = ecs.entityManager.getEntitiesWithQuery(['player']);
-	if (playerEntities.length === 0) return;
-
-	const playerEntity = playerEntities[0];
-	if (!playerEntity) return;
-
-	const player = playerEntity.components.player;
-	const currentTime = performance.now() / 1000; // Convert to seconds
-
-	// Check if enough time has passed since last shot (rate limiting)
-	if (currentTime - player.lastShotTime >= 1 / player.fireRate) {
-		// Update last shot time
-		player.lastShotTime = currentTime;
-
-		const transform = playerEntity.components.localTransform3D;
-		if (!transform) return;
-
-		// Calculate forward direction based on camera rotation
-		const direction = new Vector3(0, 0, -1);
-		const rotationQuaternion = new Quaternion()
-			.setFromEuler(new Euler(transform.rx, transform.ry, 0, 'YXZ'));
-
-		direction.applyQuaternion(rotationQuaternion);
-
-		// Add random spread (1 degree = 0.0174 radians)
-		const spreadAngle = 0.0174;
-		const randomAngle = Math.random() * spreadAngle;
-		// const randomRotation = Math.random() * Math.PI * 2; // Random rotation around the cone
-
-		// Create a random vector perpendicular to the direction
-		const perpendicular = new Vector3(
-			Math.random() - 0.5,
-			Math.random() - 0.5,
-			Math.random() - 0.5
-		).cross(direction).normalize();
-
-		// Rotate the perpendicular vector around the direction
-		const rotationAxis = new Vector3().crossVectors(direction, perpendicular);
-		const spreadQuaternion = new Quaternion().setFromAxisAngle(rotationAxis, randomAngle);
-		perpendicular.applyQuaternion(spreadQuaternion);
-
-		// Apply the spread to the direction
-		direction.add(perpendicular.multiplyScalar(Math.sin(randomAngle)));
-		direction.normalize();
-
-		// Fire projectile
-		ecs.eventBus.publish('playerShoot', {
-			direction
+export function registerInputSimulationSystems(systems: GameSystemRegistrar): void {
+	// These are application systems registered on an existing world, not plugins.
+	systems.addSystem('aiming')
+		.inGroup('gameplay')
+		.withResources(['input', 'camera'])
+		.setProcessEach({ with: ['player', 'localTransform3D'], mutates: ['localTransform3D'] }, ({ entity, resources: { input, camera } }) => {
+			if (!input.aimDirty) return false;
+			entity.components.localTransform3D.rx = input.aim.x;
+			entity.components.localTransform3D.ry = input.aim.y;
+			camera.quaternion.setFromEuler(new Euler(input.aim.x, input.aim.y, 0, 'YXZ'));
+			input.aimDirty = false;
 		});
-	}
+
+	systems.addSystem('firing')
+		.inGroup('gameplay')
+		.withResources(['input'])
+		.setProcessEach({ with: ['player', 'localTransform3D'], mutates: ['player'] }, ({ entity, dt, ecs, resources: { input } }) => {
+			const { player, localTransform3D: transform } = entity.components;
+			// A simulation countdown freezes on pause and never catches up missed shots.
+			const previousCooldown = player.lastShotTime;
+			player.lastShotTime = Math.max(0, previousCooldown - dt);
+			const requested = input.shotRequested || input.mouseButtons.left;
+			input.shotRequested = false;
+			if (!requested || player.lastShotTime > 0) return previousCooldown > 0 ? undefined : false;
+			player.lastShotTime = 1 / player.fireRate;
+			const direction = new Vector3(0, 0, -1).applyQuaternion(
+				new Quaternion().setFromEuler(new Euler(transform.rx, transform.ry, 0, 'YXZ')),
+			);
+			const randomAngle = Math.random() * 0.0174;
+			const perpendicular = new Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).cross(direction).normalize();
+			direction.add(perpendicular.multiplyScalar(Math.sin(randomAngle))).normalize();
+			ecs.eventBus.publish('playerShoot', { direction });
+		});
 }

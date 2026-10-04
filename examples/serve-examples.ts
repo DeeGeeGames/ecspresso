@@ -32,6 +32,8 @@ import isometric3d from './isometric-3d/isometric-3d.html';
 import reactUI from './react-ui/react-ui.html';
 import patrolChase from './patrol-chase/patrol-chase.html';
 import flocking from './flocking/flocking.html';
+import changeTracking from './change-tracking/change-tracking.html';
+import behaviorTreeBasics from './behavior-tree-basics/behavior-tree-basics.html';
 import behaviorTree from './behavior-tree/behavior-tree.html';
 import tilemap from './tilemap/tilemap.html';
 import ui from './ui/ui.html';
@@ -78,6 +80,8 @@ const server = serve({
 		'/patrol-chase/': patrolChase,
 		'/flocking/': flocking,
 		'/behavior-tree/': behaviorTree,
+		'/behavior-tree-basics/': behaviorTreeBasics,
+		'/change-tracking/': changeTracking,
 		'/tilemap/': tilemap,
 		'/ui/': ui,
 		'/gamepad-tester/': gamepadTester,

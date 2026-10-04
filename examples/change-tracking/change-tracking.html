@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Mutation and Change Tracking</title>
+	<link rel="stylesheet" href="../styles.css">
+	<style>
+		main { max-width: 680px; margin: 70px auto; padding: 24px; color: #3c2516; font-family: system-ui, sans-serif; }
+		button { padding: 12px; margin-right: 12px; font: inherit; }
+		output { font-weight: bold; }
+	</style>
+	<script src="./change-tracking.ts" type="module" defer></script>
+</head>
+<body>
+	<a class="back" href="/">Back</a>
+	<main>
+		<h1>Mutation and Change Tracking</h1>
+		<p>The producer declares <code>mutates: ['counter']</code>. The following consumer filters with <code>changed: ['counter']</code>.</p>
+		<p>A write publishes a change in this update. Returning <code>false</code> from per-entity processing skips the mark for a no-op.</p>
+		<p>Counter value: <output id="value">0</output></p>
+		<p>Consumer updates since initialization: <output id="updates">0</output></p>
+		<button id="write">Write component</button><button id="noop">Process without writing</button>
+		<p id="status" aria-live="polite">Choose a step.</p>
+	</main>
+</body>
+</html>

@@ -5,11 +5,13 @@ import { createGround, createSkybox, createUIElement, setupLighting } from '../u
 export default function registerInitSystems(
 	systems: GameSystemRegistrar,
 ): void {
+	const ownedUI: HTMLElement[] = [];
 	systems.addSystem('init')
 		.setOnInitialize((ecs) => {
 			// Add a reticle/crosshair for aiming
 			const reticle = document.createElement('div');
 			reticle.id = 'reticle';
+			ownedUI.push(reticle);
 			reticle.style.position = 'absolute';
 			reticle.style.top = '50%';
 			reticle.style.left = '50%';
@@ -34,6 +36,9 @@ export default function registerInitSystems(
 			reticle.appendChild(centerDot);
 
 			document.getElementById('game-container')?.appendChild(reticle);
+
+			ecs.disableSystemGroup('gameplay');
+			ecs.disableSystemGroup('timers');
 
 			// Initialize assets object
 			const assets: { models: Record<string, Object3D>; textures: Record<string, unknown> } = {
@@ -60,10 +65,12 @@ export default function registerInitSystems(
 			messageElement.style.transform = 'translate(-50%, -50%)';
 			messageElement.style.fontSize = '32px';
 			messageElement.style.opacity = '0';
+			ownedUI.push(scoreElement, healthElement, waveElement, messageElement);
 
 			// Initialize resources
 			ecs
 				.addResource('assets', assets)
+				.addResource('simulationClock', { elapsed: 0 })
 				.addResource('gameState', {
 					status: 'ready',
 					wave: 1,
@@ -72,7 +79,10 @@ export default function registerInitSystems(
 				.addResource('input', {
 					mousePosition: { x: 0, y: 0 },
 					mouseButtons: { left: false, right: false, middle: false },
-					keys: {}
+					keys: {},
+					aim: { x: 0, y: 0 },
+					aimDirty: false,
+					shotRequested: false
 				})
 				.addResource('config', {
 					playerFireRate: 10,
@@ -101,34 +111,34 @@ export default function registerInitSystems(
 					lastUpdateTime: 0
 				});
 		})
+		.setOnDetach(() => {
+			for (const element of ownedUI) element.remove();
+			ownedUI.length = 0;
+		})
 		.setEventHandlers({
 			gameInit({ ecs }) {
-				// Start animation loop manually (startLoop: false in renderer3D config)
-				// renderer3d-render system handles the actual Three.js render call
-				let lastTime = 0;
-				function animate(time: number) {
-					requestAnimationFrame(animate);
-					const dt = lastTime === 0 ? 0 : (time - lastTime) / 1000;
-					lastTime = time;
-					ecs.update(dt);
-				}
-
-				requestAnimationFrame(animate);
-
 				// Show ready message
 				const uiElements = ecs.getResource('uiElements');
 				if (uiElements.messageElement) {
 					uiElements.messageElement.style.top = '25%';
 					uiElements.messageElement.style.opacity = '1';
-					setTimeout(() => {
-						if (uiElements.messageElement) {
-							uiElements.messageElement.style.opacity = '0';
-							setTimeout(() => {
-								ecs.eventBus.publish('gameStart', true);
-							}, 500);
-						}
-					}, 2000);
+					ecs.spawn({ startup: { remaining: 2, hidden: false } });
 				}
 			},
+		});
+	systems.addSystem('startup')
+		.setProcessEach({ with: ['startup'], mutates: ['startup'] }, ({ entity, dt, ecs }) => {
+			const startup = entity.components.startup;
+			startup.remaining -= dt;
+			if (startup.remaining > 0) return;
+			if (!startup.hidden) {
+				const message = ecs.getResource('uiElements').messageElement;
+				if (message) message.style.opacity = '0';
+				startup.hidden = true;
+				startup.remaining = 0.5;
+				return;
+			}
+			ecs.removeEntity(entity.id);
+			ecs.eventBus.publish('gameStart', true);
 		});
 }

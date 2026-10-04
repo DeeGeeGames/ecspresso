@@ -159,19 +159,15 @@ const DISABLED_COLORS = { fill: 0x1f2937, border: 0x374151 };
 
 ecs.addSystem('button-panel-tint')
 	.inPhase('update')
-	.addQuery('buttons', { with: ['uiButton', 'uiPanel', 'uiInteraction'] })
-	.setProcess(({ queries, ecs }) => {
-		for (const entity of queries.buttons) {
-			const panel = entity.components.uiPanel;
-			const isDisabled = ecs.getComponent(entity.id, 'uiDisabled') !== undefined;
-			const colors = isDisabled
-				? DISABLED_COLORS
-				: PANEL_COLORS_NORMAL[entity.components.uiInteraction.state];
-			if (panel.fillColor !== colors.fill || panel.borderColor !== colors.border) {
-				panel.fillColor = colors.fill;
-				panel.borderColor = colors.border;
-			}
-		}
+	.setProcessEach({ with: ['uiButton', 'uiPanel', 'uiInteraction'], mutates: ['uiPanel'] }, ({ entity, ecs }) => {
+		const panel = entity.components.uiPanel;
+		const isDisabled = ecs.getComponent(entity.id, 'uiDisabled') !== undefined;
+		const colors = isDisabled
+			? DISABLED_COLORS
+			: PANEL_COLORS_NORMAL[entity.components.uiInteraction.state];
+		if (panel.fillColor === colors.fill && panel.borderColor === colors.border) return false;
+		panel.fillColor = colors.fill;
+		panel.borderColor = colors.border;
 	});
 
 // ---- Vertical progress bar to demonstrate direction: 'btt' ----

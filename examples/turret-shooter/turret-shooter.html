@@ -5,10 +5,37 @@
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<title>3D Turret Shooter - ECSpresso Example</title>
 	<link rel="stylesheet" href="../styles.css">
+	<style>
+		#radar-overlay { position: absolute; bottom: 20px; right: 20px; width: 150px; height: 150px; border-radius: 50%; background: rgba(0, 20, 0, .7); border: 2px solid #00ff00; box-shadow: 0 0 10px rgba(0, 255, 0, .5); overflow: hidden; z-index: 100; }
+		.radar-center, .radar-ring, #player-direction { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); }
+		.radar-center { width: 6px; height: 6px; border-radius: 50%; background: #00ff00; }
+		#radar-sweep { position: absolute; inset: 0; transform-origin: 50% 50%; animation: radar-sweep 4s linear infinite; animation-play-state: paused; z-index: 125; background: conic-gradient(from 0deg at 50% 50%, rgba(0, 255, 0, 0) 0deg, rgba(0, 255, 0, .8) 30deg); clip-path: polygon(50% 50%, 100% 0%, 50% 0%); }
+		@keyframes radar-sweep { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+		.radar-grid { position: absolute; background: rgba(0, 255, 0, .5); }
+		.radar-grid-vertical { left: 50%; top: 0; width: 1px; height: 100%; transform: translateX(-50%); }
+		.radar-grid-horizontal { left: 0; top: 50%; width: 100%; height: 1px; transform: translateY(-50%); }
+		.radar-ring { border-radius: 50%; border: 1px solid rgba(0, 255, 0, .3); }
+		.radar-ring-outer { width: 100px; height: 100px; }
+		.radar-ring-inner { width: 50px; height: 50px; }
+		#player-direction { width: 0; height: 0; border-left: 8px solid transparent; border-right: 8px solid transparent; border-bottom: 16px solid #00ff00; z-index: 160; }
+		.radar-blip { position: absolute; width: 12px; height: 12px; border-radius: 50%; transform: translate(-50%, -50%); z-index: 150; }
+		.radar-blip[data-enemy-type="ground"] { background: #ff3333; box-shadow: 0 0 8px #ff0000; }
+		.radar-blip[data-enemy-type="air"] { background: #3333ff; box-shadow: 0 0 8px #0000ff; }
+	</style>
 </head>
 <body>
 	<a class="back" href="/">Back</a>
-	<div id="game-container"></div>
+	<div id="game-container">
+		<div id="radar-overlay" hidden aria-label="Enemy radar">
+			<div class="radar-center"></div>
+			<div id="radar-sweep"></div>
+			<div class="radar-grid radar-grid-vertical"></div>
+			<div class="radar-grid radar-grid-horizontal"></div>
+			<div class="radar-ring radar-ring-outer"></div>
+			<div class="radar-ring radar-ring-inner"></div>
+			<div id="player-direction"></div>
+		</div>
+	</div>
 	<script type="module" src="./index.ts"></script>
 </body>
 </html>

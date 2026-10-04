@@ -1,59 +1,11 @@
+import { createBouncingPlugin } from './bouncing-plugin';
 import { createCupTexture, examplePalette } from '../brand';
 import { Graphics, Sprite } from 'pixi.js';
-import ECSpresso, { definePlugin } from "ecspresso";
+import ECSpresso from "ecspresso";
 import {
 	createRenderer2DPlugin,
 	createLocalTransform,
-	type TransformComponentTypes,
-	type BoundsRect,
 } from "ecspresso/plugins/rendering/renderer2D";
-
-// -- Custom plugin --
-// A plugin packages related components, events, and systems into a reusable unit.
-// Type parameters declare what component/event/resource types the plugin's systems use.
-
-interface BouncingComponents extends TransformComponentTypes {
-	velocity: { x: number; y: number };
-	radius: number;
-}
-
-interface BouncingEvents {
-	wallHit: { x: number; y: number };
-}
-
-// The plugin reads the 'bounds' resource (provided by the renderer plugin).
-// Declaring it here gives the plugin's systems type-safe access.
-interface BouncingResources {
-	bounds: BoundsRect;
-}
-
-function createBouncingPlugin() {
-	return definePlugin('bouncing')
-		.withComponentTypes<BouncingComponents>()
-		.withEventTypes<BouncingEvents>()
-		.withResourceTypes<BouncingResources>()
-		.install((world) => {
-			world.addSystem('movement')
-				.setProcessEach({ with: ['localTransform', 'velocity'] }, ({ entity, dt }) => {
-					const { localTransform, velocity } = entity.components;
-					localTransform.x += velocity.x * dt;
-					localTransform.y += velocity.y * dt;
-				});
-			world.addSystem('bounce')
-				.withResources(['bounds'])
-				.setProcessEach({ with: ['localTransform', 'velocity', 'radius'] }, ({ entity, ecs, resources: { bounds } }) => {
-					const { localTransform, velocity, radius } = entity.components;
-					if (localTransform.x > bounds.width - radius || localTransform.x < radius) {
-						velocity.x *= -1;
-						ecs.eventBus.publish('wallHit', { x: localTransform.x, y: localTransform.y });
-					}
-					if (localTransform.y > bounds.height - radius || localTransform.y < radius) {
-						velocity.y *= -1;
-						ecs.eventBus.publish('wallHit', { x: localTransform.x, y: localTransform.y });
-					}
-				});
-		});
-}
 
 // -- Build the world --
 // .withPlugin() installs the plugin and merges its types into the world.
@@ -67,14 +19,31 @@ const ecs = ECSpresso.create()
 
 // Systems on the world can use types provided by any installed plugin.
 // This system uses the wallHit event declared by the bouncing plugin.
+// Retain a bounded trail without adding a timer dependency.
+const wallMarks: Array<{ id: number; graphics: Graphics }> = [];
+const MAX_WALL_MARKS = 64;
+
 ecs.addSystem('trail-spawner')
 	.setEventHandlers({
 		wallHit({ data: { x, y }, ecs }) {
-			ecs.spawn({
-				graphics: new Graphics().circle(0, 0, 4).fill(examplePalette.spark),
+			const graphics = new Graphics().circle(0, 0, 4).fill(examplePalette.spark);
+			const mark = ecs.spawn({
+				graphics,
 				...createLocalTransform(x, y),
 			});
+			wallMarks.push({ id: mark.id, graphics });
+			if (wallMarks.length > MAX_WALL_MARKS) {
+				const oldest = wallMarks.shift();
+				if (oldest) {
+					ecs.removeEntity(oldest.id);
+					oldest.graphics.destroy();
+				}
+			}
 		},
+	})
+	.setOnDetach(() => {
+		for (const mark of wallMarks) mark.graphics.destroy();
+		wallMarks.length = 0;
 	});
 
 // -- Initialize and spawn --

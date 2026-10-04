@@ -9,13 +9,14 @@ export default function registerAISystems(
 	systems.addSystem('enemy-ai')
 		.inGroup('gameplay')
 		.addQuery('enemies', {
-			with: ['enemy', 'localTransform3D', 'velocity']
+			with: ['enemy', 'localTransform3D', 'velocity'],
+			mutates: ['localTransform3D', 'velocity']
 		})
-		.addQuery('players', {
+		.addSingleton('player', {
 			with: ['player', 'localTransform3D']
 		})
-		.setProcess(({ queries: { enemies, players } }) => {
-			const playerEntity = players[0];
+		.withResources(['simulationClock'])
+		.setProcess(({ queries: { enemies, player: playerEntity }, resources: { simulationClock } }) => {
 			if (!playerEntity) return;
 
 			const playerTransform = playerEntity.components.localTransform3D;
@@ -41,7 +42,7 @@ export default function registerAISystems(
 
 				// Air enemies bob up/down
 				if (enemyComponent.type === 'air') {
-					localTransform3D.y = 15 + Math.sin(performance.now() / 1000) * 3;
+					localTransform3D.y = 15 + Math.sin(simulationClock.elapsed) * 3;
 				}
 			}
 		})

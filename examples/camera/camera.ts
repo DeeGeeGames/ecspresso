@@ -1,3 +1,5 @@
+import { createPointerTransform } from './pointer-coordinates';
+import type { Application } from 'pixi.js';
 /**
  * Camera Follow Example
  *
@@ -38,6 +40,9 @@ const VIEWPORT_HEIGHT = 600;
 
 // ==================== ECS Setup ====================
 
+// Bind after initialization; pointer events arrive in CSS client coordinates.
+const inputBinding: { app: Application | null } = { app: null };
+
 const ecs = ECSpresso.create()
 	.withPlugin(createRenderer2DPlugin({
 		background: examplePalette.background,
@@ -46,6 +51,7 @@ const ecs = ECSpresso.create()
 	}))
 	.withPlugin(createPhysics2DPlugin())
 	.withPlugin(createInputPlugin({
+		coordinateTransform: createPointerTransform(() => inputBinding.app),
 		actions: {
 			moveUp:    { keys: ['w', 'ArrowUp'] },
 			moveDown:  { keys: ['s', 'ArrowDown'] },
@@ -72,18 +78,15 @@ const ecs = ECSpresso.create()
 
 ecs.addSystem('player-input')
 	.inPhase('preUpdate')
-	.addQuery('players', { with: ['player', 'velocity'] })
 	.withResources(['inputState'])
-	.setProcess(({ queries, resources: { inputState: input } }) => {
-		for (const entity of queries.players) {
-			const { velocity } = entity.components;
-			velocity.x = 0;
-			velocity.y = 0;
-			if (input.actions.isActive('moveUp'))    velocity.y = -PLAYER_SPEED;
-			if (input.actions.isActive('moveDown'))   velocity.y = PLAYER_SPEED;
-			if (input.actions.isActive('moveLeft'))   velocity.x = -PLAYER_SPEED;
-			if (input.actions.isActive('moveRight'))  velocity.x = PLAYER_SPEED;
-		}
+	.setProcessEach({ with: ['player', 'velocity'], mutates: ['velocity'] }, ({ entity, resources: { inputState: input } }) => {
+		const { velocity } = entity.components;
+		velocity.x = 0;
+		velocity.y = 0;
+		if (input.actions.isActive('moveUp'))    velocity.y = -PLAYER_SPEED;
+		if (input.actions.isActive('moveDown'))   velocity.y = PLAYER_SPEED;
+		if (input.actions.isActive('moveLeft'))   velocity.x = -PLAYER_SPEED;
+		if (input.actions.isActive('moveRight'))  velocity.x = PLAYER_SPEED;
 	});
 
 // ==================== Shake Trigger System ====================
@@ -101,13 +104,13 @@ ecs.addSystem('shake-trigger')
 
 ecs.addSystem('coord-display')
 	.inPhase('render')
-	.addQuery('players', { with: ['player', 'worldTransform'] })
+	.addSingleton('player', { with: ['player', 'worldTransform'] })
 	.withResources(['cameraState', 'inputState'])
 	.setProcess(({ queries, resources: { cameraState: state, inputState: input } }) => {
 		const el = document.getElementById('coords');
 		if (!el) return;
 
-		const first = queries.players[0];
+		const first = queries.player;
 		if (!first) return;
 
 		const { worldTransform } = first.components;
@@ -202,3 +205,4 @@ ecs.addSystem('init')
 // ==================== Start ====================
 
 await ecs.initialize();
+inputBinding.app = ecs.getResource('pixiApp');

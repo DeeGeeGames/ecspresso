@@ -15,6 +15,7 @@ export default function registerGameStateSystems(
 
 				// Enable gameplay systems
 				ecs.enableSystemGroup('gameplay');
+				ecs.enableSystemGroup('timers');
 
 				// Get player's initial rotation
 				const playerEntities = ecs.entityManager.getEntitiesWithQuery(['player', 'localTransform3D']);
@@ -32,7 +33,7 @@ export default function registerGameStateSystems(
 				const config = ecs.getResource('config');
 				waveManager.currentWave = 1;
 				waveManager.enemiesRemaining = config.enemiesPerWave;
-				waveManager.waveStartTime = performance.now() / 1000;
+				waveManager.waveStartTime = ecs.getResource('simulationClock').elapsed;
 
 				// Spawn enemy spawner entity with repeating timer
 				const spawnInterval = 1 / config.enemySpawnRate;
@@ -48,8 +49,7 @@ export default function registerGameStateSystems(
 					uiElements.messageElement.style.opacity = '1';
 					uiElements.messageElement.style.top = '25%';
 					ecs.spawn({
-						timers: { hide: createTimer(2) },
-						messageTimer: true,
+						messageTimer: { remaining: 2 },
 					});
 				}
 
@@ -63,6 +63,8 @@ export default function registerGameStateSystems(
 
 				// Disable gameplay systems
 				ecs.disableSystemGroup('gameplay');
+				ecs.disableSystemGroup('timers');
+				ecs.getResource('input').shotRequested = false;
 
 				// Explicitly pause radar sweep
 				const radarSweep = document.getElementById('radar-sweep');
@@ -86,6 +88,7 @@ export default function registerGameStateSystems(
 
 				// Enable gameplay systems
 				ecs.enableSystemGroup('gameplay');
+				ecs.enableSystemGroup('timers');
 
 				// Explicitly resume radar sweep
 				const radarSweep = document.getElementById('radar-sweep');
@@ -161,7 +164,7 @@ export default function registerGameStateSystems(
 				// Start next wave
 				waveManager.currentWave++;
 				waveManager.enemiesRemaining = config.enemiesPerWave * waveManager.currentWave;
-				waveManager.waveStartTime = performance.now() / 1000;
+				waveManager.waveStartTime = ecs.getResource('simulationClock').elapsed;
 
 				// Show wave start message and create timer to hide it
 				const uiElements = ecs.getResource('uiElements');
@@ -170,8 +173,7 @@ export default function registerGameStateSystems(
 					uiElements.messageElement.style.opacity = '1';
 					uiElements.messageElement.style.top = '25%';
 					ecs.spawn({
-						timers: { hide: createTimer(2) },
-						messageTimer: true,
+						messageTimer: { remaining: 2 },
 					});
 				}
 
@@ -185,6 +187,8 @@ export default function registerGameStateSystems(
 
 				// Disable gameplay systems
 				ecs.disableSystemGroup('gameplay');
+				ecs.disableSystemGroup('timers');
+				ecs.getResource('input').shotRequested = false;
 
 				// Pause radar sweep
 				const radarSweep = document.getElementById('radar-sweep');
@@ -226,18 +230,13 @@ export default function registerGameStateSystems(
 				}
 			}
 		});
-		// Message timer system - hides messages after their timer finishes
-		systems.addSystem('message-timer')
-		.withResources(['uiElements'])
-		.setProcessEach({ with: ['timers', 'messageTimer'] }, ({ entity, ecs, resources: { uiElements } }) => {
-			if (entity.components.timers['hide']?.justFinished) {
-				// Hide the message
-				if (uiElements.messageElement) {
-					uiElements.messageElement.style.opacity = '0';
-				}
-
-				// Remove the timer entity
-				ecs.removeEntity(entity.id);
-			}
+	// UI time stays independent of paused spawn and destruction timers.
+	systems.addSystem('message-timer')
+		.withResources(['uiElements', 'gameState'])
+		.setProcessEach({ with: ['messageTimer'], mutates: ['messageTimer'] }, ({ entity, dt, ecs, resources: { uiElements, gameState } }) => {
+			entity.components.messageTimer.remaining -= dt;
+			if (entity.components.messageTimer.remaining > 0) return;
+			if (gameState.status === 'playing' && uiElements.messageElement) uiElements.messageElement.style.opacity = '0';
+			ecs.removeEntity(entity.id);
 		});
 }

@@ -7,6 +7,7 @@ import {
 } from 'ecspresso/plugins/physics/collision3D';
 import { createRenderer3DPlugin } from 'ecspresso/plugins/rendering/renderer3D';
 import { createTimerPlugin } from 'ecspresso/plugins/scripting/timers';
+import type { createExplosion } from './utils';
 import { createSpatialIndex3DPlugin } from 'ecspresso/plugins/spatial/spatial-index3D';
 
 export const collisionLayers = defineCollisionLayers({
@@ -16,12 +17,14 @@ export const collisionLayers = defineCollisionLayers({
 });
 
 export type CollisionLayerName = LayersOf<typeof collisionLayers>;
-export type TimerSlot = 'spawn' | 'hide' | 'destroy';
+export type TimerSlot = 'spawn' | 'destroy';
 
 interface GameComponents {
 	enemySpawner: true;
 	pendingDestroy: true;
-	messageTimer: true;
+	messageTimer: { remaining: number };
+	startup: { remaining: number; hidden: boolean };
+	explosion: ReturnType<typeof createExplosion>;
 	velocity: {
 		x: number;
 		y: number;
@@ -113,6 +116,7 @@ interface GameEvents {
 }
 
 interface GameResources {
+	simulationClock: { elapsed: number };
 	gameState: {
 		status: 'ready' | 'playing' | 'paused' | 'gameOver';
 		wave: number;
@@ -129,6 +133,9 @@ interface GameResources {
 			middle: boolean;
 		};
 		keys: Record<string, boolean>;
+		aim: { x: number; y: number };
+		aimDirty: boolean;
+		shotRequested: boolean;
 	};
 	config: {
 		playerFireRate: number;
@@ -170,6 +177,9 @@ interface GameResources {
 		keydown: (event: KeyboardEvent) => void;
 		keyup: (event: KeyboardEvent) => void;
 		contextmenu: (event: MouseEvent) => void;
+		pointerlockchange: () => void;
+		containerClick: () => void;
+		container: HTMLElement | null;
 	};
 }
 
@@ -181,7 +191,6 @@ export function createGame() {
 			height: window.innerHeight,
 			antialias: true,
 			shadows: true,
-			startLoop: false,
 			cameraOptions: {
 				fov: 75,
 				near: 0.1,
@@ -191,8 +200,8 @@ export function createGame() {
 			},
 		}))
 		.withPlugin(createTimerPlugin<TimerSlot>())
-		.withPlugin(createSpatialIndex3DPlugin())
-		.withPlugin(createCollision3DPlugin({ layers: collisionLayers }))
+		.withPlugin(createSpatialIndex3DPlugin({ systemGroup: 'gameplay' }))
+		.withPlugin(createCollision3DPlugin({ layers: collisionLayers, systemGroup: 'gameplay' }))
 		.withComponentTypes<GameComponents>()
 		.withEventTypes<GameEvents>()
 		.withResourceTypes<GameResources>()

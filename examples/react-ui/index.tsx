@@ -6,7 +6,7 @@
  * sits on top of the PixiJS canvas as a standard DOM layer.
  */
 import { createRoot } from 'react-dom/client';
-import { EcsContext } from './hooks';
+import { EcsContext } from 'ecspresso/bindings/react';
 import { GameUI } from './ui';
 import { initGame } from './game';
 

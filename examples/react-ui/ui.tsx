@@ -2,8 +2,9 @@
  * React UI overlay — subscribes to ECS resources and events.
  */
 import { useState } from 'react';
-import { createEcsHooks } from './hooks';
+import { createEcsHooks } from 'ecspresso/bindings/react';
 import type { ECS } from './game';
+import { crossedHealthMilestones } from './health-milestones';
 
 const { useEcs, useResource, useEvent } = createEcsHooks<ECS>();
 
@@ -70,10 +71,13 @@ function EventLog() {
 		setLog((prev) => [`Ball ${entityId} bounced`, ...prev].slice(0, 8));
 	});
 
-	useEvent('healthChanged', ({ next }) => {
-		if (Math.round(next) % 25 === 0 && next > 0) {
-			setLog((prev) => [`Health at ${Math.round(next)}%`, ...prev].slice(0, 8));
-		}
+	useEvent('healthChanged', ({ prev, next }) => {
+		const crossed = crossedHealthMilestones(prev, next);
+		if (crossed.length === 0) return;
+		setLog((entries) => [
+			...crossed.map(function milestone(threshold) { return `Health at ${threshold}%`; }).reverse(),
+			...entries,
+		].slice(0, 8));
 	});
 
 	return (
@@ -120,11 +124,11 @@ const styles = {
 		zIndex: 5,
 	},
 	topBar: {
-		position: 'absolute' as const,
+		position: 'absolute',
 		top: '16px',
 		right: '16px',
 		display: 'flex',
-		flexDirection: 'column' as const,
+		flexDirection: 'column',
 		gap: '10px',
 		padding: '12px 16px',
 		background: 'rgba(0, 0, 0, 0.5)',
@@ -154,7 +158,7 @@ const styles = {
 		transition: 'width 0.15s ease-out, background-color 0.3s',
 	},
 	button: {
-		pointerEvents: 'auto' as const,
+		pointerEvents: 'auto',
 		alignSelf: 'stretch',
 		padding: '6px 14px',
 		border: '1px solid rgba(255, 255, 255, 0.3)',
@@ -170,7 +174,7 @@ const styles = {
 		borderColor: '#4ecdc4',
 	},
 	eventLog: {
-		position: 'absolute' as const,
+		position: 'absolute',
 		bottom: '16px',
 		right: '16px',
 		width: '200px',
@@ -183,7 +187,7 @@ const styles = {
 		fontWeight: 700,
 		marginBottom: '6px',
 		fontSize: '12px',
-		textTransform: 'uppercase' as const,
+		textTransform: 'uppercase',
 		letterSpacing: '0.5px',
 		color: '#888',
 	},

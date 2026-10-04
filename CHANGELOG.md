@@ -2,6 +2,24 @@
 
 All notable changes to ECSpresso are documented here. Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
+## Unreleased
+
+### Changed
+
+- Examples declare query writes, use singleton reads and screen scopes, and
+  separate scene presentation from ECS lessons. The gallery groups introductory
+  lessons, focused features, games, and diagnostics, including new behavior-tree
+  basics and mutation/change-tracking lessons.
+
+### Fixed
+
+- Example pointer conversion respects camera projection and canvas scaling.
+  Starter bounces clamp overshoot and wall-hit marks remain bounded.
+- Turret-shooter scheduling, pause groups, startup callbacks, listeners, and
+  explosions have explicit ownership. Sprite-animation indicators reuse text
+  objects and release owned assets; React health milestones log crossings once.
+- Screen-manager pause/resume preserves inactive timer slots and elapsed values.
+
 ## 0.24.0
 
 ### Added

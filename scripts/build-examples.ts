@@ -37,6 +37,8 @@ const examples = [
 	{ route: 'react-ui', dir: 'react-ui', html: 'react-ui.html', entry: 'index.tsx' },
 	{ route: 'patrol-chase', dir: 'patrol-chase', html: 'patrol-chase.html', entry: 'patrol-chase.ts' },
 	{ route: 'flocking', dir: 'flocking', html: 'flocking.html', entry: 'flocking.ts' },
+	{ route: 'change-tracking', dir: 'change-tracking', html: 'change-tracking.html', entry: 'change-tracking.ts' },
+	{ route: 'behavior-tree-basics', dir: 'behavior-tree-basics', html: 'behavior-tree-basics.html', entry: 'behavior-tree-basics.ts' },
 	{ route: 'behavior-tree', dir: 'behavior-tree', html: 'behavior-tree.html', entry: 'behavior-tree.ts' },
 	{ route: 'tilemap', dir: 'tilemap', html: 'tilemap.html', entry: 'tilemap.ts' },
 	{ route: 'ui', dir: 'ui', html: 'ui.html', entry: 'ui.ts' },
@@ -121,7 +123,7 @@ const results = await Promise.all(
 
 		// Copy static assets (non-ts, non-html files) preserving directory structure
 		const staticFiles = Array.from(
-			new Glob('**/*.{wav,mp3,ogg,png,jpg,jpeg,webp,json,svg,txt}').scanSync(exampleSrcDir),
+			new Glob('**/*.{wav,mp3,ogg,png,jpg,jpeg,webp,json,svg,txt,css}').scanSync(exampleSrcDir),
 		);
 
 		for (const file of staticFiles) {
@@ -145,56 +147,12 @@ const results = await Promise.all(
 	}),
 );
 
-// Generate examples index page
-const exampleLinks = examples
-	.map((e) => `\t\t<li><a href="./${e.route}/">${e.route.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())}</a></li>`)
-	.join('\n');
-
-await Bun.write(
-	join(OUT_DIR, 'index.html'),
-	`<!DOCTYPE html>
-<html lang="en">
-<head>
-	<meta charset="UTF-8">
-	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<title>ECSpresso Examples</title>
-	<link rel="stylesheet" href="../showcase/site.css">
-	<script type="module" src="../showcase/theme-page.js"></script>
-	<link rel="stylesheet" href="./styles.css">
-	<style>
-		body {
-			overflow: auto;
-			background: var(--bg);
-			color: var(--ink);
-			font-family: 'Segoe UI', system-ui, sans-serif;
-			padding: 40px;
-		}
-		h1 { color: var(--ink); margin-bottom: 8px; }
-		.subtitle { color: var(--muted); margin-bottom: 24px; }
-		.subtitle a { color: var(--accent); }
-		ul { list-style: none; padding: 0; max-width: 600px; }
-		li { margin: 0; }
-		li a {
-			display: block;
-			padding: 12px 16px;
-			color: var(--accent);
-			text-decoration: none;
-			border-radius: 6px;
-			transition: background 0.15s;
-		}
-		li a:hover { background: var(--soft); }
-	</style>
-</head>
-<body>
-	<h1>ECSpresso Examples</h1>
-	<p class="subtitle"><a href="../">&larr; Documentation home</a> &middot; Interactive demos &middot; <a href="../api/">API Reference</a></p>
-	<ul>
-${exampleLinks}
-	</ul>
-</body>
-</html>
-`,
-);
+// Use the same grouped gallery in development and generated documentation.
+const gallerySource = await Bun.file(join(EXAMPLES_DIR, 'index.html')).text();
+const galleryHtml = gallerySource
+	.replace(/href="\/([^"]+)\/"/g, 'href="./$1/"')
+	.replace('<h1>ECSpresso Examples</h1>', '<h1>ECSpresso Examples</h1><p><a href="../">Documentation home</a> · <a href="../api/">API Reference</a></p>');
+await Bun.write(join(OUT_DIR, 'index.html'), galleryHtml);
 
 // Print summary
 function formatSize(bytes: number): string {

@@ -14,9 +14,11 @@
 
 import { Graphics, Sprite, Text, TextStyle, Texture, type Renderer } from 'pixi.js';
 import ECSpresso from 'ecspresso';
+import { transformSystems } from 'ecspresso/plugins/spatial/transform';
 import {
 	createRenderer2DPlugin,
 	createSpriteComponents,
+	createLocalTransform,
 } from 'ecspresso/plugins/rendering/renderer2D';
 import {
 	createParticlePlugin,
@@ -26,7 +28,6 @@ import {
 	stopEmitter,
 	resumeEmitter,
 	particlePresets,
-	type ParticleComponentTypes,
 } from 'ecspresso/plugins/rendering/particles';
 
 // ==================== Constants ====================
@@ -85,8 +86,11 @@ const ecs = ECSpresso
 		width: SCREEN_W,
 		height: SCREEN_H,
 	}))
-	.withPlugin(createParticlePlugin())
-	.withComponentTypes<ParticleComponentTypes>()
+	.withPlugin(createParticlePlugin({
+		// New emitters need derived world positions before their first burst.
+		phase: 'postUpdate',
+		after: [transformSystems.propagate],
+	}))
 	.build();
 
 await ecs.initialize();
@@ -145,8 +149,7 @@ presetConfigs.forEach(({ name, config, x }) => {
 
 	const entity = ecs.spawn({
 		...createParticleEmitter(config, { playing: true }),
-		localTransform: { x, y: 100, rotation: 0, scaleX: 1, scaleY: 1 },
-		worldTransform: { x, y: 100, rotation: 0, scaleX: 1, scaleY: 1 },
+		...createLocalTransform(x, 100),
 	});
 
 	// Trigger initial burst for explosion preset
@@ -200,8 +203,7 @@ const fountainConfig = defineParticleEffect({
 
 ecs.spawn({
 	...createParticleEmitter(fountainConfig),
-	localTransform: { x: 80, y: 340, rotation: 0, scaleX: 1, scaleY: 1 },
-	worldTransform: { x: 80, y: 340, rotation: 0, scaleX: 1, scaleY: 1 },
+	...createLocalTransform(80, 340),
 });
 
 // Confetti - colorful squares falling with rotation
@@ -226,8 +228,7 @@ const confettiConfig = defineParticleEffect({
 
 ecs.spawn({
 	...createParticleEmitter(confettiConfig),
-	localTransform: { x: 240, y: 220, rotation: 0, scaleX: 1, scaleY: 1 },
-	worldTransform: { x: 240, y: 220, rotation: 0, scaleX: 1, scaleY: 1 },
+	...createLocalTransform(240, 220),
 });
 
 // Fireflies - slow moving sparkles
@@ -252,8 +253,7 @@ const fireflyConfig = defineParticleEffect({
 
 ecs.spawn({
 	...createParticleEmitter(fireflyConfig),
-	localTransform: { x: 410, y: 300, rotation: 0, scaleX: 1, scaleY: 1 },
-	worldTransform: { x: 410, y: 300, rotation: 0, scaleX: 1, scaleY: 1 },
+	...createLocalTransform(410, 300),
 });
 
 // ==================== Section 3: Burst on Click ====================
@@ -288,8 +288,7 @@ pixiApp.canvas.addEventListener('click', (e) => {
 			...createParticleEmitter(burstConfig, {
 				onComplete: ({ entityId }) => ecs.commands.removeEntity(entityId),
 			}),
-			localTransform: { x: clickX, y: clickY, rotation: 0, scaleX: 1, scaleY: 1 },
-			worldTransform: { x: clickX, y: clickY, rotation: 0, scaleX: 1, scaleY: 1 },
+			...createLocalTransform(clickX, clickY),
 		});
 		burstParticles(ecs, entity.id);
 	}
@@ -317,8 +316,7 @@ const pauseConfig = defineParticleEffect({
 
 const pauseEntity = ecs.spawn({
 	...createParticleEmitter(pauseConfig),
-	localTransform: { x: 120, y: 530, rotation: 0, scaleX: 1, scaleY: 1 },
-	worldTransform: { x: 120, y: 530, rotation: 0, scaleX: 1, scaleY: 1 },
+	...createLocalTransform(120, 530),
 });
 
 const indicatorStyle = new TextStyle({

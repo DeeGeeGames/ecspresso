@@ -1,3 +1,5 @@
+import { createPointerTransform } from '../camera/pointer-coordinates';
+import type { Application } from 'pixi.js';
 import { createBeanGraphics, examplePalette } from '../brand';
 import { Sprite } from 'pixi.js';
 import ECSpresso from 'ecspresso';
@@ -10,6 +12,9 @@ import { createCameraPlugin, screenToWorld } from 'ecspresso/plugins/spatial/cam
 import { createSelectionPlugin, createSelectable } from 'ecspresso/plugins/input/selection';
 import { createSteeringPlugin, createMoveSpeed } from 'ecspresso/plugins/physics/steering';
 
+// Bind after initialization; pointer events arrive in CSS client coordinates.
+const inputBinding: { app: Application | null } = { app: null };
+
 const ecs = ECSpresso.create()
 	.withPlugin(createRenderer2DPlugin({
 		background: examplePalette.background,
@@ -17,7 +22,9 @@ const ecs = ECSpresso.create()
 		screenSpaceLayers: ['ui'],
 		camera: true,
 	}))
-	.withPlugin(createInputPlugin())
+	.withPlugin(createInputPlugin({
+		coordinateTransform: createPointerTransform(() => inputBinding.app),
+	}))
 	.withPlugin(createCameraPlugin({
 		zoom: { minZoom: 0.3, maxZoom: 3 },
 	}))
@@ -45,6 +52,7 @@ ecs.addSystem('issue-move-order')
 	});
 
 await ecs.initialize();
+inputBinding.app = ecs.getResource('pixiApp');
 
 const pixiApp = ecs.getResource('pixiApp');
 const unitRadius = 10;

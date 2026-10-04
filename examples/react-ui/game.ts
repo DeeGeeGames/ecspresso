@@ -18,7 +18,6 @@ const ecs = ECSpresso.create()
 	.withComponentTypes<{
 		velocity: { x: number; y: number };
 		radius: number;
-		hue: number;
 	}>()
 	.withResourceTypes<{
 		score: number;
@@ -37,37 +36,34 @@ export type ECS = typeof ecs;
 // ── Systems ──
 
 ecs.addSystem('movement')
-	.addQuery('moving', { with: ['localTransform', 'velocity'] })
 	.withResources(['paused'])
-	.setProcess(({ queries, dt, resources: { paused } }) => {
-		if (paused) return;
-		for (const entity of queries.moving) {
-			const { localTransform, velocity } = entity.components;
-			localTransform.x += velocity.x * dt;
-			localTransform.y += velocity.y * dt;
-		}
+	.setProcessEach({ with: ['localTransform', 'velocity'], mutates: ['localTransform'] }, ({ entity, dt, resources: { paused } }) => {
+		if (paused) return false;
+		const { localTransform, velocity } = entity.components;
+		localTransform.x += velocity.x * dt;
+		localTransform.y += velocity.y * dt;
 	});
 
 ecs.addSystem('bounce')
-	.addQuery('bouncing', { with: ['localTransform', 'velocity', 'radius'] })
 	.withResources(['bounds', 'paused'])
-	.setProcess(({ queries, resources: { bounds, paused }, ecs }) => {
-		if (paused) return;
-		for (const entity of queries.bouncing) {
-			const { localTransform, velocity, radius } = entity.components;
-			let bounced = false;
-			if (localTransform.x > bounds.width - radius || localTransform.x < radius) {
-				velocity.x *= -1;
-				bounced = true;
-			}
-			if (localTransform.y > bounds.height - radius || localTransform.y < radius) {
-				velocity.y *= -1;
-				bounced = true;
-			}
-			if (bounced) {
-				ecs.setResource('score', ecs.getResource('score') + 1);
-				ecs.eventBus.publish('ballBounced', { entityId: entity.id });
-			}
+	.setProcessEach({ with: ['localTransform', 'velocity', 'radius'], mutates: ['localTransform', 'velocity'] }, ({ entity, resources: { bounds, paused }, ecs }) => {
+		if (paused) return false;
+		const { localTransform, velocity, radius } = entity.components;
+		const nextX = Math.max(radius, Math.min(bounds.width - radius, localTransform.x));
+		const nextY = Math.max(radius, Math.min(bounds.height - radius, localTransform.y));
+		const bouncedX = (localTransform.x < radius && velocity.x < 0)
+			|| (localTransform.x > bounds.width - radius && velocity.x > 0);
+		const bouncedY = (localTransform.y < radius && velocity.y < 0)
+			|| (localTransform.y > bounds.height - radius && velocity.y > 0);
+		const clamped = nextX !== localTransform.x || nextY !== localTransform.y;
+		if (!clamped && !bouncedX && !bouncedY) return false;
+		localTransform.x = nextX;
+		localTransform.y = nextY;
+		if (bouncedX) velocity.x *= -1;
+		if (bouncedY) velocity.y *= -1;
+		if (bouncedX || bouncedY) {
+			ecs.setResource('score', ecs.getResource('score') + 1);
+			ecs.eventBus.publish('ballBounced', { entityId: entity.id });
 		}
 	});
 
@@ -119,7 +115,6 @@ export async function initGame(): Promise<typeof ecs> {
 				y: (150 + Math.random() * 200) * (Math.random() > 0.5 ? 1 : -1),
 			},
 			radius: r,
-			hue: i * 72,
 		});
 	}
 	ecs.setResource('ballCount', 5);

@@ -1,3 +1,5 @@
+import { createPointerTransform } from '../camera/pointer-coordinates';
+import type { Application } from 'pixi.js';
 /**
  * Isometric Example
  *
@@ -6,7 +8,7 @@
  * - Player movement in Cartesian world space, projected to isometric screen coords
  * - Depth sorting so entities overlap correctly
  * - Camera following the player through the isometric projection
- * - worldToIso / isoToWorld coordinate conversion
+ * - screenToIsoWorld coordinate conversion
  * - Trauma-based screen shake triggered by spacebar
  */
 
@@ -23,11 +25,10 @@ import {
 import { createInputPlugin } from 'ecspresso/plugins/input/input';
 import {
 	createCameraPlugin,
-	screenToWorld,
 } from 'ecspresso/plugins/spatial/camera';
 import {
 	createIsoProjectionPlugin,
-	isoToWorld,
+	screenToIsoWorld,
 } from 'ecspresso/plugins/isometric/projection';
 import { createIsoDepthSortPlugin } from 'ecspresso/plugins/isometric/depth-sort';
 
@@ -46,6 +47,9 @@ const PLAYER_COLOR = 0x44bbee;
 
 // ==================== ECS Setup ====================
 
+// Bind after initialization; pointer events arrive in CSS client coordinates.
+const inputBinding: { app: Application | null } = { app: null };
+
 const ecs = ECSpresso.create()
 	.withPlugin(createRenderer2DPlugin({
 		background: 0x1a1a2e,
@@ -54,6 +58,7 @@ const ecs = ECSpresso.create()
 	}))
 	.withPlugin(createPhysics2DPlugin())
 	.withPlugin(createInputPlugin({
+		coordinateTransform: createPointerTransform(() => inputBinding.app, true),
 		actions: {
 			moveUp:    { keys: ['w', 'ArrowUp'] },
 			moveDown:  { keys: ['s', 'ArrowDown'] },
@@ -81,22 +86,29 @@ const ecs = ECSpresso.create()
 	}>()
 	.build();
 
+// Iso projection owns the renderer camera transform; keep camera algorithms
+// informed of the actual viewport even though renderer2D camera mode is disabled.
+ecs.addSystem('camera-viewport')
+	.inPhase('preUpdate')
+	.withResources(['cameraState', 'pixiApp'])
+	.setProcess(({ resources: { cameraState, pixiApp } }) => {
+		cameraState.viewportWidth = pixiApp.screen.width;
+		cameraState.viewportHeight = pixiApp.screen.height;
+	});
+
 // ==================== Player Input System ====================
 
 ecs.addSystem('player-input')
 	.inPhase('preUpdate')
-	.addQuery('players', { with: ['player', 'velocity'] })
 	.withResources(['inputState'])
-	.setProcess(({ queries, resources: { inputState: input } }) => {
-		for (const entity of queries.players) {
-			const { velocity } = entity.components;
-			velocity.x = 0;
-			velocity.y = 0;
-			if (input.actions.isActive('moveUp'))    velocity.y = -PLAYER_SPEED;
-			if (input.actions.isActive('moveDown'))   velocity.y = PLAYER_SPEED;
-			if (input.actions.isActive('moveLeft'))   velocity.x = -PLAYER_SPEED;
-			if (input.actions.isActive('moveRight'))  velocity.x = PLAYER_SPEED;
-		}
+	.setProcessEach({ with: ['player', 'velocity'], mutates: ['velocity'] }, ({ entity, resources: { inputState: input } }) => {
+		const { velocity } = entity.components;
+		velocity.x = 0;
+		velocity.y = 0;
+		if (input.actions.isActive('moveUp'))    velocity.y = -PLAYER_SPEED;
+		if (input.actions.isActive('moveDown'))   velocity.y = PLAYER_SPEED;
+		if (input.actions.isActive('moveLeft'))   velocity.x = -PLAYER_SPEED;
+		if (input.actions.isActive('moveRight'))  velocity.x = PLAYER_SPEED;
 	});
 
 // ==================== Shake Trigger System ====================
@@ -114,24 +126,24 @@ ecs.addSystem('shake-trigger')
 
 ecs.addSystem('coord-display')
 	.inPhase('render')
-	.addQuery('players', { with: ['player', 'worldTransform'] })
-	.withResources(['cameraState', 'inputState', 'isoProjection'])
-	.setProcess(({ queries, resources: { cameraState, inputState: input, isoProjection: iso } }) => {
+	.addSingleton('player', { with: ['player', 'worldTransform'] })
+	.withResources(['cameraState', 'inputState', 'isoProjection', 'pixiApp'])
+	.setProcess(({ queries, resources: { cameraState, inputState: input, isoProjection: iso, pixiApp } }) => {
 		const el = document.getElementById('coords');
 		if (!el) return;
 
-		const first = queries.players[0];
+		const first = queries.player;
 		if (!first) return;
 
 		const { worldTransform } = first.components;
 
-		// Convert screen mouse → camera world → iso world
-		const cameraWorld = screenToWorld(
+		const mouseWorld = screenToIsoWorld(
 			input.pointer.position.x,
 			input.pointer.position.y,
 			cameraState,
+			iso,
+			pixiApp.canvas,
 		);
-		const mouseWorld = isoToWorld(cameraWorld.x, cameraWorld.y, iso);
 
 		el.textContent =
 			`Player: ${worldTransform.x.toFixed(1)}, ${worldTransform.y.toFixed(1)}\n` +
@@ -201,3 +213,4 @@ ecs.addSystem('init')
 // ==================== Start ====================
 
 await ecs.initialize();
+inputBinding.app = ecs.getResource('pixiApp');

@@ -1,3 +1,5 @@
+import { createGroupComponents } from 'ecspresso/plugins/rendering/renderer3D';
+import { createExplosion, updateExplosion, disposeExplosion } from '../utils';
 import { createTimer } from 'ecspresso/plugins/scripting/timers';
 import { createCollisionPairHandler } from 'ecspresso/plugins/physics/collision3D';
 import type {
@@ -9,10 +11,33 @@ import type {
 export default function registerGameplaySystems(
 	systems: GameSystemRegistrar,
 ): void {
+	systems.addSystem('simulation-clock')
+		.inGroup('gameplay')
+		.inPhase('preUpdate')
+		.withResources(['simulationClock'])
+		.setProcess(({ dt, resources: { simulationClock } }) => { simulationClock.elapsed += dt; });
+
+	systems.addSystem('explosions')
+		.inGroup('gameplay')
+		.setOnInitialize(ecs => {
+			ecs.registerDispose('explosion', ({ value }) => disposeExplosion(value));
+		})
+		.setEventHandlers({
+			enemyDestroyed({ data, ecs }) {
+				const position = ecs.getComponent(data.entityId, 'localTransform3D');
+				if (!position) return;
+				const explosion = createExplosion();
+				ecs.spawn({ ...createGroupComponents(explosion.group, position), explosion });
+			},
+		})
+		.setProcessEach({ with: ['explosion'], mutates: ['explosion'] }, ({ entity, dt, ecs }) => {
+			if (updateExplosion(entity.components.explosion, dt)) ecs.removeEntity(entity.id);
+		});
+
 	// Lifetime system
 	systems.addSystem('lifetime')
 		.inGroup('gameplay')
-		.setProcessEach({ with: ['lifetime'] }, ({ entity, dt, ecs }) => {
+		.setProcessEach({ with: ['lifetime'], mutates: ['lifetime'] }, ({ entity, dt, ecs }) => {
 			entity.components.lifetime.remaining -= dt;
 
 			if (entity.components.lifetime.remaining <= 0) {
@@ -81,9 +106,6 @@ export default function registerGameplaySystems(
 	systems.addSystem('collision-router')
 		.inGroup('gameplay')
 		.setEventHandlers({
-			// Event handlers fire even when the system's group is disabled
-			// (subscriptions live on the bus, not gated by enabledGroups),
-			// so we guard explicitly to ignore stray collisions during pause.
 			collision3D({ data, ecs }) {
 				if (ecs.getResource('gameState').status !== 'playing') return;
 				dispatchCollision({ data, ecs });
