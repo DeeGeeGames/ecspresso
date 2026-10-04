@@ -90,4 +90,3 @@ export function decodeMap(rows: readonly string[]): DecodedMap {
 
 	return { ground, decorations, spawnTx: spawn.tx, spawnTy: spawn.ty };
 }
-
