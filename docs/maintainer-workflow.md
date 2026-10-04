@@ -79,6 +79,23 @@ Run `bun run check` before handoff. Run `bun run build` when changing exports,
 build behavior, generated declarations, or packaging. Inspect a package tarball
 when changing the npm file allowlist or published artifacts.
 
+## CI and merge requirements
+
+The CI workflow runs independent `test`, `typecheck`, and `build` jobs on pull
+requests to `master`, pushes to `master`, and merge-group events. All three
+checks must pass before human merges. The active repository ruleset requires
+checks from GitHub Actions and an up-to-date branch, with no human or admin
+bypass. The ruleset is configured in GitHub repository settings, separately
+from workflow YAML.
+
+The release workflow uses the write-enabled `ECSpresso automated releases`
+deploy key through the `RELEASE_DEPLOY_KEY` Actions secret to push its version
+commit and tag. It runs tests, typechecking, and the build before pushing.
+GitHub's deploy-key bypass applies to all repository deploy keys, so review
+this exception before adding another write-enabled key. To rotate the release
+key, replace the deploy key and Actions secret together. Other release API
+operations continue to use `GITHUB_TOKEN`.
+
 ## Keep documentation and distributions aligned
 
 The source consumer skill is `skills/ecspresso/`; its distributable mirror is

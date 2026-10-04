@@ -25,6 +25,7 @@ jobs:
         with:
           fetch-depth: 0
           ref: master
+          ssh-key: ${{ secrets.RELEASE_DEPLOY_KEY }}
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -46,6 +47,7 @@ jobs:
 
       - run: bun install --frozen-lockfile
       - run: bun run check
+      - run: bun run build
 
       - name: Create version commit and tag
         env:
