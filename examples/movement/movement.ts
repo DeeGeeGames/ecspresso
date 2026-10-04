@@ -26,7 +26,7 @@ const ecs = ECSpresso.create()
 
 // Movement: applies velocity to position each frame
 ecs.addSystem('movement')
-	.setProcessEach({ with: ['localTransform', 'velocity'] }, ({ entity, dt }) => {
+	.setProcessEach({ with: ['localTransform', 'velocity'], mutates: ['localTransform'] }, ({ entity, dt }) => {
 		const { localTransform, velocity } = entity.components;
 		localTransform.x += velocity.x * dt;
 		localTransform.y += velocity.y * dt;
@@ -35,14 +35,19 @@ ecs.addSystem('movement')
 // Bounce: reverses velocity when an entity hits a screen edge
 ecs.addSystem('bounce')
 	.withResources(['bounds'])
-	.setProcessEach({ with: ['localTransform', 'velocity', 'radius'] }, ({ entity, resources: { bounds } }) => {
+	.setProcessEach({ with: ['localTransform', 'velocity', 'radius'], mutates: ['localTransform', 'velocity'] }, ({ entity, resources: { bounds } }) => {
 		const { localTransform, velocity, radius } = entity.components;
-		if (localTransform.x > bounds.width - radius || localTransform.x < radius) {
-			velocity.x *= -1;
-		}
-		if (localTransform.y > bounds.height - radius || localTransform.y < radius) {
-			velocity.y *= -1;
-		}
+		const maxX = Math.max(radius, bounds.width - radius);
+		const maxY = Math.max(radius, bounds.height - radius);
+		const x = Math.max(radius, Math.min(maxX, localTransform.x));
+		const y = Math.max(radius, Math.min(maxY, localTransform.y));
+		const hitX = (x <= radius && velocity.x < 0) || (x >= maxX && velocity.x > 0);
+		const hitY = (y <= radius && velocity.y < 0) || (y >= maxY && velocity.y > 0);
+		if (x === localTransform.x && y === localTransform.y && !hitX && !hitY) return false;
+		localTransform.x = x;
+		localTransform.y = y;
+		if (hitX) velocity.x *= -1;
+		if (hitY) velocity.y *= -1;
 	});
 
 // -- Initialize the world --

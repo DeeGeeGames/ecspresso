@@ -34,10 +34,11 @@ const ecs = ECSpresso.create()
 // Runs in preUpdate so velocity is ready before the movement system.
 ecs.addSystem('player-input')
 	.inPhase('preUpdate')
-	.addQuery('players', { with: ['velocity', 'speed'] })
+	.addSingleton('player', { with: ['velocity', 'speed'], mutates: ['velocity'] })
 	.withResources(['inputState'])
 	.setProcess(({ queries, resources: { inputState: input } }) => {
-		const [player] = queries.players;
+		// A singleton query returns the first match or undefined; it does not enforce uniqueness.
+		const player = queries.player;
 		if (!player) return;
 
 		const { velocity, speed } = player.components;
@@ -47,7 +48,7 @@ ecs.addSystem('player-input')
 
 // Movement: applies velocity to position (same pattern as the movement example)
 ecs.addSystem('movement')
-	.setProcessEach({ with: ['localTransform', 'velocity'] }, ({ entity, dt }) => {
+	.setProcessEach({ with: ['localTransform', 'velocity'], mutates: ['localTransform'] }, ({ entity, dt }) => {
 		const { localTransform, velocity } = entity.components;
 		localTransform.x += velocity.x * dt;
 		localTransform.y += velocity.y * dt;

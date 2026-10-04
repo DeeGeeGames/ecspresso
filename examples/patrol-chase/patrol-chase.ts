@@ -202,7 +202,7 @@ ecs
 	.inPhase('update')
 	.setPriority(900)
 	.withResources(['inputState'])
-	.setProcessEach({ with: ['player', 'localTransform'] }, ({ entity, dt, ecs: world, resources: { inputState: input } }) => {
+	.setProcessEach({ with: ['player', 'localTransform'], mutates: ['localTransform'] }, ({ entity, dt, resources: { inputState: input } }) => {
 		const lt = entity.components.localTransform;
 		const vx = (input.actions.isActive('moveRight') ? 1 : 0)
 			- (input.actions.isActive('moveLeft') ? 1 : 0);
@@ -210,12 +210,10 @@ ecs
 			- (input.actions.isActive('moveUp') ? 1 : 0);
 
 		const len = Math.sqrt(vx * vx + vy * vy);
-		if (len > 0) {
-			const scale = PLAYER_SPEED * dt / len;
-			lt.x += vx * scale;
-			lt.y += vy * scale;
-			world.markChanged(entity.id, 'localTransform');
-		}
+		if (len === 0) return false;
+		const scale = PLAYER_SPEED * dt / len;
+		lt.x += vx * scale;
+		lt.y += vy * scale;
 	});
 
 // ==================== Initialize & Spawn ====================

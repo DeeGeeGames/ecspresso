@@ -371,9 +371,8 @@ export function updateUI(ecs: World) {
 }
 
 // Helper to create an explosion effect at a given position
-export function createExplosion(scene: Scene, position: Vector3) {
+export function createExplosion() {
 	const explosionGroup = new Group();
-	explosionGroup.position.copy(position);
 
 	const particles = Array.from({ length: 20 }, function createParticle() {
 		const size = 0.5 + Math.random() * 1.5;
@@ -413,34 +412,24 @@ export function createExplosion(scene: Scene, position: Vector3) {
 		};
 	});
 
-	scene.add(explosionGroup);
+	return { group: explosionGroup, particles, elapsed: 0 };
+}
 
-	const timing = { elapsed: 0, lastTime: performance.now() };
-
-	function animateExplosion() {
-		const currentTime = performance.now();
-		const deltaTime = (currentTime - timing.lastTime) / 1000;
-		timing.lastTime = currentTime;
-		timing.elapsed += deltaTime;
-
-		particles.forEach(function updateParticle(particle) {
-			if (particle.lifetime <= 0) return;
-			particle.mesh.position.addScaledVector(particle.velocity, deltaTime);
-			particle.velocity.multiplyScalar(particle.drag);
-			particle.lifetime -= deltaTime;
-			particle.mesh.material.opacity = Math.max(0, particle.lifetime);
-		});
-
-		if (particles.every(particle => particle.lifetime <= 0) || timing.elapsed > 2) {
-			scene.remove(explosionGroup);
-			particles.forEach(({ mesh }) => {
-				mesh.geometry.dispose();
-				mesh.material.dispose();
-			});
-			return;
-		}
-		requestAnimationFrame(animateExplosion);
+export function updateExplosion(explosion: ReturnType<typeof createExplosion>, dt: number) {
+	explosion.elapsed += dt;
+	for (const particle of explosion.particles) {
+		if (particle.lifetime <= 0) continue;
+		particle.mesh.position.addScaledVector(particle.velocity, dt);
+		particle.velocity.multiplyScalar(Math.pow(particle.drag, dt * 60));
+		particle.lifetime -= dt;
+		particle.mesh.material.opacity = Math.max(0, particle.lifetime);
 	}
+	return explosion.elapsed >= 2 || explosion.particles.every(particle => particle.lifetime <= 0);
+}
 
-	animateExplosion();
+export function disposeExplosion(explosion: ReturnType<typeof createExplosion>) {
+	for (const { mesh } of explosion.particles) {
+		mesh.geometry.dispose();
+		mesh.material.dispose();
+	}
 }

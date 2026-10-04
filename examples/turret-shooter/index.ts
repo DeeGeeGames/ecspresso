@@ -8,6 +8,8 @@ import registerGameplaySystems from './plugins/gameplay-plugin';
 import registerUISystems from './plugins/ui-plugin';
 import registerGameStateSystems from './plugins/game-state-plugin';
 
+// These functions register application systems through SystemRegistrarOf.
+// Library plugins are installed by createGame before application registration.
 // Create and initialize the game
 async function initGame() {
 	const game = createGame();
@@ -20,6 +22,11 @@ async function initGame() {
 	registerUISystems(game);
 	registerGameStateSystems(game);
 
+	const disposeGame = () => { void game.dispose(); };
+	game.addSystem('page-lifecycle')
+		.setOnInitialize(() => { window.addEventListener('pagehide', disposeGame, { once: true }); })
+		.setOnDetach(() => { window.removeEventListener('pagehide', disposeGame); });
+
 	// Initialize all resources and systems
 	await game.initialize();
 
@@ -28,4 +35,4 @@ async function initGame() {
 }
 
 // Start the game when the page loads
-window.addEventListener('load', initGame);
+window.addEventListener('load', initGame, { once: true });

@@ -151,6 +151,7 @@ function spawnDot() {
 // -- Screen lifecycle: spawn the playing-screen clock entity --
 
 ecs.onScreenEnter('playing', ({ ecs }) => {
+	ecs.enableSystemGroup('timers');
 	ecs.spawn({
 		clock: true,
 		timers: {
@@ -168,22 +169,20 @@ ecs.onScreenEnter('playing', ({ ecs }) => {
 // -- Pause: freeze all timers while the paused overlay is on top --
 // The timer plugin's tick system runs globally, so screen-gating doesn't pause it.
 
-const setAllTimersActive = (predicate: (t: { elapsed: number; duration: number }) => boolean) => {
-	for (const entity of ecs.getEntitiesWithQuery(['timers']))
-		for (const t of Object.values(entity.components.timers))
-			if (t) t.active = predicate(t);
-};
-
-ecs.onScreenEnter('paused', () => setAllTimersActive(() => false));
-ecs.onScreenExit('paused', () => setAllTimersActive(t => t.elapsed < t.duration));
+// Pause the update system, preserving elapsed time and intentionally inactive slots.
+ecs.onScreenEnter('paused', () => ecs.disableSystemGroup('timers'));
+ecs.onScreenExit('playing', () => ecs.disableSystemGroup('timers'));
+ecs.onScreenResume('playing', () => ecs.enableSystemGroup('timers'));
+ecs.disableSystemGroup('timers');
 
 // -- Systems --
 
+// Singleton queries return the first match or undefined; they do not enforce uniqueness.
 // Screen UI visibility — runs every frame regardless of current screen
 ecs.addSystem('screenUI')
 	.inPhase('render')
 	.runWhenEmpty() // Menu and game-over UI still render without a gameplay clock.
-	.addQuery('clock', { with: ['clock', 'timers'] })
+	.addSingleton('clock', { with: ['clock', 'timers'] })
 	.setProcess(({ ecs, queries }) => {
 		menuContainer.visible = ecs.isCurrentScreen('menu');
 		hudContainer.visible = ecs.isScreenActive('playing');
@@ -191,7 +190,7 @@ ecs.addSystem('screenUI')
 		gameOverContainer.visible = ecs.isCurrentScreen('gameOver');
 
 		const playingState = ecs.tryGetScreenState('playing');
-		const clock = queries.clock[0];
+		const clock = queries.clock;
 		if (playingState && clock) {
 			const game = clock.components.timers['gameOver'];
 			const remaining = game ? Math.max(0, game.duration - game.elapsed) : 0;
@@ -206,11 +205,13 @@ ecs.addSystem('screenUI')
 	});
 
 // Dot spawner — re-arms its slot each cycle with a fresh random duration
-ecs.addSystem('dotSpawner')
-	.inScreens(['playing'])
-	.addQuery('clock', { with: ['clock', 'timers'] })
+// These application systems share a playing gate; plugins retain their own groups.
+const playing = ecs.systemScope({ inScreens: ['playing'] });
+
+playing.addSystem('dotSpawner')
+	.addSingleton('clock', { with: ['clock', 'timers'] })
 	.setProcess(({ queries }) => {
-		const clock = queries.clock[0];
+		const clock = queries.clock;
 		if (!clock) return;
 		const slot = clock.components.timers['dotSpawn'];
 		if (!slot?.justFinished) return;
@@ -221,12 +222,9 @@ ecs.addSystem('dotSpawner')
 	});
 
 // Dot movement — lifetime expiry is handled by the timer plugin's onComplete
-ecs.addSystem('dotMovement')
-	.inScreens(['playing'])
-	.setProcessEach({ with: ['dot', 'localTransform'] }, ({ entity, dt, ecs }) => {
-		ecs.mutateComponent(entity.id, 'localTransform', (lt) => {
-			lt.y += entity.components.dot.speed * dt;
-		});
+playing.addSystem('dotMovement')
+	.setProcessEach({ with: ['dot', 'localTransform'], mutates: ['localTransform'] }, ({ entity, dt }) => {
+		entity.components.localTransform.y += entity.components.dot.speed * dt;
 	});
 
 // -- Keyboard input --

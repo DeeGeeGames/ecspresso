@@ -79,16 +79,6 @@ export default function registerUISystems(
 					blip.setAttribute('data-entity-id', enemy.id.toString());
 					blip.setAttribute('data-enemy-type', enemyType);
 
-					// Style the blip
-					blip.style.position = 'absolute';
-					blip.style.width = '12px'; // Larger blips
-					blip.style.height = '12px';
-					blip.style.borderRadius = '50%';
-					blip.style.backgroundColor = enemyType === 'ground' ? '#ff3333' : '#3333ff';
-					blip.style.boxShadow = enemyType === 'ground'
-						? '0 0 8px #ff0000'
-						: '0 0 8px #0000ff';
-					blip.style.zIndex = '150';
 
 					// Add to radar
 					radarContainer.appendChild(blip);
@@ -97,7 +87,6 @@ export default function registerUISystems(
 				// Update blip position
 				blip.style.left = `${50 + blipX}%`;
 				blip.style.top = `${50 + blipZ}%`;
-				blip.style.transform = 'translate(-50%, -50%)';
 			}
 		});
 }

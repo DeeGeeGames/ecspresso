@@ -82,28 +82,25 @@ ecs
 	.addSystem('bounce')
 	.inPhase('fixedUpdate')
 	.setPriority(950)
-	.addQuery('balls', {
+	.setProcessEach({
 		with: ['localTransform3D', 'velocity3D', 'radius'],
-	})
-	.setProcess(({ queries, ecs }) => {
-		for (const entity of queries.balls) {
-			const { localTransform3D, velocity3D, radius } = entity.components;
-			const min = -BOX_HALF + radius;
-			const max = BOX_HALF - radius;
+		mutates: ['localTransform3D', 'velocity3D'],
+	}, ({ entity }) => {
+		const { localTransform3D, velocity3D, radius } = entity.components;
+		const min = -BOX_HALF + radius;
+		const max = BOX_HALF - radius;
 
-			const [x, vx] = bounceAxis(localTransform3D.x, velocity3D.x, min, max);
-			const [y, vy] = bounceAxis(localTransform3D.y, velocity3D.y, min, max);
-			const [z, vz] = bounceAxis(localTransform3D.z, velocity3D.z, min, max);
-			if (x === localTransform3D.x && y === localTransform3D.y && z === localTransform3D.z) continue;
+		const [x, vx] = bounceAxis(localTransform3D.x, velocity3D.x, min, max);
+		const [y, vy] = bounceAxis(localTransform3D.y, velocity3D.y, min, max);
+		const [z, vz] = bounceAxis(localTransform3D.z, velocity3D.z, min, max);
+		if (x === localTransform3D.x && y === localTransform3D.y && z === localTransform3D.z) return false;
 
-			localTransform3D.x = x;
-			localTransform3D.y = y;
-			localTransform3D.z = z;
-			velocity3D.x = vx;
-			velocity3D.y = vy;
-			velocity3D.z = vz;
-			ecs.markChanged(entity.id, 'localTransform3D');
-		}
+		localTransform3D.x = x;
+		localTransform3D.y = y;
+		localTransform3D.z = z;
+		velocity3D.x = vx;
+		velocity3D.y = vy;
+		velocity3D.z = vz;
 	});
 
 // Continuous spawn system — emits spheres near the top of the box while pointer is held.

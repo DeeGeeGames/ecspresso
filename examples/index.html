@@ -5,175 +5,71 @@
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<title>ECSpresso Examples</title>
 	<link rel="stylesheet" href="./styles.css">
+	<style>
+		body { height: auto; overflow: auto; padding: 32px; font-family: system-ui, sans-serif; color: #3c2516; }
+		section { margin: 28px 0; }
+		li { margin: 10px 0; }
+		a { color: #6b4a33; }
+	</style>
 </head>
 <body>
 	<h1>ECSpresso Examples</h1>
-	<ul>
-		<li>
-			<a href="/movement/">
-				Basic movement
-			</a>
-		</li>
-		<li>
-			<a href="/player-input/">
-				Player Input
-			</a>
-		</li>
-		<li>
-			<a href="/events/">
-				Events (game start, enemy spawn, collision, etc)
-			</a>
-		</li>
-		<li>
-			<a href="/plugins/">
-				Plugins
-			</a>
-		</li>
-		<li>
-			<a href="/space-invaders/">
-				Space Invaders
-			</a>
-		</li>
-		<li>
-			<a href="/turret-shooter/">
-				3D Turret Shooter
-			</a>
-		</li>
-		<li>
-			<a href="/hierarchy/">
-				Entity Hierarchy (Solar System)
-			</a>
-		</li>
-		<li>
-			<a href="/camera/">
-				Camera Follow (Smooth Tracking, Shake, Bounds)
-			</a>
-		</li>
-		<li>
-			<a href="/camera-zoom/">
-				Camera Zoom (Cursor-Centered Scroll Zoom)
-			</a>
-		</li>
-		<li>
-			<a href="/isometric/">
-				Isometric (Projection, Depth Sort, Camera)
-			</a>
-		</li>
-		<li>
-			<a href="/isometric-zoom/">
-				Isometric (Cursor-Centered Scroll Zoom)
-			</a>
-		</li>
-		<li>
-			<a href="/isometric-3d/">
-				Isometric 3D (True 3D with Orthographic Camera)
-			</a>
-		</li>
-		<li>
-			<a href="/state-machine/">
-				State Machine (Patrol / Chase / Attack)
-			</a>
-		</li>
-		<li>
-			<a href="/tweens/">
-				Tweens (Easing, Sequences, Loops)
-			</a>
-		</li>
-		<li>
-			<a href="/screens/">
-				Screen Manager (Menu, Playing, Pause, Game Over)
-			</a>
-		</li>
-		<li>
-			<a href="/stress-test/">
-				Stress Test (FPS, Entity Count, Timings Overlay)
-			</a>
-		</li>
-		<li>
-			<a href="/stress-test-3D/">
-				Stress Test 3D (Sphere Stress Test, Orbit Camera)
-			</a>
-		</li>
-		<li>
-			<a href="/audio/">
-				Audio (Channels, SFX, Music, Volume Control)
-			</a>
-		</li>
-		<li>
-			<a href="/coroutines/">
-				Coroutines (Generator-based Scripted Sequences)
-			</a>
-		</li>
-		<li>
-			<a href="/sprite-animation/">
-				Sprite Animation (Loop Modes, Named Clips, Speed)
-			</a>
-		</li>
-		<li>
-			<a href="/particles/">
-				Particles (Presets, Burst, Continuous, Pooled)
-			</a>
-		</li>
-		<li>
-			<a href="/viewport-scaling/">
-				Viewport Scaling (Fit / Cover / Stretch + Pointer Conversion)
-			</a>
-		</li>
-		<li>
-			<a href="/platformer/">
-				Platformer (Gravity, Platforms, Jump)
-			</a>
-		</li>
-		<li>
-			<a href="/platformer3d/">
-				Platformer 3D (2.5D Port with Three.js)
-			</a>
-		</li>
-		<li>
-			<a href="/rts-movement/">
-				RTS Movement (Box Select, Move Orders)
-			</a>
-		</li>
-		<li>
-			<a href="/turret-defense/">
-				Turret Defense (Detection, Health, Projectiles)
-			</a>
-		</li>
-		<li>
-			<a href="/react-ui/">
-				React UI Overlay (ECS→React Hooks, HUD, Events)
-			</a>
-		</li>
-		<li>
-			<a href="/patrol-chase/">
-				Patrol & Chase (Detection → State Machine → Steering)
-			</a>
-		</li>
-		<li>
-			<a href="/flocking/">
-				Flocking / Boids (Separation, Alignment, Cohesion)
-			</a>
-		</li>
-		<li>
-			<a href="/behavior-tree/">
-				Behavior Tree
-			</a>
-		</li>
-		<li>
-			<a href="/tilemap/">
-				Tilemap (Runtime Map, Auto Collision Strips)
-			</a>
-		</li>
-		<li>
-			<a href="/ui/">
-				UI / HUD (Anchored Labels, Panels, Progress Bars)
-			</a>
-		</li>
-		<li>
-			<a href="/gamepad-tester/">
-				Gamepad Tester (Buttons, Axes, Triggers)
-			</a>
-		</li>
-	</ul>
+	<p>Start with the introductory sequence, then explore a feature or a complete game.</p>
+	<section>
+		<h2>Introduction</h2>
+		<ul>
+			<li><a href="/movement/">Basic movement</a></li>
+			<li><a href="/player-input/">Player Input</a></li>
+			<li><a href="/events/">Events (wallHit communication)</a></li>
+			<li><a href="/plugins/">Plugins</a></li>
+		</ul>
+	</section>
+	<section>
+		<h2>Focused features</h2>
+		<ul>
+			<li><a href="/change-tracking/">Mutation and Change Tracking (Writes and No-Ops)</a></li>
+			<li><a href="/behavior-tree-basics/">Behavior Tree Basics (Selector, Sequence, Two Behaviors)</a></li>
+			<li><a href="/hierarchy/">Entity Hierarchy (Solar System)</a></li>
+			<li><a href="/camera/">Camera Follow (Smooth Tracking, Shake, Bounds)</a></li>
+			<li><a href="/camera-zoom/">Camera Zoom (Cursor-Centered Scroll Zoom)</a></li>
+			<li><a href="/isometric/">Isometric (Projection, Depth Sort, Camera)</a></li>
+			<li><a href="/isometric-zoom/">Isometric (Cursor-Centered Scroll Zoom)</a></li>
+			<li><a href="/isometric-3d/">Isometric 3D (True 3D with Orthographic Camera)</a></li>
+			<li><a href="/state-machine/">State Machine (Patrol / Chase / Attack)</a></li>
+			<li><a href="/tweens/">Tweens (Easing, Sequences, Loops)</a></li>
+			<li><a href="/screens/">Screen Manager (Menu, Playing, Pause, Game Over)</a></li>
+			<li><a href="/audio/">Audio (Channels, SFX, Music, Volume Control)</a></li>
+			<li><a href="/coroutines/">Coroutines (Generator-based Scripted Sequences)</a></li>
+			<li><a href="/sprite-animation/">Sprite Animation (Loop Modes, Named Clips, Speed)</a></li>
+			<li><a href="/particles/">Particles (Presets, Burst, Continuous, Pooled)</a></li>
+			<li><a href="/viewport-scaling/">Viewport Scaling (Fit / Cover / Stretch + Pointer Conversion)</a></li>
+			<li><a href="/react-ui/">React UI Overlay (ECS→React Hooks, HUD, Events)</a></li>
+			<li><a href="/patrol-chase/">Patrol & Chase (Detection → State Machine → Steering)</a></li>
+			<li><a href="/flocking/">Flocking / Boids (Separation, Alignment, Cohesion)</a></li>
+			<li><a href="/behavior-tree/">Behavior Tree (Advanced Villager Simulation)</a></li>
+			<li><a href="/tilemap/">Tilemap (Runtime Map, Auto Collision Strips)</a></li>
+			<li><a href="/ui/">UI / HUD (Anchored Labels, Panels, Progress Bars)</a></li>
+			<li><a href="/rts-movement/">RTS Movement (Box Select, Move Orders)</a></li>
+		</ul>
+	</section>
+	<section>
+		<h2>Complete games</h2>
+		<ul>
+			<li><a href="/space-invaders/">Space Invaders</a></li>
+			<li><a href="/turret-shooter/">3D Turret Shooter</a></li>
+			<li><a href="/platformer/">Platformer (Gravity, Platforms, Jump)</a></li>
+			<li><a href="/platformer3d/">Platformer 3D (2.5D Port with Three.js)</a></li>
+			<li><a href="/turret-defense/">Turret Defense (Detection, Health, Projectiles)</a></li>
+		</ul>
+	</section>
+	<section>
+		<h2>Diagnostics</h2>
+		<p>Stress tests measure performance. The gamepad tester requires a physical device.</p>
+		<ul>
+			<li><a href="/stress-test/">Stress Test (FPS, Entity Count, Timings Overlay)</a></li>
+			<li><a href="/stress-test-3D/">Stress Test 3D (Sphere Stress Test, Orbit Camera)</a></li>
+			<li><a href="/gamepad-tester/">Gamepad Tester (Buttons, Axes, Triggers)</a></li>
+		</ul>
+	</section>
 </body>
 </html>

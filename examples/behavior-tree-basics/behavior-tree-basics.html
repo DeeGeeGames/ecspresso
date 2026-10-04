@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Behavior Tree Basics — ECSpresso</title>
+	<link rel="stylesheet" href="../styles.css">
+	<style>
+		.lesson { position: fixed; top: 16px; left: 16px; z-index: 10; max-width: 480px; padding: 16px; background: #111827e8; color: #eee; font: 14px/1.5 system-ui; border-radius: 8px; }
+		.lesson h1 { margin: 0 0 8px; font-size: 20px; }
+		.lesson p { margin: 8px 0; }
+		.lesson a { color: #4ecdc4; }
+		#behavior { color: #4ecdc4; font-weight: bold; }
+	</style>
+</head>
+<body>
+	<aside class="lesson">
+		<h1>Selector + sequence</h1>
+		<p>The selector tries its first branch: a sequence checks for a threat, then flees right. When that condition fails, the selector falls back to patrolling.</p>
+		<label><input id="threat" type="checkbox"> Threat nearby</label>
+		<p>Active behavior: <span id="behavior">patrol</span></p>
+		<a href="../behavior-tree/">Advanced villager simulation →</a>
+	</aside>
+	<script type="module" src="./behavior-tree-basics.ts"></script>
+</body>
+</html>

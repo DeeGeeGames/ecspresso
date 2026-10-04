@@ -97,18 +97,15 @@ const ecs = ECSpresso.create()
 
 ecs.addSystem('player-input')
 	.inPhase('preUpdate')
-	.addQuery('players', { with: ['player', 'velocity3D'] })
 	.withResources(['inputState'])
-	.setProcess(({ queries, resources: { inputState: input } }) => {
-		for (const entity of queries.players) {
-			const { velocity3D } = entity.components;
-			velocity3D.x = 0;
-			velocity3D.z = 0;
-			if (input.actions.isActive('moveUp'))    velocity3D.z = -PLAYER_SPEED;
-			if (input.actions.isActive('moveDown'))  velocity3D.z = PLAYER_SPEED;
-			if (input.actions.isActive('moveLeft'))  velocity3D.x = -PLAYER_SPEED;
-			if (input.actions.isActive('moveRight')) velocity3D.x = PLAYER_SPEED;
-		}
+	.setProcessEach({ with: ['player', 'velocity3D'], mutates: ['velocity3D'] }, ({ entity, resources: { inputState: input } }) => {
+		const { velocity3D } = entity.components;
+		velocity3D.x = 0;
+		velocity3D.z = 0;
+		if (input.actions.isActive('moveUp'))    velocity3D.z = -PLAYER_SPEED;
+		if (input.actions.isActive('moveDown'))  velocity3D.z = PLAYER_SPEED;
+		if (input.actions.isActive('moveLeft'))  velocity3D.x = -PLAYER_SPEED;
+		if (input.actions.isActive('moveRight')) velocity3D.x = PLAYER_SPEED;
 	});
 
 // ==================== Zoom & Shake Triggers ====================
@@ -129,13 +126,13 @@ ecs.addSystem('camera-controls')
 
 ecs.addSystem('coord-display')
 	.inPhase('render')
-	.addQuery('players', { with: ['player', 'worldTransform3D'] })
+	.addSingleton('player', { with: ['player', 'worldTransform3D'] })
 	.withResources(['camera3DState'])
 	.setProcess(({ queries, resources: { camera3DState: cam } }) => {
 		const el = document.getElementById('coords');
 		if (!el) return;
 
-		const first = queries.players[0];
+		const first = queries.player;
 		if (!first) return;
 
 		const { worldTransform3D: t } = first.components;

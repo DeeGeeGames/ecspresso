@@ -26,7 +26,7 @@ const ecs = ECSpresso.create()
 
 // Movement (same as the movement example)
 ecs.addSystem('movement')
-	.setProcessEach({ with: ['localTransform', 'velocity'] }, ({ entity, dt }) => {
+	.setProcessEach({ with: ['localTransform', 'velocity'], mutates: ['localTransform'] }, ({ entity, dt }) => {
 		const { localTransform, velocity } = entity.components;
 		localTransform.x += velocity.x * dt;
 		localTransform.y += velocity.y * dt;
@@ -36,28 +36,49 @@ ecs.addSystem('movement')
 // Events decouple the "what happened" from the "what should happen in response."
 ecs.addSystem('bounce')
 	.withResources(['bounds'])
-	.setProcessEach({ with: ['localTransform', 'velocity', 'radius'] }, ({ entity, ecs, resources: { bounds } }) => {
+	.setProcessEach({ with: ['localTransform', 'velocity', 'radius'], mutates: ['localTransform', 'velocity'] }, ({ entity, ecs, resources: { bounds } }) => {
 		const { localTransform, velocity, radius } = entity.components;
-		if (localTransform.x > bounds.width - radius || localTransform.x < radius) {
-			velocity.x *= -1;
-			ecs.eventBus.publish('wallHit', { x: localTransform.x, y: localTransform.y });
-		}
-		if (localTransform.y > bounds.height - radius || localTransform.y < radius) {
-			velocity.y *= -1;
-			ecs.eventBus.publish('wallHit', { x: localTransform.x, y: localTransform.y });
-		}
+		const maxX = Math.max(radius, bounds.width - radius);
+		const maxY = Math.max(radius, bounds.height - radius);
+		const x = Math.max(radius, Math.min(maxX, localTransform.x));
+		const y = Math.max(radius, Math.min(maxY, localTransform.y));
+		const hitX = (x <= radius && velocity.x < 0) || (x >= maxX && velocity.x > 0);
+		const hitY = (y <= radius && velocity.y < 0) || (y >= maxY && velocity.y > 0);
+		if (x === localTransform.x && y === localTransform.y && !hitX && !hitY) return false;
+		localTransform.x = x;
+		localTransform.y = y;
+		if (hitX) velocity.x *= -1;
+		if (hitY) velocity.y *= -1;
+		if (hitX || hitY) ecs.eventBus.publish('wallHit', { x, y });
 	});
 
 // Trail spawner: subscribes to wallHit events via setEventHandlers.
 // This system has no query and no process — it only reacts to events.
+// Retain a bounded trail without adding a timer dependency.
+const wallMarks: Array<{ id: number; graphics: Graphics }> = [];
+const MAX_WALL_MARKS = 64;
+
 ecs.addSystem('trail-spawner')
 	.setEventHandlers({
 		wallHit({ data: { x, y }, ecs }) {
-			ecs.spawn({
-				graphics: new Graphics().circle(0, 0, 4).fill(examplePalette.spark),
+			const graphics = new Graphics().circle(0, 0, 4).fill(examplePalette.spark);
+			const mark = ecs.spawn({
+				graphics,
 				...createLocalTransform(x, y),
 			});
+			wallMarks.push({ id: mark.id, graphics });
+			if (wallMarks.length > MAX_WALL_MARKS) {
+				const oldest = wallMarks.shift();
+				if (oldest) {
+					ecs.removeEntity(oldest.id);
+					oldest.graphics.destroy();
+				}
+			}
 		},
+	})
+	.setOnDetach(() => {
+		for (const mark of wallMarks) mark.graphics.destroy();
+		wallMarks.length = 0;
 	});
 
 // -- Initialize and spawn --

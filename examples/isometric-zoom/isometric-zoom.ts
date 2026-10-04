@@ -1,3 +1,5 @@
+import { createPointerTransform } from '../camera/pointer-coordinates';
+import type { Application } from 'pixi.js';
 /**
  * Isometric Zoom Example
  *
@@ -37,6 +39,9 @@ const TILE_COLOR_B = 0x2d6a36;
 
 // ==================== ECS Setup ====================
 
+// Bind after initialization; pointer events arrive in CSS client coordinates.
+const inputBinding: { app: Application | null } = { app: null };
+
 const ecs = ECSpresso.create()
 	.withPlugin(createRenderer2DPlugin({
 		background: 0x1a1a2e,
@@ -44,6 +49,7 @@ const ecs = ECSpresso.create()
 		camera: false,
 	}))
 	.withPlugin(createInputPlugin({
+		coordinateTransform: createPointerTransform(() => inputBinding.app, true),
 		actions: {
 			panUp:    { keys: ['w', 'ArrowUp'] },
 			panDown:  { keys: ['s', 'ArrowDown'] },
@@ -69,6 +75,16 @@ const ecs = ECSpresso.create()
 		scenery: true;
 	}>()
 	.build();
+
+// Iso projection owns the renderer camera transform; keep camera algorithms
+// informed of the actual viewport even though renderer2D camera mode is disabled.
+ecs.addSystem('camera-viewport')
+	.inPhase('preUpdate')
+	.withResources(['cameraState', 'pixiApp'])
+	.setProcess(({ resources: { cameraState, pixiApp } }) => {
+		cameraState.viewportWidth = pixiApp.screen.width;
+		cameraState.viewportHeight = pixiApp.screen.height;
+	});
 
 // ==================== Coordinate Display System ====================
 
@@ -196,3 +212,4 @@ ecs.addSystem('init')
 // ==================== Start ====================
 
 await ecs.initialize();
+inputBinding.app = ecs.getResource('pixiApp');

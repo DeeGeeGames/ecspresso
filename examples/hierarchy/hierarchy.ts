@@ -110,17 +110,15 @@ type ECS = typeof ecs;
 // Updates localTransform based on orbital angle and radius
 ecs.addSystem('orbit')
 	.inPhase('fixedUpdate')
-	.setProcessEach({ with: ['orbit', 'localTransform'] }, ({ entity, dt, ecs }) => {
-		const { orbit } = entity.components;
+	.setProcessEach({ with: ['orbit', 'localTransform'], mutates: ['orbit', 'localTransform'] }, ({ entity, dt }) => {
+		const { orbit, localTransform } = entity.components;
 
 		// Update orbital angle
 		orbit.angle += orbit.speed * dt;
 
 		// Compute local position from orbit
-		ecs.mutateComponent(entity.id, 'localTransform', (lt) => {
-			lt.x = Math.cos(orbit.angle) * orbit.radius;
-			lt.y = Math.sin(orbit.angle) * orbit.radius;
-		});
+		localTransform.x = Math.cos(orbit.angle) * orbit.radius;
+		localTransform.y = Math.sin(orbit.angle) * orbit.radius;
 	});
 
 // ==================== Camera System ====================
