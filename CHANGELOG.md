@@ -6,6 +6,10 @@ All notable changes to ECSpresso are documented here. Format loosely follows [Ke
 
 ### Changed
 
+- Consumer skill guidance connects requested outcomes to bounded source
+  inspection, contextual recipes, and separate simulation, rendering, and play
+  evidence. Runnable health/combat examples demonstrate synchronous events and
+  deferred command visibility.
 - Examples declare query writes, use singleton reads and screen scopes, and
   separate scene presentation from ECS lessons. The gallery groups introductory
   lessons, focused features, games, and diagnostics, including new behavior-tree
@@ -18,7 +22,7 @@ All notable changes to ECSpresso are documented here. Format loosely follows [Ke
 - Turret-shooter scheduling, pause groups, startup callbacks, listeners, and
   explosions have explicit ownership. Sprite-animation indicators reuse text
   objects and release owned assets; React health milestones log crossings once.
-- Screen-manager pause/resume preserves inactive timer slots and elapsed values.
+- Screens example pause/resume preserves inactive timer slots and elapsed values.
 
 ## 0.24.0
 
