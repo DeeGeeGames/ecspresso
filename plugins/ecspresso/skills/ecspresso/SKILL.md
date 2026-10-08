@@ -26,32 +26,46 @@ against an unfamiliar version. The npm package does not include the repository's
 
 ## Working on an existing feature
 
-Use systems as the initial inspection boundary without assuming all behavior
-belongs inside a system callback:
+Start with the requested player-observable outcome and the game state needed to
+assess it. For presentation or interaction changes, reach that state through
+normal controls when practical and inspect the baseline before editing.
 
-1. Translate the requested behavior into relevant components, resources,
-   events, screens, groups, assets, and presentation adapters.
-2. Locate systems that query or write those values. Include defaults inherited
-   from `definePlugin().setSystemDefaults(...)` and `world.systemScope(...)`.
-3. Inspect immediate producers and consumers, including pure helpers, event
-   publishers and handlers, command-buffer operations, and renderer adapters.
-4. Extend the system that owns the responsibility. Add a system only when the
-   behavior has a distinct phase, lifecycle, gate, or testable responsibility.
-5. Update queries, mutation declarations, resources, phase, explicit ordering references, priority, screens,
-   groups, assets, and event handlers alongside the implementation.
-6. Validate the behavior and directly affected interactions. Expand farther
-   only when observed dependencies warrant it.
+1. Establish completion criteria: deterministic state assertions, plus rendered
+   evidence and actual play when the outcome requires them. A compact brief can
+   stay in working context or an existing task/PR: outcome, scenario/setup,
+   material behavior decision, owner/interactions, mechanical evidence, and
+   presentation/play evidence. No new document is required.
+2. Locate the owning system or handler and its immediate producers, consumers,
+   activation gates, inherited defaults, and presentation path. Use
+   [project-inspection.md](project-inspection.md) when that boundary is unclear.
+   Record consequential assumptions; ask about material behavior choices rather
+   than routine implementation details.
+3. Extend the owner. Add a system only for a distinct phase, lifecycle, gate, or
+   testable responsibility. Update relevant declarations, ordering, resources,
+   and handlers alongside the implementation. Do not widen `mutates` merely to
+   silence a type error; first determine where the write belongs.
+4. Finish the requested outcome before discretionary polish. A polish or feel
+   request is itself a valid outcome; it does not require inventing a mechanic.
+5. Validate the affected interactions using [testing.md](testing.md). Report
+   evidence as passed, failed, or unmeasured. Required presentation that was not
+   observed leaves its acceptance criterion unmet: hand off partial verification
+   rather than claiming completion from passing simulation checks.
 
-Do not widen `mutates` merely to silence a type error. First determine whether
-the write belongs in that system.
+One agent working on one mechanic is the normal case. Expand inspection only
+when observed dependencies warrant it; exhaustive architecture maps, delegation,
+and persistent planning artifacts are not prerequisites.
 
 ### Task routing
 
+Read only the references or recipe sections relevant to the task.
+
 | Task | Inspect first |
 |---|---|
-| Change movement, steering, collision, or transforms | Owning system plus immediate physics/spatial producers and consumers; then [plugins.md](plugins.md) |
-| Change query or component mutation behavior | Query declarations and downstream `changed` consumers; then [change-tracking.md](change-tracking.md) |
-| Fix pause, overlays, or screen-owned entities | [lifecycle.md](lifecycle.md) |
+| Change movement, steering, collision, or transforms | Owner and immediate physics/spatial interactions; [plugins.md](plugins.md); [project-inspection.md](project-inspection.md) if the boundary is unclear |
+| Change query or component mutation behavior | Downstream consumers; [change-tracking.md](change-tracking.md) and [writers feeding changed consumers](recipes.md#writers-feeding-changed-consumers) when marks matter |
+| Change event-driven combat | Publishers, handlers, damage/death policy and command visibility; [project-inspection.md](project-inspection.md) and [testing.md](testing.md#combat-crossing-boundaries) |
+| Fix pause, overlays, or screen-owned entities | [lifecycle.md](lifecycle.md) and [pause consistency](recipes.md#pause-consistency) |
+| Change rendered feedback or interaction feel | Presentation adapter and relevant game state; [presentation ownership](recipes.md#presentation-ownership), [transient responses](recipes.md#transient-responses) when temporary effects are involved, and [testing.md](testing.md#completion-evidence) |
 | Change a built-in plugin integration or import | [plugins.md](plugins.md) |
 | Add regression coverage | [testing.md](testing.md) |
 

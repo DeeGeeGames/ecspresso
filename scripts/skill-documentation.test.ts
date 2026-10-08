@@ -39,6 +39,16 @@ function getCapturedValues(pattern: RegExp, text: string): ReadonlyArray<string>
 }
 
 describe('distributed ECSpresso skill documentation', () => {
+	test('keeps runnable behavior examples aligned with the testing reference', async () => {
+		const reference = await readText(resolve(skillSourceDirectory, 'testing.md'));
+		const snippets = getCapturedValues(/```typescript\n([\s\S]*?)```/g, reference);
+		const fixtures = await Promise.all(['event-only', 'combat-boundary'].map(name =>
+			readText(resolve(repositoryRoot, `scripts/skill-examples/${name}.test.ts`)),
+		));
+
+		expect(snippets).toEqual(fixtures);
+	});
+
 	test('catalogs exactly the plugin paths exported by the package', async () => {
 		const manifest = await readJsonObject(resolve(repositoryRoot, 'package.json'));
 		if (!isRecord(manifest['exports'])) {
