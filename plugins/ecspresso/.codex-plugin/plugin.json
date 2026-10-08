@@ -1,6 +1,6 @@
 {
 	"name": "ecspresso",
-	"version": "0.24.0",
+	"version": "0.24.1",
 	"description": "ECSpresso application-development skill for AI-assisted development",
 	"author": {
 		"name": "David Granado"
